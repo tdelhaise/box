@@ -1,0 +1,13 @@
+[Unit]
+Description=Box Daemon (UDP/DTLS server)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/boxd
+Restart=on-failure
+User=box
+Group=box
+
+[Install]
+WantedBy=multi-user.target
