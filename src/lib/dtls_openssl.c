@@ -72,7 +72,8 @@ static SSL_CTX *make_ctx(int is_server, const box_dtls_config_t *cfg) {
     OPENSSL_init_ssl(0, NULL);
     const SSL_METHOD *m = DTLS_method();
     SSL_CTX *ctx = SSL_CTX_new(m);
-    if (!ctx) return NULL;
+    if (!ctx) 
+	return NULL;
 
     // Forcer DTLS 1.2 uniquement
 #ifdef DTLS1_2_VERSION
@@ -100,8 +101,11 @@ static SSL_CTX *make_ctx(int is_server, const box_dtls_config_t *cfg) {
 #ifdef BOX_USE_PSK
     using_psk = 1;
 #endif
-    if (cfg && cfg->cert_file && cfg->key_file) using_psk = 0;
-    if (cfg && cfg->psk_identity && cfg->psk_key && cfg->psk_key_len) using_psk = 1;
+    if (cfg && cfg->cert_file && cfg->key_file) 
+	    using_psk = 0;
+
+    if (cfg && cfg->psk_identity && cfg->psk_key && cfg->psk_key_len) i
+	    using_psk = 1;
 
     if (using_psk) {
         if (is_server) {
@@ -129,23 +133,31 @@ static SSL_CTX *make_ctx(int is_server, const box_dtls_config_t *cfg) {
 // -----------------------------------------------------------------------------
 static box_dtls_t *dtls_new_common(int fd, int is_server, const box_dtls_config_t *cfg) {
     SSL_CTX *ctx = make_ctx(is_server, cfg);
-    if (!ctx) return NULL;
+    if (!ctx) 
+	return NULL;
 
     box_dtls_t *d = calloc(1, sizeof(*d));
-    if (!d) { SSL_CTX_free(ctx); return NULL; }
+    if (!d) { SSL_CTX_free(ctx);
+	return NULL; }
 
     d->ctx = ctx;
     d->fd  = fd;
 
     d->ssl = SSL_new(ctx);
-    if (!d->ssl) { box_dtls_free(d); return NULL; }
+    if (!d->ssl) { box_dtls_free(d);
+	return NULL; }
 
     d->bio = BIO_new_dgram(fd, BIO_NOCLOSE);
-    if (!d->bio) { box_dtls_free(d); return NULL; }
+    if (!d->bio) { box_dtls_free(d);
+	return NULL; }
 
     SSL_set_bio(d->ssl, d->bio, d->bio);
-    if (is_server) SSL_set_accept_state(d->ssl);
-    else           SSL_set_connect_state(d->ssl);
+    if (is_server) {
+	SSL_set_accept_state(d->ssl);
+    }
+    else {
+	SSL_set_connect_state(d->ssl);
+    }
 
     BIO_ctrl(d->bio, BIO_CTRL_DGRAM_SET_MTU, BOX_MAX_DGRAM, NULL);
     return d;
@@ -169,38 +181,57 @@ box_dtls_t *box_dtls_client_new(int udp_fd) {
 }
 
 int box_dtls_handshake_server(box_dtls_t *dtls, struct sockaddr_storage *peer, socklen_t peerlen) {
-    if (!dtls) return BOX_ERR;
+    if (!dtls)	
+	return BOX_ERR;
     BIO_ctrl(dtls->bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, peer);
 
     int ret = SSL_do_handshake(dtls->ssl);
-    if (ret == 1) return BOX_OK;
+    if (ret == 1)
+	return BOX_OK;
+
     return BOX_ERR; // TODO: gérer WANT_READ/WRITE + retransmissions
 }
 
 int box_dtls_handshake_client(box_dtls_t *dtls, const struct sockaddr *srv, socklen_t srvlen) {
-    if (!dtls) return BOX_ERR;
-    if (connect(dtls->fd, srv, srvlen) < 0) return BOX_ERR;
+    if (!dtls)
+	return BOX_ERR;
+
+    if (connect(dtls->fd, srv, srvlen) < 0)
+	return BOX_ERR;
+
     BIO_ctrl(dtls->bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, NULL);
 
     int ret = SSL_do_handshake(dtls->ssl);
-    if (ret == 1) return BOX_OK;
+    if (ret == 1)
+	return BOX_OK;
+
     return BOX_ERR;
 }
 
 int box_dtls_send(box_dtls_t *dtls, const void *buf, int len) {
-    if (!dtls) return BOX_ERR;
+    if (!dtls)
+	return BOX_ERR;
+
     return SSL_write(dtls->ssl, buf, len);
 }
 
 int box_dtls_recv(box_dtls_t *dtls, void *buf, int len) {
-    if (!dtls) return BOX_ERR;
+    if (!dtls)
+	return BOX_ERR;
+
     return SSL_read(dtls->ssl, buf, len);
 }
 
 void box_dtls_free(box_dtls_t *dtls) {
-    if (!dtls) return;
-    if (dtls->ssl) SSL_free(dtls->ssl);
-    if (dtls->ctx) SSL_CTX_free(dtls->ctx);
+    if (!dtls)
+	return;
+
+    if (dtls->ssl)
+	SSL_free(dtls->ssl);
+
+    if (dtls->ctx)
+	SSL_CTX_free(dtls->ctx);
+
     free(dtls);
 }
 
