@@ -5,3 +5,5 @@ CMakeCache.txt
 CMakeFiles/
 CMakeScripts/
 Debug
+server.key
+server.pem
