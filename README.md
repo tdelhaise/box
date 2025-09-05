@@ -21,3 +21,9 @@ sudo systemd-tmpfiles --create /usr/share/tmpfiles.d/boxd.conf
 # ou
 # sudo systemd-tmpfiles --create /usr/lib/tmpfiles.d/boxd.conf
 ```
+
+Remarque: LTO peut nécessiter l'outil "ar" compatible (par ex. llvm-ar avec Clang). Si le compilateur Clang est utilisé sur Linux, on peut exporter :
+```bash
+export CC=clang CXX=clang++
+export AR=llvm-ar RANLIB=llvm-ranlib
+```
