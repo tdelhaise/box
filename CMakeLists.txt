@@ -19,6 +19,45 @@ if(BOX_USE_PSK)
 	add_compile_definitions(BOX_USE_PSK)
 endif()
 
+# ---- LTO / IPO ----
+# CMake gère l'IPO via la propriété INTERPROCEDURAL_OPTIMIZATION (>= 3.9)
+include(CheckIPOSupported)
+if(BOX_ENABLE_LTO AND (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
+  check_ipo_supported(RESULT ipo_ok OUTPUT ipo_msg)
+  if(ipo_ok)
+    message(STATUS "IPO/LTO: enabled")
+    set_property(TARGET Box PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    set_property(TARGET box PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    set_property(TARGET boxd PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+  else()
+    message(WARNING "IPO/LTO not supported: ${ipo_msg}")
+  endif()
+endif()
+
+# ---- Hardening flags ----
+if(BOX_HARDEN AND (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
+  if (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+    # Compile-time
+    add_compile_options(
+      -fno-omit-frame-pointer
+      -fstack-protector-strong
+      -D_FORTIFY_SOURCE=3
+      -fno-strict-overflow
+      -fPIC
+    )
+    # Link-time
+    add_link_options(
+      -Wl,-z,relro
+      -Wl,-z,now
+      -pie
+    )
+  elseif (MSVC)
+    # Durcissement Windows (indicatif)
+    add_compile_options(/guard:cf /Qspectre)
+    add_link_options(/CETCOMPAT /DYNAMICBASE /NXCOMPAT)
+  endif()
+endif()
+
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # Librairie commune libBox
