@@ -1,1 +1,8 @@
 build/
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+CPackConfig.cmake
+CPackSourceConfig.cmake
+Debug
