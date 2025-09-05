@@ -1,8 +1,7 @@
 build/
 # CMake
+*.cmake
 CMakeCache.txt
 CMakeFiles/
 CMakeScripts/
-CPackConfig.cmake
-CPackSourceConfig.cmake
 Debug
