@@ -88,6 +88,14 @@ install(TARGETS boxd box Box
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES systemd/boxd.service DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/systemd/system)
+# Installe le fichier tmpfiles.d
+# Debian/Ubuntu préfèrent /usr/lib/tmpfiles.d (système),
+# /etc/tmpfiles.d est pour les overrides locaux.
+install(FILES packaging/tmpfiles.d/boxd.conf
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/tmpfiles.d)  # maps to /usr/share/tmpfiles.d
+# OU, si on veux vraiment /usr/lib/tmpfiles.d :
+# install(FILES packaging/tmpfiles.d/boxd.conf DESTINATION /usr/lib/tmpfiles.d)
+
 
 set(CPACK_PACKAGE_NAME "box")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})

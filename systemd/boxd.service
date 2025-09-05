@@ -9,18 +9,23 @@ Restart=on-failure
 User=box
 Group=box
 
-[Install]
-WantedBy=multi-user.target
-
+# Sécurité (durcissement basique)
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-AmbientCapabilities=CAP_NET_BIND_SERVICE
 RestrictAddressFamilies=AF_INET AF_INET6
 LockPersonality=true
 MemoryDenyWriteExecute=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Laisse systemd créer /var/lib/boxd (propriétaire = User/Group)
+StateDirectory=boxd
+
+[Install]
+WantedBy=multi-user.target
+

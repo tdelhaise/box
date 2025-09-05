@@ -13,3 +13,11 @@ Définir une variable d’environnement BOX_COOKIE_SECRET (32+ chars aléatoires
 export BOX_COOKIE_SECRET="$(openssl rand -hex 32)"
 ./boxd
 ```
+
+Après Intall
+
+```bash
+sudo systemd-tmpfiles --create /usr/share/tmpfiles.d/boxd.conf
+# ou
+# sudo systemd-tmpfiles --create /usr/lib/tmpfiles.d/boxd.conf
+```
