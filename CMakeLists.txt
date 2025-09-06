@@ -43,13 +43,6 @@ if(BOX_ENABLE_WARNINGS)
 	endif()
 endif()
 
-if(BOX_ENABLE_ASAN AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-	if (NOT MSVC)
-		target_compile_options(BoxFoundation PRIVATE -fsanitize=address)
-		target_link_options(BoxFoundation PRIVATE -fsanitize=address)
-	endif()
-endif()
-
 if(NOT MSVC)
 	if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 		add_compile_options(-fno-omit-frame-pointer -fstack-protector-strong -D_FORTIFY_SOURCE=3)
