@@ -11,15 +11,25 @@
 #include <signal.h>
 
 static volatile int g_running = 1;
-static void on_sigint(int sig){ (void)sig; g_running = 0; }
+static void on_sigint(int sig) {
+    (void)sig;
+    g_running = 0;
+    BOX_LOG("boxd: Interupt signal received. Exiting.");
+    exit(-sig);
+}
+
+void install_signal_handler(void) {
+    signal(SIGINT, on_sigint);
+}
 
 int main(int argc, char **argv) {
     (void)argc; (void)argv;
-    signal(SIGINT, on_sigint);
+    install_signal_handler();
 
     int udp_fd = box_udp_server(BOX_DEFAULT_PORT);
-    if (udp_fd < 0)
-	box_fatal("box_udp_server");
+    if (udp_fd < 0) {
+        box_fatal("box_udp_server");
+    }
 
     // 1) Attente d'un datagram clair pour connaître l'adresse du client
     struct sockaddr_storage peer = {0};
@@ -27,15 +37,17 @@ int main(int argc, char **argv) {
     uint8_t rxbuf[BOX_MAX_DGRAM];
 
     ssize_t r = box_udp_recv(udp_fd, rxbuf, sizeof(rxbuf), (struct sockaddr*)&peer, &peerlen);
-    if (r < 0)
-	box_fatal("recvfrom (hello)");
+    if (r < 0) {
+        box_fatal("recvfrom (hello)");
+    }
 
     BOX_LOG("boxd: datagram initial %zd octets reçu — handshake DTLS…", r);
 
     // 2) Handshake DTLS
     box_dtls_t *dtls = box_dtls_server_new(udp_fd);
-    if (!dtls)
-	box_fatal("dtls_server_new");
+    if (!dtls) {
+        box_fatal("dtls_server_new");
+    }
 
     if (box_dtls_handshake_server(dtls, &peer, peerlen) != BOX_OK) {
         fprintf(stderr, "boxd: handshake DTLS a échoué (squelette)\n");
