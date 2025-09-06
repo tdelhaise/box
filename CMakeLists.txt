@@ -12,6 +12,7 @@ option(BOX_HARDEN    "Enable hardening flags (by platform)"       ON)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON" FORCE)
 
 # OpenSSL requis
 find_package(OpenSSL REQUIRED COMPONENTS SSL Crypto)
