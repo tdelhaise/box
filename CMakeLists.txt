@@ -29,7 +29,7 @@ if(BOX_ENABLE_LTO AND (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE S
   if(ipo_ok)
     message(STATUS "IPO/LTO: enabled")
 	foreach(tgt IN ITEMS BoxFoundation box boxd)
-		get_target_property(_has TARGET ${tgt} TYPE)
+		get_target_property(_has ${tgt} TYPE)
 		if(_has) # cible exist
     			set_property(TARGET ${tgt} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 		endif()
