@@ -111,6 +111,7 @@ endif()
 
 # Tests
 enable_testing()
+include(CTest)
 add_executable(test_proto test/test_proto.c src/lib/proto.c)
 target_include_directories(test_proto PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_test(NAME test_proto COMMAND test_proto)
