@@ -31,7 +31,14 @@ enum {
 
 // Macro simple de log
 #define BOX_LOG(fmt, ...) \
-    fprintf(stderr, "[box] " fmt "\\n", ##__VA_ARGS__)
+    fprintf(stderr, "[BOX ] " fmt "\\n", ##__VA_ARGS__)
+
+#define BOX_ERROR(fmt, ...) \
+    fprintf(stderr, "[ERR ] " fmt "\\n", ##__VA_ARGS__)
+
+#define BOX_WARN(fmt, ...) \
+    fprintf(stderr, "[WARN] " fmt "\\n", ##__VA_ARGS__)
+
 
 // Helper d'erreur fatale (arrête le programme avec perror)
 void box_fatal(const char *msg);
