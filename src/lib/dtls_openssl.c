@@ -141,8 +141,7 @@ static int verify_cookie(SSL *ssl, const unsigned char *cookie, unsigned int coo
 // -----------------------------------------------------------------------------
 // PSK callbacks (si -DBOX_USE_PSK=ON)
 // -----------------------------------------------------------------------------
-static int psk_server_cb(SSL *ssl, const char *identity,
-                         unsigned char *psk, unsigned int max_psk_len) {
+static unsigned int psk_server_cb(SSL *ssl, const char *identity, unsigned char *psk, unsigned int max_psk_len) {
 #ifdef BOX_USE_PSK
     (void)ssl;
     const char *expected_id = "box-client";
@@ -158,9 +157,7 @@ static int psk_server_cb(SSL *ssl, const char *identity,
 #endif
 }
 
-static unsigned int psk_client_cb(SSL *ssl, const char *hint,
-                                  char *identity, unsigned int max_identity_len,
-                                  unsigned char *psk, unsigned int max_psk_len) {
+static unsigned int psk_client_cb(SSL *ssl, const char *hint, char *identity, unsigned int max_identity_len, unsigned char *psk, unsigned int max_psk_len) {
 #ifdef BOX_USE_PSK
     (void)ssl; (void)hint;
     const char *id = "box-client";

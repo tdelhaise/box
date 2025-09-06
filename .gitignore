@@ -7,3 +7,4 @@ CMakeScripts/
 Debug
 server.key
 server.pem
+Testing/
