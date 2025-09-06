@@ -6,6 +6,8 @@ option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(BOX_ENABLE_WARNINGS "Enable extra warnings" ON)
 option(BOX_ENABLE_ASAN "Enable AddressSanitizer (Debug)" OFF)
 option(BOX_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (Debug)" OFF)
+option(BOX_ENABLE_LTO "Enable LTO/IPO in Release/RelWithDebInfo" ON)
+option(BOX_HARDEN    "Enable hardening flags (by platform)"       ON)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -26,9 +28,12 @@ if(BOX_ENABLE_LTO AND (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE S
   check_ipo_supported(RESULT ipo_ok OUTPUT ipo_msg)
   if(ipo_ok)
     message(STATUS "IPO/LTO: enabled")
-    set_property(TARGET Box PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-    set_property(TARGET box PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-    set_property(TARGET boxd PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+	foreach(tgt IN ITEMS BoxFoundation box boxd)
+		get_target_property(_has TARGET ${tgt} TYPE)
+		if(_has) # cible exist
+    			set_property(TARGET ${tgt} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+		endif()
+	endforeach()
   else()
     message(WARNING "IPO/LTO not supported: ${ipo_msg}")
   endif()
@@ -37,20 +42,16 @@ endif()
 # ---- Hardening flags ----
 if(BOX_HARDEN AND (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
   if (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
-    # Compile-time
-    add_compile_options(
-      -fno-omit-frame-pointer
-      -fstack-protector-strong
-      -D_FORTIFY_SOURCE=3
-      -fno-strict-overflow
-      -fPIC
-    )
-    # Link-time
-    add_link_options(
-      -Wl,-z,relro
-      -Wl,-z,now
-      -pie
-    )
+	if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+		# Compile-time
+		add_compile_options(-fno-omit-frame-pointer -fstack-protector-strong -D_FORTIFY_SOURCE=3 -fno-strict-overflow -fPIC)
+		# Link-time
+		add_link_options(-Wl,-z,relro -Wl,-z,now -pie)
+	elseif(APPLE)
+		# macOS (ld64) — pas de -z,relro/now ; PIE déjà par défaut
+		add_compile_options(-fno-omit-frame-pointer -fstack-protector-strong)
+		# Évite -pie/-z ici : non valides sur Mach-O
+	endif()
   elseif (MSVC)
     # Durcissement Windows (indicatif)
     add_compile_options(/guard:cf /Qspectre)
@@ -85,13 +86,19 @@ if(BOX_ENABLE_ASAN AND CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 if(NOT MSVC)
-  add_compile_options(-fno-omit-frame-pointer -fstack-protector-strong -D_FORTIFY_SOURCE=3)
-  add_link_options(-Wl,-z,relro,-z,now)
-  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-  if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-    add_link_options(-pie)
-    add_compile_options(-fPIE)
-  endif()
+	if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+		add_compile_options(-fno-omit-frame-pointer -fstack-protector-strong -D_FORTIFY_SOURCE=3)
+		add_link_options(-Wl,-z,relro,-z,now)
+	elseif(APPLE)
+		# macOS (ld64) — pas de -z,relro/now ; PIE déjà par défaut
+		add_compile_options(-fno-omit-frame-pointer -fstack-protector-strong)
+		# Évite -pie/-z ici : non valides sur Mach-O
+	endif()
+	set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+	if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+		add_link_options(-pie)
+		add_compile_options(-fPIE)
+	endif()
 endif()
 
 if(BOX_ENABLE_UBSAN AND CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MSVC)
