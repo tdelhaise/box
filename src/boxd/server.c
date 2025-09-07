@@ -36,12 +36,14 @@ int main(int argc, char **argv) {
     socklen_t peerlen = sizeof(peer);
     uint8_t rxbuf[BOX_MAX_DGRAM];
 
+    memset(rxbuf, 0, sizeof(rxbuf));
+
     ssize_t r = box_udp_recv(udp_fd, rxbuf, sizeof(rxbuf), (struct sockaddr*)&peer, &peerlen);
     if (r < 0) {
         box_fatal("recvfrom (hello)");
     }
 
-    BOX_LOG("boxd: datagram initial %zd octets reçu — handshake DTLS…", r);
+    BOX_LOG("boxd: datagram initial %zd octets reçu — %s", r, (char*) rxbuf);
 
     // 2) Handshake DTLS
     box_dtls_t *dtls = box_dtls_server_new(udp_fd);

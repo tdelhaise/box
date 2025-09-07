@@ -65,10 +65,10 @@ if(BOX_ENABLE_UBSAN AND CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MSVC)
 endif()
 
 # Executables
-add_executable(boxd src/boxd/main.c)
+add_executable(boxd src/boxd/server.c)
 target_link_libraries(boxd PRIVATE BoxFoundation)
 
-add_executable(box src/box/main.c)
+add_executable(box src/box/client.c)
 target_link_libraries(box PRIVATE BoxFoundation)
 
 # ---- LTO / IPO ----
