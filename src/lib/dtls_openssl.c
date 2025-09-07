@@ -206,8 +206,13 @@ static SSL_CTX *make_ctx(int is_server, const box_dtls_config_t *cfg) {
 #ifdef BOX_USE_PSK
     using_psk = 1;
 #endif
-    if (cfg && cfg->cert_file && cfg->key_file) using_psk = 0;
-    if (cfg && cfg->psk_identity && cfg->psk_key && cfg->psk_key_len) using_psk = 1;
+    if (cfg && cfg->cert_file && cfg->key_file) {
+        using_psk = 0;
+    }
+
+    if (cfg && cfg->psk_identity && cfg->psk_key && cfg->psk_key_len) {
+        using_psk = 1;
+    }
 
     if (using_psk) {
         if (is_server) {
@@ -282,12 +287,69 @@ int box_dtls_handshake_server(box_dtls_t *dtls, struct sockaddr_storage *peer, s
 }
 
 int box_dtls_handshake_client(box_dtls_t *dtls, const struct sockaddr *srv, socklen_t srvlen) {
-    if (!dtls) return BOX_ERR;
-    if (connect(dtls->fd, srv, srvlen) < 0) return BOX_ERR;
+    if (!dtls) {
+        perror("dtls handle is null");
+        return BOX_ERR;
+    }
+
+    if (connect(dtls->fd, srv, srvlen) < 0) {
+        perror("failed to connect to server");
+        return BOX_ERR;
+    }
+
     BIO_ctrl(dtls->bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, NULL);
 
     int ret = SSL_do_handshake(dtls->ssl);
-    if (ret == 1) return BOX_OK;
+    if (ret == 1) {
+        return BOX_OK;
+    }
+
+    if (ret == 0) {
+        int cause = SSL_get_error(dtls->ssl,ret);
+        switch (cause) {
+            case SSL_ERROR_NONE: {
+                return BOX_ERR;
+            }
+            case SSL_ERROR_WANT_READ: {
+                return BOX_ERR;
+            }
+            case SSL_ERROR_WANT_WRITE: {
+                return BOX_ERR;
+            }
+            case SSL_ERROR_SYSCALL: {
+                return BOX_ERR;
+            }
+            case SSL_ERROR_SSL: {
+                return BOX_ERR;
+            }
+            case SSL_ERROR_ZERO_RETURN: {
+                return BOX_ERR;
+            }
+            case SSL_ERROR_WANT_CONNECT: {
+                return BOX_ERR;
+            }
+            case SSL_ERROR_WANT_ACCEPT: {
+                return BOX_ERR;
+            }
+            case SSL_ERROR_WANT_X509_LOOKUP: {
+                return BOX_ERR;
+            }
+            case SSL_ERROR_WANT_ASYNC: {
+                return BOX_ERR;
+            }
+            case SSL_ERROR_WANT_ASYNC_JOB: {
+                return BOX_ERR;
+            }
+            case SSL_ERROR_WANT_CLIENT_HELLO_CB: {
+                return BOX_ERR;
+            }
+            default: {
+                return BOX_ERR;
+            }
+        }
+    }
+
+    perror("handshake failed");
     return BOX_ERR;
 }
 
