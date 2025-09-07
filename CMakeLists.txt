@@ -8,6 +8,7 @@ option(BOX_ENABLE_ASAN "Enable AddressSanitizer (Debug)" OFF)
 option(BOX_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (Debug)" OFF)
 option(BOX_ENABLE_LTO "Enable LTO/IPO in Release/RelWithDebInfo" ON)
 option(BOX_HARDEN    "Enable hardening flags (by platform)"       ON)
+option(BOX_USE_PSK   "Enable PSK"       ON)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
