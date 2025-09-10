@@ -225,6 +225,16 @@ char *got = (char*)BFSharedDictionaryGet(d, "key");
 // ... utiliser got ...
 BFSharedDictionaryFree(d);
 ```
+### Tests de charge et benchmarks
+
+- Tests de charge (concurrents):
+  - Cibles: `test_BFSharedArrayStress`, `test_BFSharedDictionaryStress`
+  - Par défaut, la charge est réduite pour des exécutions rapides CI/locales.
+  - Pour augmenter la charge: `BOX_STRESS_ENABLE=1 ctest -R Stress --output-on-failure`
+
+- Benchmarks (micro):
+  - Construire et exécuter: `make bench`
+  - Binaries: `bench_BFSharedArray`, `bench_BFSharedDictionary` (dans `build/`)
 
 - Macros d’options CMake: préfixe `BOX_`.
   - Exemple: `BOX_USE_PRESHAREKEY` (alias rétrocompatible `BOX_USE_PSK`).

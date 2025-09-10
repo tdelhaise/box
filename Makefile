@@ -9,6 +9,7 @@ help:
 	@echo "  configure  - Configure CMake build (BUILD_TYPE=$(BUILD_TYPE))"
 	@echo "  build      - Build all targets"
 	@echo "  test       - Run ctest (output on failure)"
+	@echo "  bench      - Build and run microbenchmarks (array/dictionary)"
 	@echo "  check      - Run naming convention checks"
 	@echo "  format     - Run clang-format on C headers/sources"
 	@echo "  format-check - Check formatting (fails if changes needed)"
@@ -24,6 +25,13 @@ build:
 
 test:
 	@ctest --test-dir build --output-on-failure
+
+bench:
+	@$(MAKE) build
+	@echo "Running BFSharedArray benchmark..."
+	@./build/bench_BFSharedArray || true
+	@echo "Running BFSharedDictionary benchmark..."
+	@./build/bench_BFSharedDictionary || true
 
 check:
 	@cmake --build build --target check || bash scripts/check_naming.sh
