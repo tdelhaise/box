@@ -9,6 +9,7 @@ option(BOX_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (Debug)" OFF)
 option(BOX_ENABLE_LTO "Enable LTO/IPO in Release/RelWithDebInfo" ON)
 option(BOX_HARDEN    "Enable hardening flags (by platform)"       ON)
 option(BOX_USE_PRESHAREKEY   "Enable PreShareKey"       ON)
+option(BOX_MEMORY_SIGNAL_TRACE "Enable BFMemory SIGUSR1 trace handler (POSIX)" ON)
 
 # Backward-compat: honor legacy -DBOX_USE_PSK=ON/OFF
 if(DEFINED BOX_USE_PSK)
@@ -27,6 +28,10 @@ find_package(OpenSSL REQUIRED COMPONENTS SSL Crypto)
 # Définitions globales
 if(BOX_USE_PRESHAREKEY)
 	add_compile_definitions(BOX_USE_PRESHAREKEY)
+endif()
+
+if(BOX_MEMORY_SIGNAL_TRACE)
+	add_compile_definitions(BOX_MEMORY_SIGNAL_TRACE)
 endif()
 
 
@@ -127,6 +132,12 @@ include(CTest)
 add_executable(test_BFBoxProtocol test/test_BFBoxProtocol.c src/lib/BFBoxProtocol.c)
 target_include_directories(test_BFBoxProtocol PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_test(NAME test_BFBoxProtocol COMMAND test_BFBoxProtocol)
+
+# BFMemory unit test (links against BoxFoundation for implementation)
+add_executable(test_BFMemory test/test_BFMemory.c)
+target_include_directories(test_BFMemory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(test_BFMemory PRIVATE BoxFoundation)
+add_test(NAME test_BFMemory COMMAND test_BFMemory)
 
 # Cible utilitaire : génération de certificats autosignés (build dir)
 add_custom_target(certs
