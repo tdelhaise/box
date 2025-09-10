@@ -1,8 +1,8 @@
 #include "box/BFCommon.h"
 #include "box/BFUdp.h"
 #include "box/BFUdpServer.h"
-#include "box/dtls.h"
-#include "box/protocol.h"
+#include "box/BFDtls.h"
+#include "box/BFBoxProtocol.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -105,4 +105,3 @@ int main(int argc, char **argv) {
     close(udpSocket);
     return 0;
 }
-

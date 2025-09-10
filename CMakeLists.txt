@@ -40,8 +40,8 @@ add_library(BoxFoundation
         src/lib/BFUdp.c
         src/lib/BFUdpServer.c
         src/lib/BFUdpClient.c
-        src/lib/dtls_openssl.c
-        src/lib/protocol.c
+        src/lib/BFDtlsOpenSSL.c
+        src/lib/BFBoxProtocol.c
 )
 
 target_link_libraries(BoxFoundation PUBLIC OpenSSL::SSL OpenSSL::Crypto)
@@ -123,9 +123,9 @@ endif()
 # Tests
 enable_testing()
 include(CTest)
-add_executable(test_protocol test/test_protocol.c src/lib/protocol.c)
-target_include_directories(test_protocol PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-add_test(NAME test_protocol COMMAND test_protocol)
+add_executable(test_BFBoxProtocol test/test_BFBoxProtocol.c src/lib/BFBoxProtocol.c)
+target_include_directories(test_BFBoxProtocol PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_test(NAME test_BFBoxProtocol COMMAND test_BFBoxProtocol)
 
 # Cible utilitaire : génération de certificats autosignés (build dir)
 add_custom_target(certs

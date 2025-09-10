@@ -1,4 +1,4 @@
-#include "box/protocol.h"
+#include "box/BFBoxProtocol.h"
 #include <string.h>
 #include <arpa/inet.h>
 
@@ -40,4 +40,3 @@ int BFProtocolUnpack(const uint8_t *buffet, size_t buffetLength, BFHeader *heade
 
     return (int)(sizeof(BFHeader) + length);
 }
-
