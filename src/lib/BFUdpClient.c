@@ -1,10 +1,10 @@
 #include "box/BFUdpClient.h"
 
-#include <string.h>
-#include <errno.h>
-#include <unistd.h>
 #include <arpa/inet.h>
+#include <errno.h>
+#include <string.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
 int BFUdpClient(const char *address, uint16_t port, struct sockaddr_in *outAddress) {
     if (!address || !outAddress) {
@@ -12,7 +12,8 @@ int BFUdpClient(const char *address, uint16_t port, struct sockaddr_in *outAddre
         return -1;
     }
     int fileDescriptor = socket(AF_INET, SOCK_DGRAM, 0);
-    if (fileDescriptor < 0) return -1;
+    if (fileDescriptor < 0)
+        return -1;
 
     memset(outAddress, 0, sizeof(*outAddress));
     outAddress->sin_family = AF_INET;

@@ -1,8 +1,8 @@
 #ifndef BF_UDP_CLIENT_H
 #define BF_UDP_CLIENT_H
 
-#include <stdint.h>
 #include <netinet/in.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
