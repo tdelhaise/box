@@ -198,6 +198,34 @@ Ce dépôt suit une convention de nommage pour la bibliothèque "BoxFoundation" 
 - Tests: utiliser le préfixe `test_` suivi du nom du composant.
   - Exemple: `test/test_BFBoxProtocol.c` avec la cible CMake `test_BFBoxProtocol`.
 
+## Conteneurs partagés (BoxFoundation)
+
+Deux conteneurs thread-safe simples sont fournis:
+
+- `BFSharedArray`: Tableau pseudo-indexé basé sur une liste doublement chaînée.
+  - Opérations: Push (fin), Unshift (début), Insert (à l'index), Get, Set, RemoveAt, Clear.
+  - Sécurité: Accès protégé par mutex; allocations via `BFMemory`.
+- `BFSharedDictionary`: Dictionnaire à clés chaîne de caractères.
+  - Implémentation: table de hachage avec chaînage séparé; clés dupliquées en interne.
+  - API: Create/Free/Count, Set/Get/Remove, Clear; callback optionnel pour détruire les valeurs restantes.
+
+Exemple rapide (BFSharedDictionary):
+
+```
+#include "box/BFSharedDictionary.h"
+#include "box/BFMemory.h"
+
+static void destroy_value(void *p) { BFMemoryRelease(p); }
+
+BFSharedDictionary *d = BFSharedDictionaryCreate(destroy_value);
+char *val = (char*)BFMemoryAllocate(6); // "hello\0"
+memcpy(val, "hello", 6);
+(void)BFSharedDictionarySet(d, "key", val);
+char *got = (char*)BFSharedDictionaryGet(d, "key");
+// ... utiliser got ...
+BFSharedDictionaryFree(d);
+```
+
 - Macros d’options CMake: préfixe `BOX_`.
   - Exemple: `BOX_USE_PRESHAREKEY` (alias rétrocompatible `BOX_USE_PSK`).
 
