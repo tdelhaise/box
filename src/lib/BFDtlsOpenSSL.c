@@ -3,9 +3,11 @@
 #include "box/BFMemory.h"
 
 #include <arpa/inet.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <unistd.h>
 
 #include <openssl/evp.h>
@@ -326,6 +328,45 @@ static BFDtls *dtls_new_common(int fileDescriptor, int is_server, const BFDtlsCo
     return d;
 }
 
+static int wait_fd_ready(int fd, int want_write, const struct timeval *timeout) {
+    fd_set rfds;
+    fd_set wfds;
+    FD_ZERO(&rfds);
+    FD_ZERO(&wfds);
+    if (want_write) {
+        FD_SET(fd, &wfds);
+    } else {
+        FD_SET(fd, &rfds);
+    }
+    // select modifies the timeout; make a local copy if provided
+    struct timeval  tv_copy;
+    struct timeval *ptv = NULL;
+    if (timeout != NULL) {
+        tv_copy = *timeout;
+        ptv     = &tv_copy;
+    }
+    int r = select(fd + 1, want_write ? NULL : &rfds, want_write ? &wfds : NULL, NULL, ptv);
+    if (r < 0 && errno == EINTR)
+        return 0; // treat as timeout/continue
+    return r;
+}
+
+static int dtls_handle_want(BFDtls *dtls, int want_write) {
+    // Check if DTLS has an active retransmit timer and wait accordingly
+    struct timeval tv;
+    int            have_timer = DTLSv1_get_timeout(dtls->ssl, &tv);
+    int            sel = wait_fd_ready(dtls->fileDescriptor, want_write, have_timer ? &tv : NULL);
+    if (sel == 0) {
+        // timeout -> let OpenSSL handle internal DTLS retransmit
+        (void)DTLSv1_handle_timeout(dtls->ssl);
+        return 0; // continue
+    }
+    if (sel < 0) {
+        return -1; // error
+    }
+    return 0; // ready, retry operation
+}
+
 // -----------------------------------------------------------------------------
 // API publique
 // -----------------------------------------------------------------------------
@@ -344,15 +385,33 @@ BFDtls *BFDtlsClientNew(int udpFileDescriptor) {
 }
 
 int BFDtlsHandshakeServer(BFDtls *dtls, struct sockaddr_storage *peer, socklen_t peerLength) {
+    (void)peerLength;
     if (!dtls)
         return BF_ERR;
     BIO_ctrl(dtls->bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, peer);
 
-    int ret = SSL_do_handshake(dtls->ssl);
-    if (ret == 1)
-        return BF_OK;
-    // TODO: gérer WANT_READ/WRITE + timers (DTLSv1_handle_timeout)
-    return BF_ERR;
+    // Perform blocking handshake with DTLS timers and retransmissions
+    unsigned int timeouts = 0;
+    for (;;) {
+        int ret = SSL_do_handshake(dtls->ssl);
+        if (ret == 1)
+            return BF_OK;
+
+        int err = SSL_get_error(dtls->ssl, ret);
+        if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
+            int r = dtls_handle_want(dtls, err == SSL_ERROR_WANT_WRITE);
+            if (r < 0)
+                return BF_ERR;
+            if (r == 0) {
+                // Count retransmit timeouts to avoid infinite loops
+                timeouts++;
+                if (timeouts > 8)
+                    return BF_ERR;
+            }
+            continue; // retry handshake
+        }
+        return BF_ERR;
+    }
 }
 
 int BFDtlsHandshakeClient(BFDtls *dtls, const struct sockaddr *server, socklen_t serverLength) {
@@ -368,70 +427,63 @@ int BFDtlsHandshakeClient(BFDtls *dtls, const struct sockaddr *server, socklen_t
 
     BIO_ctrl(dtls->bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, NULL);
 
-    int ret = SSL_do_handshake(dtls->ssl);
-    if (ret == 1) {
-        return BF_OK;
-    }
+    // Blocking handshake with DTLS timers
+    unsigned int timeouts = 0;
+    for (;;) {
+        int ret = SSL_do_handshake(dtls->ssl);
+        if (ret == 1)
+            return BF_OK;
 
-    if (ret == 0) {
-        int cause = SSL_get_error(dtls->ssl, ret);
-        switch (cause) {
-        case SSL_ERROR_NONE: {
-            return BF_ERR;
+        int err = SSL_get_error(dtls->ssl, ret);
+        if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
+            int r = dtls_handle_want(dtls, err == SSL_ERROR_WANT_WRITE);
+            if (r < 0)
+                return BF_ERR;
+            if (r == 0) {
+                timeouts++;
+                if (timeouts > 8)
+                    return BF_ERR;
+            }
+            continue;
         }
-        case SSL_ERROR_WANT_READ: {
-            return BF_ERR;
-        }
-        case SSL_ERROR_WANT_WRITE: {
-            return BF_ERR;
-        }
-        case SSL_ERROR_SYSCALL: {
-            return BF_ERR;
-        }
-        case SSL_ERROR_SSL: {
-            return BF_ERR;
-        }
-        case SSL_ERROR_ZERO_RETURN: {
-            return BF_ERR;
-        }
-        case SSL_ERROR_WANT_CONNECT: {
-            return BF_ERR;
-        }
-        case SSL_ERROR_WANT_ACCEPT: {
-            return BF_ERR;
-        }
-        case SSL_ERROR_WANT_X509_LOOKUP: {
-            return BF_ERR;
-        }
-        case SSL_ERROR_WANT_ASYNC: {
-            return BF_ERR;
-        }
-        case SSL_ERROR_WANT_ASYNC_JOB: {
-            return BF_ERR;
-        }
-        case SSL_ERROR_WANT_CLIENT_HELLO_CB: {
-            return BF_ERR;
-        }
-        default: {
-            return BF_ERR;
-        }
-        }
+        return BF_ERR;
     }
-
-    perror("handshake failed");
-    return BF_ERR;
 }
 
 int BFDtlsSend(BFDtls *dtls, const void *buffet, int length) {
     if (!dtls)
         return BF_ERR;
-    return SSL_write(dtls->ssl, buffet, length);
+    for (;;) {
+        int n = SSL_write(dtls->ssl, buffet, length);
+        if (n > 0)
+            return n;
+        int err = SSL_get_error(dtls->ssl, n);
+        if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
+            int r = dtls_handle_want(dtls, err == SSL_ERROR_WANT_WRITE);
+            if (r < 0)
+                return BF_ERR;
+            continue; // retry
+        }
+        return BF_ERR;
+    }
 }
 
 int BFDtlsRecv(BFDtls *dtls, void *buffet, int length) {
     if (!dtls)
         return BF_ERR;
-    return SSL_read(dtls->ssl, buffet, length);
+    for (;;) {
+        int n = SSL_read(dtls->ssl, buffet, length);
+        if (n > 0)
+            return n;
+        int err = SSL_get_error(dtls->ssl, n);
+        if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
+            int r = dtls_handle_want(dtls, err == SSL_ERROR_WANT_WRITE);
+            if (r < 0)
+                return BF_ERR;
+            continue; // retry
+        }
+        return BF_ERR;
+    }
 }
 
 void BFDtlsFree(BFDtls *dtls) {
