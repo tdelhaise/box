@@ -36,16 +36,16 @@ int main(int argc, char **argv) {
     // 1) Attente d'un datagram clair pour connaître l'adresse du client
     struct sockaddr_storage peer = {0};
     socklen_t peerLength = sizeof(peer);
-    uint8_t receiveBuffet[BFMaxDatagram];
+    uint8_t receiveBuffer[BFMaxDatagram];
 
-    memset(receiveBuffet, 0, sizeof(receiveBuffet));
+    memset(receiveBuffer, 0, sizeof(receiveBuffer));
 
-    ssize_t received = BFUdpRecv(udpSocket, receiveBuffet, sizeof(receiveBuffet), (struct sockaddr*)&peer, &peerLength);
+    ssize_t received = BFUdpRecieve(udpSocket, receiveBuffer, sizeof(receiveBuffer), (struct sockaddr*)&peer, &peerLength);
     if (received < 0) {
         BFFatal("recvfrom (hello)");
     }
 
-    BFLog("boxd: datagram initial %zd octets reçu — %s", received, (char*) receiveBuffet);
+    BFLog("boxd: datagram initial %zd octets reçu — %s", received, (char*) receiveBuffer);
 
     // 2) Handshake DTLS
     BFDtls *dtls = BFDtlsServerNew(udpSocket);
@@ -61,22 +61,22 @@ int main(int argc, char **argv) {
     }
 
     // 3) Envoi d'un HELLO applicatif via DTLS
-    uint8_t transmitBuffet[BFMaxDatagram];
+    uint8_t transmitBuffer[BFMaxDatagram];
     const char *helloPayload = "hello from boxd";
 
-    int packed = BFProtocolPack(transmitBuffet, sizeof(transmitBuffet), BFMessageHello, helloPayload, (uint16_t)strlen(helloPayload));
+    int packed = BFProtocolPack(transmitBuffer, sizeof(transmitBuffer), BFMessageHello, helloPayload, (uint16_t)strlen(helloPayload));
     if (packed > 0)
-        (void)BFDtlsSend(dtls, transmitBuffet, packed);
+        (void)BFDtlsSend(dtls, transmitBuffer, packed);
 
     // 4) Boucle simple: attendre PING et répondre PONG
     while (g_running) {
-        int readCount = BFDtlsRecv(dtls, receiveBuffet, (int)sizeof(receiveBuffet));
+        int readCount = BFDtlsRecv(dtls, receiveBuffer, (int)sizeof(receiveBuffer));
         if (readCount <= 0) {
             // TODO: gérer WANT_READ/WRITE, timeouts, retransmissions
             break;
         }
         BFHeader header; const uint8_t *payload = NULL;
-        int unpacked = BFProtocolUnpack(receiveBuffet, (size_t)readCount, &header, &payload);
+        int unpacked = BFProtocolUnpack(receiveBuffer, (size_t)readCount, &header, &payload);
         if (unpacked < 0) {
             BFLog("boxd: trame invalide");
             continue;
@@ -85,9 +85,9 @@ int main(int argc, char **argv) {
             case BFMessagePing: {
                 BFLog("boxd: PING reçu (%u octets)", header.length);
                 const char *pong = "pong";
-                int k = BFProtocolPack(transmitBuffet, sizeof(transmitBuffet), BFMessagePong, pong, (uint16_t)strlen(pong));
+                int k = BFProtocolPack(transmitBuffer, sizeof(transmitBuffer), BFMessagePong, pong, (uint16_t)strlen(pong));
                 if (k > 0)
-                        (void)BFDtlsSend(dtls, transmitBuffet, k);
+                        (void)BFDtlsSend(dtls, transmitBuffer, k);
                 break;
             }
             case BFMessageData: {
