@@ -29,9 +29,9 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # Librairie commune libBox
 add_library(BoxFoundation
-	src/lib/box.c
-	src/lib/dtls_openssl.c
-	src/lib/proto.c
+        src/lib/box.c
+        src/lib/dtls_openssl.c
+        src/lib/protocol.c
 )
 
 target_link_libraries(BoxFoundation PUBLIC OpenSSL::SSL OpenSSL::Crypto)
@@ -113,9 +113,9 @@ endif()
 # Tests
 enable_testing()
 include(CTest)
-add_executable(test_proto test/test_proto.c src/lib/proto.c)
-target_include_directories(test_proto PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-add_test(NAME test_proto COMMAND test_proto)
+add_executable(test_protocol test/test_protocol.c src/lib/protocol.c)
+target_include_directories(test_protocol PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_test(NAME test_protocol COMMAND test_protocol)
 
 # Cible utilitaire : génération de certificats autosignés (build dir)
 add_custom_target(certs
