@@ -1,4 +1,4 @@
-#include "box/dtls.h"
+#include "box/BFDtls.h"
 #include "box/BFCommon.h"
 
 #include <stdio.h>
@@ -107,28 +107,18 @@ static int make_cookie_for_peer(const struct sockaddr_storage *peer,
     return 1;
 }
 
-// -----------------------------------------------------------------------------
-// DTLS Cookie Callbacks (DoS mitigation)
-// -----------------------------------------------------------------------------
 static int generate_cookie(SSL *ssl, unsigned char *cookie, unsigned int *cookie_len) {
     struct sockaddr_storage peer;
-    socklen_t peerlen;
-    if (!get_peer_addr(ssl, &peer, &peerlen)) return 0;
-
-    unsigned int maxlen = *cookie_len;
-    *cookie_len = 32; // taille souhaitée (<= maxlen)
-    if (*cookie_len > maxlen) *cookie_len = maxlen;
-
+    socklen_t peer_len = sizeof(peer);
+    if (!get_peer_addr(ssl, &peer, &peer_len)) return 0;
     return make_cookie_for_peer(&peer, cookie, cookie_len);
 }
 
 static int verify_cookie(SSL *ssl, const unsigned char *cookie, unsigned int cookie_len) {
     struct sockaddr_storage peer;
-    socklen_t peerlen;
-    if (!get_peer_addr(ssl, &peer, &peerlen)) return 0;
-
-    unsigned char expected[64];
-    unsigned int exp_len = sizeof(expected);
+    socklen_t peer_len = sizeof(peer);
+    unsigned char expected[64]; unsigned int exp_len = sizeof(expected);
+    if (!get_peer_addr(ssl, &peer, &peer_len)) return 0;
     if (!make_cookie_for_peer(&peer, expected, &exp_len)) return 0;
 
     if (cookie_len != exp_len) return 0;
@@ -369,3 +359,4 @@ void BFDtlsFree(BFDtls *dtls) {
     if (dtls->context) SSL_CTX_free(dtls->context);
     free(dtls);
 }
+

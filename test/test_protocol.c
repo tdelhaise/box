@@ -1,4 +1,4 @@
-#include "box/protocol.h"
+#include "box/BFBoxProtocol.h"
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
@@ -19,4 +19,3 @@ int main(void) {
     printf("test_protocol: OK\n");
     return 0;
 }
-
