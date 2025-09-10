@@ -11,6 +11,7 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
+#include <openssl/x509v3.h>
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 #error "OpenSSL >= 1.1.0 required"
@@ -259,7 +260,28 @@ static SSL_CTX *make_ctx(int is_server, const BFDtlsConfig *config) {
         if (SSL_CTX_use_PrivateKey_file(context, key, SSL_FILETYPE_PEM) <= 0) {
             perror("SSL_CTX_use_PrivateKey_file");
         }
-        // TODO (prod): charger CA, activer SSL_VERIFY_PEER côté client
+        // Client certificate verification defaults (load CA + verify peer)
+        if (!is_server) {
+            int         ok     = 0;
+            const char *cafile = getenv("BOX_CA_FILE");
+            const char *capath = getenv("BOX_CA_PATH");
+            if (cafile || capath) {
+                ok = SSL_CTX_load_verify_locations(context, cafile, capath);
+            }
+            if (!ok) {
+                SSL_CTX_set_default_verify_paths(context);
+            }
+            SSL_CTX_set_verify(context, SSL_VERIFY_PEER, NULL);
+            SSL_CTX_set_verify_depth(context, 4);
+
+            const char *expectedHost = getenv("BOX_EXPECTED_HOST");
+            if (expectedHost && *expectedHost) {
+                X509_VERIFY_PARAM *param = SSL_CTX_get0_param(context);
+                /* No partial wildcard by default */
+                X509_VERIFY_PARAM_set_hostflags(param, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+                X509_VERIFY_PARAM_set1_host(param, expectedHost, 0);
+            }
+        }
     }
 
     return context;

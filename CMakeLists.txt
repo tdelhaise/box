@@ -139,6 +139,9 @@ target_include_directories(test_BFMemory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inc
 target_link_libraries(test_BFMemory PRIVATE BoxFoundation)
 add_test(NAME test_BFMemory COMMAND test_BFMemory)
 
+# Integration test: DTLS with certificates (client verifies server via CA + hostname)
+add_test(NAME it_dtls_cert_verify COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/test_dtls_cert_verify.sh)
+
 # Cible utilitaire : génération de certificats autosignés (build dir)
 add_custom_target(certs
 	COMMAND ${CMAKE_COMMAND} -E echo "Generating self-signed certs (server.key/server.pem)"
