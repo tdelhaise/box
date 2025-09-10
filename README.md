@@ -77,7 +77,7 @@ Les binaires `box` (client) et `boxd` (serveur) acceptent des options pour confi
 
 Certificats (DTLS avec certificats X.509):
 ```bash
-./build/box --cert client.pem --key client.key 127.0.0.1 44444
+./build/box --cert client.pem --key client.key 127.0.0.1 12567
 ```
 
 PreShareKey (DTLS avec clé pré-partagée):
@@ -85,7 +85,7 @@ PreShareKey (DTLS avec clé pré-partagée):
 ./build/box \
   --pre-share-key-identity box-client \
   --pre-share-key secretpsk \
-  127.0.0.1 44444
+  127.0.0.1 12567
 ```
 
 Afficher l’aide:
@@ -141,7 +141,7 @@ Terminal 2 — client:
 ./build/box \
   --pre-share-key-identity box-client \
   --pre-share-key secretpsk \
-  127.0.0.1 44444
+  127.0.0.1 12567
 ```
 
 Observation attendue (logs):
@@ -157,7 +157,7 @@ Terminal 1 — serveur:
 
 Terminal 2 — client:
 ```bash
-./build/box --cert client.pem --key client.key 127.0.0.1 44444
+./build/box --cert client.pem --key client.key 127.0.0.1 12567
 ```
 
 Remarques:
@@ -177,7 +177,7 @@ Exemple:
 ```bash
 export BOX_CA_FILE="$PWD/server.pem"   # server.pem autosigné sert de CA de confiance
 export BOX_EXPECTED_HOST=boxd
-./build/box --cert client.pem --key client.key 127.0.0.1 44444
+./build/box --cert client.pem --key client.key 127.0.0.1 12567
 ```
 
 ## Conventions

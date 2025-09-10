@@ -1,6 +1,7 @@
 #include "box/BFBoxProtocol.h"
 #include "box/BFCommon.h"
 #include "box/BFDtls.h"
+#include "box/BFRunloop.h"
 #include "box/BFUdp.h"
 #include "box/BFUdpServer.h"
 
@@ -49,6 +50,11 @@ static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions
     }
 }
 
+// --- Simple BFRunloop-based threading skeleton (net-in, net-out, main) ---
+static BFRunloop *staticGlobalRunloopMain   = NULL;
+static BFRunloop *staticGlobalRunloopNetIn  = NULL;
+static BFRunloop *staticGlobalRunloopNetOut = NULL;
+
 static volatile int g_running = 1;
 static void         on_sigint(int sig) {
     (void)sig;
@@ -59,6 +65,35 @@ static void         on_sigint(int sig) {
 
 void install_signal_handler(void) {
     signal(SIGINT, on_sigint);
+}
+
+// Runloop handlers (placeholders for now)
+typedef enum ServerEventType { ServerEventTick = 1000 } ServerEventType;
+
+static void ServerMainHandler(BFRunloop *rl, BFRunloopEvent *ev, void *ctx) {
+    (void)ctx;
+    if (ev->type == BFRunloopEventStop) {
+        return;
+    }
+    if (ev->type == ServerEventTick) {
+        // Re-post a low-frequency tick as a heartbeat example
+        BFRunloopEvent tick = {.type = ServerEventTick, .payload = NULL, .destroy = NULL};
+        (void)BFRunloopPost(rl, &tick);
+    }
+}
+
+static void ServerNetInHandler(BFRunloop *rl, BFRunloopEvent *ev, void *ctx) {
+    (void)rl;
+    (void)ctx;
+    if (ev->type == BFRunloopEventStop)
+        return;
+}
+
+static void ServerNetOutHandler(BFRunloop *rl, BFRunloopEvent *ev, void *ctx) {
+    (void)rl;
+    (void)ctx;
+    if (ev->type == BFRunloopEventStop)
+        return;
 }
 
 int main(int argc, char **argv) {
@@ -114,6 +149,25 @@ int main(int argc, char **argv) {
     if (BFDtlsHandshakeServer(dtls, &peer, peerLength) != BF_OK) {
         fprintf(stderr, "boxd: handshake DTLS a échoué (squelette)\n");
         BFDtlsFree(dtls);
+        // Stop and free runloops (drain by default)
+        if (staticGlobalRunloopNetIn)
+            BFRunloopPostStop(staticGlobalRunloopNetIn);
+        if (staticGlobalRunloopNetOut)
+            BFRunloopPostStop(staticGlobalRunloopNetOut);
+        if (staticGlobalRunloopMain)
+            BFRunloopPostStop(staticGlobalRunloopMain);
+        if (staticGlobalRunloopNetIn)
+            BFRunloopJoin(staticGlobalRunloopNetIn);
+        if (staticGlobalRunloopNetOut)
+            BFRunloopJoin(staticGlobalRunloopNetOut);
+        if (staticGlobalRunloopMain)
+            BFRunloopJoin(staticGlobalRunloopMain);
+        if (staticGlobalRunloopNetIn)
+            BFRunloopFree(staticGlobalRunloopNetIn);
+        if (staticGlobalRunloopNetOut)
+            BFRunloopFree(staticGlobalRunloopNetOut);
+        if (staticGlobalRunloopMain)
+            BFRunloopFree(staticGlobalRunloopMain);
         close(udpSocket);
         return 1;
     }
