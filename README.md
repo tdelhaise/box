@@ -98,6 +98,7 @@ Le module `BFMemory` fournit une abstraction thread-safe pour l'allocation/libé
   - Sur plateformes POSIX, l'envoi d'un signal `SIGUSR1` au processus provoque un dump immédiat:
     - `kill -USR1 <pid>`
   - Remarque: le handler `SIGUSR1` est destiné au débogage (I/O non async-signal-safe).
+  - Le handler peut être désactivé à la compilation via CMake: `-DBOX_MEMORY_SIGNAL_TRACE=OFF`.
 
 ## Build Debug & Traçage Mémoire
 
