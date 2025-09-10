@@ -29,7 +29,10 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # Librairie commune libBox
 add_library(BoxFoundation
-        src/lib/box.c
+        src/lib/BFCommon.c
+        src/lib/BFUdp.c
+        src/lib/BFUdpServer.c
+        src/lib/BFUdpClient.c
         src/lib/dtls_openssl.c
         src/lib/protocol.c
 )

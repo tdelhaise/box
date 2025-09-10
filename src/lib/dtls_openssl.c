@@ -1,5 +1,5 @@
 #include "box/dtls.h"
-#include "box/box.h"
+#include "box/BFCommon.h"
 
 #include <stdio.h>
 #include <string.h>

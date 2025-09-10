@@ -1,4 +1,6 @@
-#include "box/box.h"
+#include "box/BFCommon.h"
+#include "box/BFUdp.h"
+#include "box/BFUdpClient.h"
 #include "box/dtls.h"
 #include "box/protocol.h"
 
