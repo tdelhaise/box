@@ -1,5 +1,5 @@
-#include "box/BFSharedDictionary.h"
 #include "box/BFMemory.h"
+#include "box/BFSharedDictionary.h"
 
 #include <assert.h>
 #include <pthread.h>
@@ -23,7 +23,7 @@ static void destroy_value(void *p) {
 static StrBox *make_box(const char *txt) {
     size_t  n = strlen(txt);
     StrBox *b = (StrBox *)BFMemoryAllocate(sizeof(StrBox));
-    b->s       = (char *)BFMemoryAllocate(n + 1U);
+    b->s      = (char *)BFMemoryAllocate(n + 1U);
     memcpy(b->s, txt, n + 1U);
     return b;
 }
@@ -72,4 +72,3 @@ int main(void) {
     printf("test_BFSharedDictionaryStress: OK (count=%zu)\n", have);
     return 0;
 }
-

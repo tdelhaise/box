@@ -1,5 +1,5 @@
-#include "box/BFSharedArray.h"
 #include "box/BFMemory.h"
+#include "box/BFSharedArray.h"
 
 #include <assert.h>
 #include <pthread.h>
@@ -7,7 +7,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct Item { int v; } Item;
+typedef struct Item {
+    int v;
+} Item;
 
 static Item *make_item(int v) {
     Item *p = (Item *)BFMemoryAllocate(sizeof(Item));
@@ -41,9 +43,9 @@ int main(void) {
     BFSharedArray *a = BFSharedArrayCreate(destroy_item);
     assert(a != NULL);
 
-    pthread_t  th[16];
-    ThreadCtx  ctx[16];
-    const int  total_expected = per * thn;
+    pthread_t th[16];
+    ThreadCtx ctx[16];
+    const int total_expected = per * thn;
     for (int i = 0; i < thn; ++i) {
         ctx[i].arr   = a;
         ctx[i].base  = i * per;
@@ -59,4 +61,3 @@ int main(void) {
     printf("test_BFSharedArrayStress: OK (count=%zu)\n", count);
     return 0;
 }
-

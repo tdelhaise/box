@@ -1,10 +1,12 @@
-#include "box/BFSharedArray.h"
 #include "box/BFMemory.h"
+#include "box/BFSharedArray.h"
 
 #include <stdio.h>
 #include <string.h>
 
-static void destroy_string(void *p) { BFMemoryRelease(p); }
+static void destroy_string(void *p) {
+    BFMemoryRelease(p);
+}
 
 int main(void) {
     BFSharedArray *a = BFSharedArrayCreate(destroy_string);
@@ -34,4 +36,3 @@ int main(void) {
     BFSharedArrayFree(a);
     return 0;
 }
-

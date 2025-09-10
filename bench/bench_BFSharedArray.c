@@ -1,12 +1,14 @@
-#include "box/BFSharedArray.h"
 #include "box/BFMemory.h"
+#include "box/BFSharedArray.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 
-static void destroy_string(void *p) { BFMemoryRelease(p); }
+static void destroy_string(void *p) {
+    BFMemoryRelease(p);
+}
 
 static double now_sec(void) {
     struct timespec ts;
@@ -20,11 +22,11 @@ int main(void) {
         fprintf(stderr, "cannot create array\n");
         return 1;
     }
-    const int N = 100000; // 100k
+    const int N  = 100000; // 100k
     double    t0 = now_sec();
     for (int i = 0; i < N; ++i) {
-        char buf[32];
-        int  n = snprintf(buf, sizeof(buf), "v%d", i);
+        char  buf[32];
+        int   n = snprintf(buf, sizeof(buf), "v%d", i);
         char *s = (char *)BFMemoryAllocate((size_t)n + 1U);
         memcpy(s, buf, (size_t)n + 1U);
         (void)BFSharedArrayPush(a, s);
@@ -44,4 +46,3 @@ int main(void) {
     BFSharedArrayFree(a);
     return 0;
 }
-

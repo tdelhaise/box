@@ -1,10 +1,12 @@
-#include "box/BFSharedDictionary.h"
 #include "box/BFMemory.h"
+#include "box/BFSharedDictionary.h"
 
 #include <stdio.h>
 #include <string.h>
 
-static void free_value(void *p) { BFMemoryRelease(p); }
+static void free_value(void *p) {
+    BFMemoryRelease(p);
+}
 
 int main(void) {
     BFSharedDictionary *d = BFSharedDictionaryCreate(free_value);
@@ -25,4 +27,3 @@ int main(void) {
     BFSharedDictionaryFree(d);
     return 0;
 }
-

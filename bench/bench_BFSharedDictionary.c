@@ -1,11 +1,13 @@
-#include "box/BFSharedDictionary.h"
 #include "box/BFMemory.h"
+#include "box/BFSharedDictionary.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 
-static void destroy_value(void *p) { BFMemoryRelease(p); }
+static void destroy_value(void *p) {
+    BFMemoryRelease(p);
+}
 
 static double now_sec(void) {
     struct timespec ts;
@@ -20,22 +22,22 @@ int main(void) {
         return 1;
     }
     const int N = 100000; // 100k
-    char       key[32];
-    double     t0 = now_sec();
+    char      key[32];
+    double    t0 = now_sec();
     for (int i = 0; i < N; ++i) {
-        int n = snprintf(key, sizeof(key), "k%d", i);
+        int   n = snprintf(key, sizeof(key), "k%d", i);
         char *v = (char *)BFMemoryAllocate((size_t)n + 1U);
         memcpy(v, key, (size_t)n + 1U);
         (void)BFSharedDictionarySet(d, key, v);
     }
-    double t1      = now_sec();
-    double set_ps  = (double)N / (t1 - t0);
+    double t1     = now_sec();
+    double set_ps = (double)N / (t1 - t0);
     printf("BFSharedDictionary set: %.0f ops/s (N=%d)\n", set_ps, N);
 
     // Sampled lookups
     volatile int sum = 0;
     for (int i = 0; i < N; i += 97) {
-        int  n = snprintf(key, sizeof(key), "k%d", i);
+        int n = snprintf(key, sizeof(key), "k%d", i);
         (void)n;
         char *v = (char *)BFSharedDictionaryGet(d, key);
         sum += (v && v[0]) ? 1 : 0;
@@ -45,4 +47,3 @@ int main(void) {
     BFSharedDictionaryFree(d);
     return 0;
 }
-
