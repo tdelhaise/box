@@ -3,12 +3,12 @@
 #include "box/BFMemory.h"
 
 #include <arpa/inet.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <errno.h>
 #include <sys/select.h>
+#include <unistd.h>
 
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -339,7 +339,7 @@ static int wait_fd_ready(int fd, int want_write, const struct timeval *timeout) 
         FD_SET(fd, &rfds);
     }
     // select modifies the timeout; make a local copy if provided
-    struct timeval tv_copy;
+    struct timeval  tv_copy;
     struct timeval *ptv = NULL;
     if (timeout != NULL) {
         tv_copy = *timeout;
@@ -355,7 +355,7 @@ static int dtls_handle_want(BFDtls *dtls, int want_write) {
     // Check if DTLS has an active retransmit timer and wait accordingly
     struct timeval tv;
     int            have_timer = DTLSv1_get_timeout(dtls->ssl, &tv);
-    int            sel        = wait_fd_ready(dtls->fileDescriptor, want_write, have_timer ? &tv : NULL);
+    int            sel = wait_fd_ready(dtls->fileDescriptor, want_write, have_timer ? &tv : NULL);
     if (sel == 0) {
         // timeout -> let OpenSSL handle internal DTLS retransmit
         (void)DTLSv1_handle_timeout(dtls->ssl);

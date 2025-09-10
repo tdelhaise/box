@@ -186,7 +186,8 @@ int main(int argc, char **argv) {
     while (g_running) {
         int readCount = BFDtlsRecv(dtls, receiveBuffer, (int)sizeof(receiveBuffer));
         if (readCount <= 0) {
-            // BFDtlsRecv already handles WANT_* and DTLS timers; treat errors as transient up to a limit
+            // BFDtlsRecv already handles WANT_* and DTLS timers; treat errors as transient up to a
+            // limit
             consecutiveErrors++;
             BFWarn("boxd: lecture DTLS en erreur (compteur=%d)", consecutiveErrors);
             if (consecutiveErrors > 5) {
