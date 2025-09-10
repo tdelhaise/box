@@ -18,9 +18,23 @@ void *BFMemoryAllocate(size_t size);
 // Thread-safe.
 void BFMemoryRelease(void *ptr);
 
+// Optional stats to observe memory usage in real time.
+typedef struct BFMemoryStats {
+    size_t currentBytes;
+    size_t peakBytes;
+    size_t currentBlocks;
+    size_t peakBlocks;
+} BFMemoryStats;
+
+// Retrieves current/peak memory usage and block counts. Thread-safe.
+void BFMemoryGetStats(BFMemoryStats *outStats);
+
+// Dumps memory statistics to stderr using BoxFoundation logging.
+// Safe to call at any time; thread-safe.
+void BFMemoryDumpStats(void);
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif // BF_MEMORY_H
-
