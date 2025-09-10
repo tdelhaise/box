@@ -154,3 +154,9 @@ install(FILES packaging/tmpfiles.d/boxd.conf
 set(CPACK_PACKAGE_NAME "box")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 include(CPack)
+
+# ---- Utility targets ----
+add_custom_target(check
+  COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/check_naming.sh
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  COMMENT "Running naming convention checks")

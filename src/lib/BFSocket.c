@@ -1,7 +1,7 @@
 #include "box/BFSocket.h"
 
-#include <sys/socket.h>
 #include <netinet/in.h>
+#include <sys/socket.h>
 
 int BFSocketSetReuseAddress(int fileDescriptor) {
     int yes = 1;

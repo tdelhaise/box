@@ -1,7 +1,7 @@
 #include "box/BFCommon.h"
 
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 void BFFatal(const char *message) {
     perror(message);
