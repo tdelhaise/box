@@ -1,5 +1,6 @@
 #include "box/BFCommon.h"
 #include "box/BFDtls.h"
+#include "box/BFMemory.h"
 
 #include <arpa/inet.h>
 #include <stdio.h>
@@ -272,7 +273,7 @@ static BFDtls *dtls_new_common(int fileDescriptor, int is_server, const BFDtlsCo
     if (!context)
         return NULL;
 
-    BFDtls *d = calloc(1, sizeof(*d));
+    BFDtls *d = (BFDtls *)BFMemoryAllocate(sizeof(*d));
     if (!d) {
         SSL_CTX_free(context);
         return NULL;
@@ -418,5 +419,5 @@ void BFDtlsFree(BFDtls *dtls) {
         SSL_free(dtls->ssl);
     if (dtls->context)
         SSL_CTX_free(dtls->context);
-    free(dtls);
+    BFMemoryRelease(dtls);
 }
