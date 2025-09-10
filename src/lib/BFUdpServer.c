@@ -1,5 +1,5 @@
 #include "box/BFUdpServer.h"
-#include "box/BFCommon.h"
+#include "box/BFSocket.h"
 
 #include <string.h>
 #include <errno.h>
@@ -12,7 +12,7 @@ int BFUdpServer(uint16_t port) {
     int fileDescriptor = socket(AF_INET, SOCK_DGRAM, 0);
     if (fileDescriptor < 0) return -1;
 
-    (void)setReuseAddress(fileDescriptor);
+    (void)BFSocketSetReuseAddress(fileDescriptor);
 
     struct sockaddr_in address;
     memset(&address, 0, sizeof(address));

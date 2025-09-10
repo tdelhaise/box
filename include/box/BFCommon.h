@@ -40,9 +40,6 @@ enum {
 // Helper d'erreur fatale (arrête le programme avec perror)
 void BFFatal(const char *message);
 
-// Active l'option SO_REUSEADDR sur le socket
-int setReuseAddress(int fileDescriptor);
-
 #ifdef __cplusplus
 }
 #endif
