@@ -1,5 +1,5 @@
-#include "box/BFSharedArray.h"
 #include "box/BFMemory.h"
+#include "box/BFSharedArray.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -26,7 +26,7 @@ static IntBox *make_int(int v) {
 }
 
 int main(void) {
-    g_destroyed = 0;
+    g_destroyed      = 0;
     BFSharedArray *a = BFSharedArrayCreate(destroy_intbox);
     assert(a != NULL);
     assert(BFSharedArrayCount(a) == 0U);
@@ -84,4 +84,3 @@ int main(void) {
     printf("test_BFSharedArray: OK\n");
     return 0;
 }
-

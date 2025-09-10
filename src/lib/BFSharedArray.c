@@ -8,17 +8,17 @@
 #include <string.h>
 
 typedef struct BFSharedArrayNode {
-    void *value;
+    void                     *value;
     struct BFSharedArrayNode *prev;
     struct BFSharedArrayNode *next;
 } BFSharedArrayNode;
 
 struct BFSharedArray {
-    pthread_mutex_t       mutex;
-    BFSharedArrayNode    *head;
-    BFSharedArrayNode    *tail;
-    size_t                count;
-    BFSharedArrayDestroy  destroy_cb; // optional
+    pthread_mutex_t      mutex;
+    BFSharedArrayNode   *head;
+    BFSharedArrayNode   *tail;
+    size_t               count;
+    BFSharedArrayDestroy destroy_cb; // optional
 };
 
 static BFSharedArrayNode *node_new(void *value) {
@@ -101,8 +101,8 @@ int BFSharedArrayInsert(BFSharedArray *array, size_t index, void *object) {
 
     if (array->count == 0U) {
         array->head = array->tail = n;
-        array->count             = 1U;
-        int ret                  = 0;
+        array->count              = 1U;
+        int ret                   = 0;
         pthread_mutex_unlock(&array->mutex);
         ret = size_to_index(0U);
         return ret;
@@ -110,14 +110,14 @@ int BFSharedArrayInsert(BFSharedArray *array, size_t index, void *object) {
 
     if (index == 0U) {
         // insert at head
-        n->next         = array->head;
+        n->next           = array->head;
         array->head->prev = n;
-        array->head     = n;
+        array->head       = n;
     } else if (index == array->count) {
         // append at tail
-        n->prev         = array->tail;
+        n->prev           = array->tail;
         array->tail->next = n;
-        array->tail     = n;
+        array->tail       = n;
     } else {
         BFSharedArrayNode *at = get_node_at_locked(array, index);
         if (!at) {
@@ -125,10 +125,10 @@ int BFSharedArrayInsert(BFSharedArray *array, size_t index, void *object) {
             node_free(n);
             return BF_ERR;
         }
-        n->prev    = at->prev;
-        n->next    = at;
+        n->prev        = at->prev;
+        n->next        = at;
         at->prev->next = n;
-        at->prev   = n;
+        at->prev       = n;
     }
     array->count++;
     size_t inserted_index = index;
@@ -220,4 +220,3 @@ int BFSharedArrayClear(BFSharedArray *array) {
     }
     return BF_OK;
 }
-

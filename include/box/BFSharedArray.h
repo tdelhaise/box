@@ -53,4 +53,3 @@ int BFSharedArrayClear(BFSharedArray *array);
 #endif
 
 #endif // BF_SHARED_ARRAY_H
-
