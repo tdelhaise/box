@@ -16,6 +16,6 @@ int main(void) {
     assert(header.length == strlen(message));
     assert(memcmp(payload, message, header.length) == 0);
 
-    printf("test_protocol: OK\n");
+    printf("test_BFBoxProtocol: OK\n");
     return 0;
 }
