@@ -139,37 +139,37 @@ static int verify_cookie(SSL *ssl, const unsigned char *cookie, unsigned int coo
 }
 
 // -----------------------------------------------------------------------------
-// PSK callbacks (si -DBOX_USE_PSK=ON)
+// PreShareKey callbacks (si -DBOX_USE_PRESHAREKEY=ON)
 // -----------------------------------------------------------------------------
-static unsigned int psk_server_cb(SSL *ssl, const char *identity, unsigned char *psk, unsigned int max_psk_len) {
-#ifdef BOX_USE_PSK
+static unsigned int pre_share_key_server_cb(SSL *ssl, const char *identity, unsigned char *preShareKey, unsigned int max_preShareKey_len) {
+#ifdef BOX_USE_PRESHAREKEY
     (void)ssl;
     const char *expected_id = "box-client";
     static const unsigned char key[] = { 's','e','c','r','e','t','p','s','k' };
 
     if (!identity || strcmp(identity, expected_id) != 0) return 0;
-    if (sizeof(key) > max_psk_len) return 0;
-    memcpy(psk, key, sizeof(key));
+    if (sizeof(key) > max_preShareKey_len) return 0;
+    memcpy(preShareKey, key, sizeof(key));
     return (unsigned int)sizeof(key);
 #else
-    (void)ssl; (void)identity; (void)psk; (void)max_psk_len;
+    (void)ssl; (void)identity; (void)preShareKey; (void)max_preShareKey_len;
     return 0;
 #endif
 }
 
-static unsigned int psk_client_cb(SSL *ssl, const char *hint, char *identity, unsigned int max_identity_len, unsigned char *psk, unsigned int max_psk_len) {
-#ifdef BOX_USE_PSK
+static unsigned int pre_share_key_client_cb(SSL *ssl, const char *hint, char *identity, unsigned int max_identity_len, unsigned char *preShareKey, unsigned int max_preShareKey_len) {
+#ifdef BOX_USE_PRESHAREKEY
     (void)ssl; (void)hint;
     const char *id = "box-client";
     static const unsigned char key[] = { 's','e','c','r','e','t','p','s','k' };
 
     if (strlen(id) + 1 > max_identity_len) return 0;
     strcpy(identity, id);
-    if (sizeof(key) > max_psk_len) return 0;
-    memcpy(psk, key, sizeof(key));
+    if (sizeof(key) > max_preShareKey_len) return 0;
+    memcpy(preShareKey, key, sizeof(key));
     return (unsigned int)sizeof(key);
 #else
-    (void)ssl; (void)hint; (void)identity; (void)max_identity_len; (void)psk; (void)max_psk_len;
+    (void)ssl; (void)hint; (void)identity; (void)max_identity_len; (void)preShareKey; (void)max_preShareKey_len;
     return 0;
 #endif
 }
@@ -202,24 +202,24 @@ static SSL_CTX *make_ctx(int is_server, const BFDtlsConfig *config) {
         SSL_CTX_set_cookie_verify_cb(context, verify_cookie);
     }
 
-    int using_psk = 0;
-#ifdef BOX_USE_PSK
-    using_psk = 1;
+    int using_preShareKey = 0;
+#ifdef BOX_USE_PRESHAREKEY
+    using_preShareKey = 1;
 #endif
     if (config && config->certificateFile && config->keyFile) {
-        using_psk = 0;
+        using_preShareKey = 0;
     }
 
-    if (config && config->pskIdentity && config->pskKey && config->pskKeyLength) {
-        using_psk = 1;
+    if (config && config->preShareKeyIdentity && config->preShareKey && config->preShareKeyLength) {
+        using_preShareKey = 1;
     }
 
-    if (using_psk) {
+    if (using_preShareKey) {
         if (is_server) {
             SSL_CTX_use_psk_identity_hint(context, "boxd");
-            SSL_CTX_set_psk_server_callback(context, psk_server_cb);
+            SSL_CTX_set_psk_server_callback(context, pre_share_key_server_cb);
         } else {
-            SSL_CTX_set_psk_client_callback(context, psk_client_cb);
+            SSL_CTX_set_psk_client_callback(context, pre_share_key_client_cb);
         }
     } else {
         const char *cert = (config && config->certificateFile) ? config->certificateFile : "server.pem";
@@ -369,4 +369,3 @@ void BFDtlsFree(BFDtls *dtls) {
     if (dtls->context) SSL_CTX_free(dtls->context);
     free(dtls);
 }
-

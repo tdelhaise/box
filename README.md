@@ -27,3 +27,35 @@ Remarque: LTO peut nécessiter l'outil "ar" compatible (par ex. llvm-ar avec Cla
 export CC=clang CXX=clang++
 export AR=llvm-ar RANLIB=llvm-ranlib
 ```
+
+## Modes DTLS: Certificats ou PreShareKey
+
+Ce projet supporte deux modes d'authentification DTLS:
+
+- Certificats: charge `server.pem` et `server.key` (par défaut si présents).
+- PreShareKey: identifiant + clé pré-partagée.
+
+Contrôle à la configuration (CMake):
+
+```bash
+cmake -S . -B build -DBOX_USE_PRESHAREKEY=ON  # active le mode PreShareKey
+cmake --build build -j
+```
+
+Dans le code, utilisez `BFDtlsConfig` pour fournir l'identité et la clé si vous ne souhaitez pas utiliser les valeurs par défaut:
+
+```c
+BFDtlsConfig cfg = {
+  .certificateFile = NULL,
+  .keyFile = NULL,
+  .preShareKeyIdentity = "box-client",
+  .preShareKey = (const unsigned char*)"secretpsk",
+  .preShareKeyLength = 9,
+  .cipherList = "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:PSK-AES128-GCM-SHA256"
+};
+
+BFDtls *d_server = BFDtlsServerNewEx(udp_fd, &cfg);
+BFDtls *d_client = BFDtlsClientNewEx(udp_fd, &cfg);
+```
+
+Note: les API/ciphers OpenSSL conservent l’acronyme historique "PSK" (ex. `SSL_CTX_set_psk_*`, `PSK-AES128-GCM-SHA256`).

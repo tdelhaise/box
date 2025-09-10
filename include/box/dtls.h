@@ -16,16 +16,16 @@ BIO *bio; // datagram BIO
 int fileDescriptor; // UDP socket
 } BFDtls;
 
-// Configuration DTLS (certificats ou PSK)
+// Configuration DTLS (certificats ou PreShareKey)
 typedef struct BFDtlsConfig {
 // Si non-NULL, chemins cert/clé PEM (mode certificats)
 const char *certificateFile; // ex: "server.pem"
 const char *keyFile; // ex: "server.key"
 
-// Mode PSK si défini (ignoré si certificateFile/keyFile non NULL)
-const char *pskIdentity; // ex: "box-client"
-const unsigned char *pskKey; // binaire
-size_t pskKeyLength; // longueur clé
+// Mode PreShareKey si défini (ignoré si certificateFile/keyFile non NULL)
+const char *preShareKeyIdentity; // ex: "box-client"
+const unsigned char *preShareKey; // binaire
+size_t preShareKeyLength; // longueur clé
 
 // Ciphers DTLS 1.2 (liste OpenSSL style). Ex: "TLS_AES_128_GCM_SHA256" (TLS1.3) ne s'applique pas à DTLS1.2;
 // Utiliser par ex: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:PSK-AES128-GCM-SHA256"

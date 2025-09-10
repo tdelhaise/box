@@ -8,7 +8,13 @@ option(BOX_ENABLE_ASAN "Enable AddressSanitizer (Debug)" OFF)
 option(BOX_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (Debug)" OFF)
 option(BOX_ENABLE_LTO "Enable LTO/IPO in Release/RelWithDebInfo" ON)
 option(BOX_HARDEN    "Enable hardening flags (by platform)"       ON)
-option(BOX_USE_PSK   "Enable PSK"       ON)
+option(BOX_USE_PRESHAREKEY   "Enable PreShareKey"       ON)
+
+# Backward-compat: honor legacy -DBOX_USE_PSK=ON/OFF
+if(DEFINED BOX_USE_PSK)
+  message(WARNING "BOX_USE_PSK is deprecated. Use BOX_USE_PRESHAREKEY instead. Honoring legacy value.")
+  set(BOX_USE_PRESHAREKEY ${BOX_USE_PSK})
+endif()
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -19,8 +25,8 @@ set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON" FORCE)
 find_package(OpenSSL REQUIRED COMPONENTS SSL Crypto)
 
 # Définitions globales
-if(BOX_USE_PSK)
-	add_compile_definitions(BOX_USE_PSK)
+if(BOX_USE_PRESHAREKEY)
+	add_compile_definitions(BOX_USE_PRESHAREKEY)
 endif()
 
 
