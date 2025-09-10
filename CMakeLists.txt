@@ -44,6 +44,7 @@ add_library(BoxFoundation
         src/lib/BFSocket.c
         src/lib/BFMemory.c
         src/lib/BFRunloop.c
+        src/lib/BFSharedArray.c
         src/lib/BFUdp.c
         src/lib/BFUdpServer.c
         src/lib/BFUdpClient.c
@@ -146,6 +147,12 @@ add_executable(test_BFRunloop test/test_BFRunloop.c)
 target_include_directories(test_BFRunloop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(test_BFRunloop PRIVATE BoxFoundation)
 add_test(NAME test_BFRunloop COMMAND test_BFRunloop)
+
+# BFSharedArray unit test
+add_executable(test_BFSharedArray test/test_BFSharedArray.c)
+target_include_directories(test_BFSharedArray PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(test_BFSharedArray PRIVATE BoxFoundation)
+add_test(NAME test_BFSharedArray COMMAND test_BFSharedArray)
 
 # Cible utilitaire : génération de certificats autosignés (build dir)
 add_custom_target(certs
