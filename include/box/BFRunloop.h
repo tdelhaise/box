@@ -19,24 +19,24 @@ typedef enum BFRunloopEventType {
 
 typedef struct BFRunloopEvent {
     uint32_t type;
-    void *payload;                // owned by the run loop
-    void (*destroy)(void *ptr);   // optional; called after handling or on drop
+    void    *payload;           // owned by the run loop
+    void (*destroy)(void *ptr); // optional; called after handling or on drop
 } BFRunloopEvent;
 
 typedef void (*BFRunloopHandler)(BFRunloop *runloop, BFRunloopEvent *event, void *context);
 
 // Lifecycle
 BFRunloop *BFRunloopCreate(void);
-void BFRunloopFree(BFRunloop *runloop);
+void       BFRunloopFree(BFRunloop *runloop);
 
 // Handler and execution
-int BFRunloopSetHandler(BFRunloop *runloop, BFRunloopHandler handler, void *context);
-int BFRunloopStart(BFRunloop *runloop);   // spawns a thread to run the loop
-void BFRunloopRun(BFRunloop *runloop);    // runs the loop on the caller thread (blocking)
-void BFRunloopJoin(BFRunloop *runloop);   // joins the internal thread if started
+int  BFRunloopSetHandler(BFRunloop *runloop, BFRunloopHandler handler, void *context);
+int  BFRunloopStart(BFRunloop *runloop); // spawns a thread to run the loop
+void BFRunloopRun(BFRunloop *runloop);   // runs the loop on the caller thread (blocking)
+void BFRunloopJoin(BFRunloop *runloop);  // joins the internal thread if started
 
 // Queue operations
-int BFRunloopPost(BFRunloop *runloop, const BFRunloopEvent *event); // returns BF_OK or BF_ERR
+int  BFRunloopPost(BFRunloop *runloop, const BFRunloopEvent *event); // returns BF_OK or BF_ERR
 void BFRunloopPostStop(BFRunloop *runloop); // posts a stop marker (guaranteed enqueue)
 
 // Stop the runloop; if drain is non-zero, the loop drains queued events before stopping (default).
@@ -47,4 +47,3 @@ void BFRunloopStop(BFRunloop *runloop, int drain);
 #endif
 
 #endif // BF_RUNLOOP_H
-

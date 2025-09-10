@@ -9,20 +9,20 @@ enum { BFRunloopMaxEvents = 512 };
 
 typedef struct BFRunloopQueue {
     BFRunloopEvent events[BFRunloopMaxEvents];
-    size_t head;  // index of next pop
-    size_t tail;  // index of next push
-    size_t count; // number of items in queue
+    size_t         head;  // index of next pop
+    size_t         tail;  // index of next push
+    size_t         count; // number of items in queue
 } BFRunloopQueue;
 
 struct BFRunloop {
-    pthread_mutex_t mutex;
-    pthread_cond_t  condition;
-    BFRunloopQueue  queue;
-    int             stopping; // 0 running, 1 stop requested (drain), 2 immediate stop
-    int             started;
-    pthread_t       thread;
+    pthread_mutex_t  mutex;
+    pthread_cond_t   condition;
+    BFRunloopQueue   queue;
+    int              stopping; // 0 running, 1 stop requested (drain), 2 immediate stop
+    int              started;
+    pthread_t        thread;
     BFRunloopHandler handler;
-    void *           handlerContext;
+    void            *handlerContext;
 };
 
 static void QueueInit(BFRunloopQueue *q) {
@@ -78,9 +78,9 @@ BFRunloop *BFRunloopCreate(void) {
     pthread_mutex_init(&rl->mutex, NULL);
     pthread_cond_init(&rl->condition, NULL);
     QueueInit(&rl->queue);
-    rl->stopping = 0;
-    rl->started  = 0;
-    rl->handler  = NULL;
+    rl->stopping       = 0;
+    rl->started        = 0;
+    rl->handler        = NULL;
     rl->handlerContext = NULL;
     return rl;
 }
@@ -164,7 +164,7 @@ void BFRunloopRun(BFRunloop *runloop) {
             // Switch to stopping state and continue draining remaining events
             pthread_mutex_lock(&runloop->mutex);
             runloop->stopping = 1;
-            int empty = (runloop->queue.count == 0U);
+            int empty         = (runloop->queue.count == 0U);
             pthread_mutex_unlock(&runloop->mutex);
             if (event.destroy != NULL && event.payload != NULL) {
                 event.destroy(event.payload);
@@ -253,4 +253,3 @@ void BFRunloopStop(BFRunloop *runloop, int drain) {
         BFRunloopPostStop(runloop);
     }
 }
-
