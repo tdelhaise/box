@@ -56,7 +56,7 @@ static int get_peer_addr(SSL *ssl, struct sockaddr_storage *peer, socklen_t *pee
     return ok > 0;
 }
 
-// Construit un buffer canonique addr|port pour HMAC
+// Construit un buffer canonique address|port pour HMAC
 static int peer_to_bytes(const struct sockaddr_storage *peer, unsigned char *out, size_t *outlen) {
     if (!peer || !out || !outlen) return 0;
 
@@ -177,196 +177,196 @@ static unsigned int psk_client_cb(SSL *ssl, const char *hint, char *identity, un
 // -----------------------------------------------------------------------------
 // SSL_CTX factory
 // -----------------------------------------------------------------------------
-static SSL_CTX *make_ctx(int is_server, const box_dtls_config_t *cfg) {
+static SSL_CTX *make_ctx(int is_server, const BFDtlsConfig *config) {
     OPENSSL_init_ssl(0, NULL);
     const SSL_METHOD *m = DTLS_method();
-    SSL_CTX *ctx = SSL_CTX_new(m);
-    if (!ctx) return NULL;
+    SSL_CTX *context = SSL_CTX_new(m);
+    if (!context) return NULL;
 
 #ifdef DTLS1_2_VERSION
-    SSL_CTX_set_min_proto_version(ctx, DTLS1_2_VERSION);
-    SSL_CTX_set_max_proto_version(ctx, DTLS1_2_VERSION);
+    SSL_CTX_set_min_proto_version(context, DTLS1_2_VERSION);
+    SSL_CTX_set_max_proto_version(context, DTLS1_2_VERSION);
 #endif
 
-    if (cfg && cfg->cipher_list) {
-        SSL_CTX_set_cipher_list(ctx, cfg->cipher_list);
+    if (config && config->cipherList) {
+        SSL_CTX_set_cipher_list(context, config->cipherList);
     } else {
-        SSL_CTX_set_cipher_list(ctx,
+        SSL_CTX_set_cipher_list(context,
             "ECDHE-ECDSA-AES128-GCM-SHA256:"
             "ECDHE-RSA-AES128-GCM-SHA256:"
             "PSK-AES128-GCM-SHA256");
     }
 
     if (is_server) {
-        SSL_CTX_set_cookie_generate_cb(ctx, generate_cookie);
-        SSL_CTX_set_cookie_verify_cb(ctx, verify_cookie);
+        SSL_CTX_set_cookie_generate_cb(context, generate_cookie);
+        SSL_CTX_set_cookie_verify_cb(context, verify_cookie);
     }
 
     int using_psk = 0;
 #ifdef BOX_USE_PSK
     using_psk = 1;
 #endif
-    if (cfg && cfg->cert_file && cfg->key_file) {
+    if (config && config->certificateFile && config->keyFile) {
         using_psk = 0;
     }
 
-    if (cfg && cfg->psk_identity && cfg->psk_key && cfg->psk_key_len) {
+    if (config && config->pskIdentity && config->pskKey && config->pskKeyLength) {
         using_psk = 1;
     }
 
     if (using_psk) {
         if (is_server) {
-            SSL_CTX_use_psk_identity_hint(ctx, "boxd");
-            SSL_CTX_set_psk_server_callback(ctx, psk_server_cb);
+            SSL_CTX_use_psk_identity_hint(context, "boxd");
+            SSL_CTX_set_psk_server_callback(context, psk_server_cb);
         } else {
-            SSL_CTX_set_psk_client_callback(ctx, psk_client_cb);
+            SSL_CTX_set_psk_client_callback(context, psk_client_cb);
         }
     } else {
-        const char *cert = (cfg && cfg->cert_file) ? cfg->cert_file : "server.pem";
-        const char *key  = (cfg && cfg->key_file)  ? cfg->key_file  : "server.key";
-        if (SSL_CTX_use_certificate_file(ctx, cert, SSL_FILETYPE_PEM) <= 0) {
+        const char *cert = (config && config->certificateFile) ? config->certificateFile : "server.pem";
+        const char *key  = (config && config->keyFile)  ? config->keyFile  : "server.key";
+        if (SSL_CTX_use_certificate_file(context, cert, SSL_FILETYPE_PEM) <= 0) {
             perror("SSL_CTX_use_certificate_file");
         }
-        if (SSL_CTX_use_PrivateKey_file(ctx, key, SSL_FILETYPE_PEM) <= 0) {
+        if (SSL_CTX_use_PrivateKey_file(context, key, SSL_FILETYPE_PEM) <= 0) {
             perror("SSL_CTX_use_PrivateKey_file");
         }
         // TODO (prod): charger CA, activer SSL_VERIFY_PEER côté client
     }
 
-    return ctx;
+    return context;
 }
 
 // -----------------------------------------------------------------------------
 // Session helpers
 // -----------------------------------------------------------------------------
-static box_dtls_t *dtls_new_common(int fd, int is_server, const box_dtls_config_t *cfg) {
-    SSL_CTX *ctx = make_ctx(is_server, cfg);
-    if (!ctx) return NULL;
+static BFDtls *dtls_new_common(int fileDescriptor, int is_server, const BFDtlsConfig *config) {
+    SSL_CTX *context = make_ctx(is_server, config);
+    if (!context) return NULL;
 
-    box_dtls_t *d = calloc(1, sizeof(*d));
-    if (!d) { SSL_CTX_free(ctx); return NULL; }
+    BFDtls *d = calloc(1, sizeof(*d));
+    if (!d) { SSL_CTX_free(context); return NULL; }
 
-    d->ctx = ctx;
-    d->fd  = fd;
+    d->context = context;
+    d->fileDescriptor  = fileDescriptor;
 
-    d->ssl = SSL_new(ctx);
-    if (!d->ssl) { box_dtls_free(d); return NULL; }
+    d->ssl = SSL_new(context);
+    if (!d->ssl) { BFDtlsFree(d); return NULL; }
 
-    d->bio = BIO_new_dgram(fd, BIO_NOCLOSE);
-    if (!d->bio) { box_dtls_free(d); return NULL; }
+    d->bio = BIO_new_dgram(fileDescriptor, BIO_NOCLOSE);
+    if (!d->bio) { BFDtlsFree(d); return NULL; }
 
     SSL_set_bio(d->ssl, d->bio, d->bio);
     if (is_server) SSL_set_accept_state(d->ssl);
     else           SSL_set_connect_state(d->ssl);
 
-    BIO_ctrl(d->bio, BIO_CTRL_DGRAM_SET_MTU, BOX_MAX_DGRAM, NULL);
+    BIO_ctrl(d->bio, BIO_CTRL_DGRAM_SET_MTU, BFMaxDatagram, NULL);
     return d;
 }
 
 // -----------------------------------------------------------------------------
 // API publique
 // -----------------------------------------------------------------------------
-box_dtls_t *box_dtls_server_new_ex(int udp_fd, const box_dtls_config_t *cfg) {
-    return dtls_new_common(udp_fd, 1, cfg);
+BFDtls *BFDtlsServerNewEx(int udpFileDescriptor, const BFDtlsConfig *config) {
+    return dtls_new_common(udpFileDescriptor, 1, config);
 }
-box_dtls_t *box_dtls_client_new_ex(int udp_fd, const box_dtls_config_t *cfg) {
-    return dtls_new_common(udp_fd, 0, cfg);
+BFDtls *BFDtlsClientNewEx(int udpFileDescriptor, const BFDtlsConfig *config) {
+    return dtls_new_common(udpFileDescriptor, 0, config);
 }
 
-box_dtls_t *box_dtls_server_new(int udp_fd) { return box_dtls_server_new_ex(udp_fd, NULL); }
-box_dtls_t *box_dtls_client_new(int udp_fd) { return box_dtls_client_new_ex(udp_fd, NULL); }
+BFDtls *BFDtlsServerNew(int udpFileDescriptor) { return BFDtlsServerNewEx(udpFileDescriptor, NULL); }
+BFDtls *BFDtlsClientNew(int udpFileDescriptor) { return BFDtlsClientNewEx(udpFileDescriptor, NULL); }
 
-int box_dtls_handshake_server(box_dtls_t *dtls, struct sockaddr_storage *peer, socklen_t peerlen) {
-    if (!dtls) return BOX_ERR;
+int BFDtlsHandshakeServer(BFDtls *dtls, struct sockaddr_storage *peer, socklen_t peerLength) {
+    if (!dtls) return BF_ERR;
     BIO_ctrl(dtls->bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, peer);
 
     int ret = SSL_do_handshake(dtls->ssl);
-    if (ret == 1) return BOX_OK;
+    if (ret == 1) return BF_OK;
     // TODO: gérer WANT_READ/WRITE + timers (DTLSv1_handle_timeout)
-    return BOX_ERR;
+    return BF_ERR;
 }
 
-int box_dtls_handshake_client(box_dtls_t *dtls, const struct sockaddr *srv, socklen_t srvlen) {
+int BFDtlsHandshakeClient(BFDtls *dtls, const struct sockaddr *server, socklen_t serverLength) {
     if (!dtls) {
         perror("dtls handle is null");
-        return BOX_ERR;
+        return BF_ERR;
     }
 
-    if (connect(dtls->fd, srv, srvlen) < 0) {
+    if (connect(dtls->fileDescriptor, server, serverLength) < 0) {
         perror("failed to connect to server");
-        return BOX_ERR;
+        return BF_ERR;
     }
 
     BIO_ctrl(dtls->bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, NULL);
 
     int ret = SSL_do_handshake(dtls->ssl);
     if (ret == 1) {
-        return BOX_OK;
+        return BF_OK;
     }
 
     if (ret == 0) {
         int cause = SSL_get_error(dtls->ssl,ret);
         switch (cause) {
             case SSL_ERROR_NONE: {
-                return BOX_ERR;
+                return BF_ERR;
             }
             case SSL_ERROR_WANT_READ: {
-                return BOX_ERR;
+                return BF_ERR;
             }
             case SSL_ERROR_WANT_WRITE: {
-                return BOX_ERR;
+                return BF_ERR;
             }
             case SSL_ERROR_SYSCALL: {
-                return BOX_ERR;
+                return BF_ERR;
             }
             case SSL_ERROR_SSL: {
-                return BOX_ERR;
+                return BF_ERR;
             }
             case SSL_ERROR_ZERO_RETURN: {
-                return BOX_ERR;
+                return BF_ERR;
             }
             case SSL_ERROR_WANT_CONNECT: {
-                return BOX_ERR;
+                return BF_ERR;
             }
             case SSL_ERROR_WANT_ACCEPT: {
-                return BOX_ERR;
+                return BF_ERR;
             }
             case SSL_ERROR_WANT_X509_LOOKUP: {
-                return BOX_ERR;
+                return BF_ERR;
             }
             case SSL_ERROR_WANT_ASYNC: {
-                return BOX_ERR;
+                return BF_ERR;
             }
             case SSL_ERROR_WANT_ASYNC_JOB: {
-                return BOX_ERR;
+                return BF_ERR;
             }
             case SSL_ERROR_WANT_CLIENT_HELLO_CB: {
-                return BOX_ERR;
+                return BF_ERR;
             }
             default: {
-                return BOX_ERR;
+                return BF_ERR;
             }
         }
     }
 
     perror("handshake failed");
-    return BOX_ERR;
+    return BF_ERR;
 }
 
-int box_dtls_send(box_dtls_t *dtls, const void *buf, int len) {
-    if (!dtls) return BOX_ERR;
-    return SSL_write(dtls->ssl, buf, len);
+int BFDtlsSend(BFDtls *dtls, const void *buffet, int length) {
+    if (!dtls) return BF_ERR;
+    return SSL_write(dtls->ssl, buffet, length);
 }
 
-int box_dtls_recv(box_dtls_t *dtls, void *buf, int len) {
-    if (!dtls) return BOX_ERR;
-    return SSL_read(dtls->ssl, buf, len);
+int BFDtlsRecv(BFDtls *dtls, void *buffet, int length) {
+    if (!dtls) return BF_ERR;
+    return SSL_read(dtls->ssl, buffet, length);
 }
 
-void box_dtls_free(box_dtls_t *dtls) {
+void BFDtlsFree(BFDtls *dtls) {
     if (!dtls) return;
     if (dtls->ssl) SSL_free(dtls->ssl);
-    if (dtls->ctx) SSL_CTX_free(dtls->ctx);
+    if (dtls->context) SSL_CTX_free(dtls->context);
     free(dtls);
 }
 

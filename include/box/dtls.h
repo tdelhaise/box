@@ -1,5 +1,5 @@
-#ifndef BOX_DTLS_H
-#define BOX_DTLS_H
+#ifndef BF_DTLS_H
+#define BF_DTLS_H
 
 #include <openssl/ssl.h>
 #include <netinet/in.h>
@@ -9,50 +9,50 @@
 extern "C" {
 #endif
 
-typedef struct box_dtls {
-SSL_CTX *ctx;
+typedef struct BFDtls {
+SSL_CTX *context;
 SSL *ssl;
 BIO *bio; // datagram BIO
-int fd; // UDP socket
-} box_dtls_t;
+int fileDescriptor; // UDP socket
+} BFDtls;
 
 // Configuration DTLS (certificats ou PSK)
-typedef struct box_dtls_config {
+typedef struct BFDtlsConfig {
 // Si non-NULL, chemins cert/clé PEM (mode certificats)
-const char *cert_file; // ex: "server.pem"
-const char *key_file; // ex: "server.key"
+const char *certificateFile; // ex: "server.pem"
+const char *keyFile; // ex: "server.key"
 
-// Mode PSK si défini (ignoré si cert_file/key_file non NULL)
-const char *psk_identity; // ex: "box-client"
-const unsigned char *psk_key; // binaire
-size_t psk_key_len; // longueur clé
+// Mode PSK si défini (ignoré si certificateFile/keyFile non NULL)
+const char *pskIdentity; // ex: "box-client"
+const unsigned char *pskKey; // binaire
+size_t pskKeyLength; // longueur clé
 
 // Ciphers DTLS 1.2 (liste OpenSSL style). Ex: "TLS_AES_128_GCM_SHA256" (TLS1.3) ne s'applique pas à DTLS1.2;
 // Utiliser par ex: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:PSK-AES128-GCM-SHA256"
-const char *cipher_list;
-} box_dtls_config_t;
+const char *cipherList;
+} BFDtlsConfig;
 
 // Création contextes
-box_dtls_t *box_dtls_server_new_ex(int udp_fd, const box_dtls_config_t *cfg);
-box_dtls_t *box_dtls_client_new_ex(int udp_fd, const box_dtls_config_t *cfg);
+BFDtls *BFDtlsServerNewEx(int udpFileDescriptor, const BFDtlsConfig *config);
+BFDtls *BFDtlsClientNewEx(int udpFileDescriptor, const BFDtlsConfig *config);
 
 // Raccourcis (utilisent certificats par défaut si présents au cwd)
-box_dtls_t *box_dtls_server_new(int udp_fd);
-box_dtls_t *box_dtls_client_new(int udp_fd);
+BFDtls *BFDtlsServerNew(int udpFileDescriptor);
+BFDtls *BFDtlsClientNew(int udpFileDescriptor);
 
 // Handshake (attache l'adresse pair)
-int box_dtls_handshake_server(box_dtls_t *dtls, struct sockaddr_storage *peer, socklen_t peerlen);
-int box_dtls_handshake_client(box_dtls_t *dtls, const struct sockaddr *srv, socklen_t srvlen);
+int BFDtlsHandshakeServer(BFDtls *dtls, struct sockaddr_storage *peer, socklen_t peerLength);
+int BFDtlsHandshakeClient(BFDtls *dtls, const struct sockaddr *server, socklen_t serverLength);
 
 // E/S chiffrées
-int box_dtls_send(box_dtls_t *dtls, const void *buf, int len);
-int box_dtls_recv(box_dtls_t *dtls, void *buf, int len);
+int BFDtlsSend(BFDtls *dtls, const void *buffet, int length);
+int BFDtlsRecv(BFDtls *dtls, void *buffet, int length);
 
 // Libération
-void box_dtls_free(box_dtls_t *dtls);
+void BFDtlsFree(BFDtls *dtls);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // BOX_DTLS_H
+#endif // BF_DTLS_H
