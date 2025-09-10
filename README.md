@@ -9,6 +9,12 @@ openssl req -x509 -newkey rsa:2048 -keyout server.key \
 -out server.pem -days 365 -nodes -subj "/CN=boxd"
 ```
 
+Générer un certificat client autosigné (facultatif, pour démos avec certificats côté client) :
+```bash
+openssl req -x509 -newkey rsa:2048 -keyout client.key \
+-out client.pem -days 365 -nodes -subj "/CN=box"
+```
+
 Utilisation du secret cookie en prod :
 
 Définir une variable d’environnement BOX_COOKIE_SECRET (32+ chars aléatoires) pour des cookies stables (sinon un secret aléatoire sera généré à chaque lancement).
@@ -62,6 +68,117 @@ BFDtls *d_client = BFDtlsClientNewEx(udp_fd, &cfg);
 ```
 
 Note: les API/ciphers OpenSSL conservent l’acronyme historique "PSK" (ex. `SSL_CTX_set_psk_*`, `PSK-AES128-GCM-SHA256`).
+
+## Utilisation (box / boxd)
+
+Les binaires `box` (client) et `boxd` (serveur) acceptent des options pour configurer DTLS à l’exécution. Si aucune option n’est fournie, les valeurs par défaut sont utilisées (certificats `server.pem`/`server.key` si présents, sinon PreShareKey si activé à la compilation).
+
+### Client `box`
+
+Certificats (DTLS avec certificats X.509):
+```bash
+./build/box --cert client.pem --key client.key 127.0.0.1 44444
+```
+
+PreShareKey (DTLS avec clé pré-partagée):
+```bash
+./build/box \
+  --pre-share-key-identity box-client \
+  --pre-share-key secretpsk \
+  127.0.0.1 44444
+```
+
+Afficher l’aide:
+```bash
+./build/box --help
+```
+
+### Serveur `boxd`
+
+Certificats:
+```bash
+./build/boxd --cert server.pem --key server.key
+```
+
+PreShareKey:
+```bash
+./build/boxd \
+  --pre-share-key-identity box-client \
+  --pre-share-key secretpsk
+```
+
+Remarques:
+- L’option `--pre-share-key` attend une chaîne ASCII, utilisée telle quelle comme octets PSK (exemples/démo). Pour la production, prévoir un mécanisme de fourniture/chargement sécurisé (env, fichier, KMS).
+- Si au moins une option DTLS (`--cert`, `--key`, `--pre-share-key-identity`, `--pre-share-key`) est fournie, la configuration explicite est utilisée; sinon la configuration implicite (par défaut) est appliquée.
+
+### Aide (`--help`)
+
+Sortie simplifiée des aides intégrées:
+
+Client `box`:
+```
+Usage: box [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]
+          [--pre-share-key <ascii>] [address] [port]
+```
+
+Serveur `boxd`:
+```
+Usage: boxd [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]
+          [--pre-share-key <ascii>]
+```
+
+### Exemple de bout-en-bout (PreShareKey)
+
+Terminal 1 — serveur:
+```bash
+./build/boxd \
+  --pre-share-key-identity box-client \
+  --pre-share-key secretpsk
+```
+
+Terminal 2 — client:
+```bash
+./build/box \
+  --pre-share-key-identity box-client \
+  --pre-share-key secretpsk \
+  127.0.0.1 44444
+```
+
+Observation attendue (logs):
+- le serveur reçoit un datagramme initial, effectue le handshake DTLS, envoie un HELLO applicatif, puis répond PONG aux PINGs.
+- le client réalise le handshake DTLS, affiche le HELLO du serveur, envoie un PING et affiche le PONG.
+
+### Exemple de bout-en-bout (Certificats)
+
+Terminal 1 — serveur:
+```bash
+./build/boxd --cert server.pem --key server.key
+```
+
+Terminal 2 — client:
+```bash
+./build/box --cert client.pem --key client.key 127.0.0.1 44444
+```
+
+Remarques:
+- La configuration actuelle n’active pas la vérification X.509 (pas de chaîne CA/`SSL_VERIFY_PEER`). Pour un usage réel, charger une autorité (CA) et activer la vérification côté client (et idéalement côté serveur si mTLS requis).
+
+## Vérification des certificats (client)
+
+En mode certificats, le client vérifie par défaut le pair (côté OpenSSL) en utilisant:
+
+- Les variables d’environnement optionnelles suivantes:
+  - `BOX_CA_FILE`: chemin d’un fichier PEM contenant l’autorité de confiance (CA)
+  - `BOX_CA_PATH`: répertoire de CAs (format OpenSSL)
+  - `BOX_EXPECTED_HOST`: nom d’hôte attendu (vérification SAN/CN)
+- Sinon, les chemins de confiance par défaut d’OpenSSL (`SSL_CTX_set_default_verify_paths`).
+
+Exemple:
+```bash
+export BOX_CA_FILE="$PWD/server.pem"   # server.pem autosigné sert de CA de confiance
+export BOX_EXPECTED_HOST=boxd
+./build/box --cert client.pem --key client.key 127.0.0.1 44444
+```
 
 ## Conventions
 
