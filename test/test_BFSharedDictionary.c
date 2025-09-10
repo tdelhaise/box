@@ -1,5 +1,5 @@
-#include "box/BFSharedDictionary.h"
 #include "box/BFMemory.h"
+#include "box/BFSharedDictionary.h"
 
 #include <assert.h>
 #include <pthread.h>
@@ -44,7 +44,7 @@ static void *thread_insert(void *arg) {
 }
 
 int main(void) {
-    g_destroyed = 0;
+    g_destroyed           = 0;
     BFSharedDictionary *d = BFSharedDictionaryCreate(destroy_value);
     assert(d != NULL);
     assert(BFSharedDictionaryCount(d) == 0U);
@@ -78,7 +78,8 @@ int main(void) {
     for (int i = 0; i < 4; ++i) {
         (void)pthread_join(th[i], NULL);
     }
-    // Count should be at least 401 (previous key "a" plus ~400 inserts). Collisions may replace, but keys include thread id so unique.
+    // Count should be at least 401 (previous key "a" plus ~400 inserts). Collisions may replace,
+    // but keys include thread id so unique.
     assert(BFSharedDictionaryCount(d) >= 401U);
 
     // Clear destroys all remaining values
@@ -91,4 +92,3 @@ int main(void) {
     printf("test_BFSharedDictionary: OK\n");
     return 0;
 }
-
