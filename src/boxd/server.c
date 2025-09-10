@@ -182,12 +182,20 @@ int main(int argc, char **argv) {
         (void)BFDtlsSend(dtls, transmitBuffer, packed);
 
     // 4) Boucle simple: attendre PING et répondre PONG
+    int consecutiveErrors = 0;
     while (g_running) {
         int readCount = BFDtlsRecv(dtls, receiveBuffer, (int)sizeof(receiveBuffer));
         if (readCount <= 0) {
-            // TODO: gérer WANT_READ/WRITE, timeouts, retransmissions
-            break;
+            // BFDtlsRecv already handles WANT_* and DTLS timers; treat errors as transient up to a limit
+            consecutiveErrors++;
+            BFWarn("boxd: lecture DTLS en erreur (compteur=%d)", consecutiveErrors);
+            if (consecutiveErrors > 5) {
+                BFError("boxd: trop d'erreurs consécutives en lecture, arrêt de la boucle");
+                break;
+            }
+            continue;
         }
+        consecutiveErrors = 0;
         BFHeader       header;
         const uint8_t *payload = NULL;
         int unpacked = BFProtocolUnpack(receiveBuffer, (size_t)readCount, &header, &payload);
