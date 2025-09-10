@@ -47,4 +47,3 @@ int main(void) {
     printf("test_BFMemory: OK\n");
     return 0;
 }
-
