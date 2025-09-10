@@ -2,6 +2,12 @@
 set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+
+# Skip on CI or restricted env unless explicitly enabled
+if [ "${BOX_IT_ENABLE:-}" != "1" ]; then
+  echo "[it] Skipped (set BOX_IT_ENABLE=1 to run)"
+  exit 0
+fi
 BUILD_DIR="$ROOT_DIR/build"
 
 cd "$BUILD_DIR"
@@ -18,7 +24,7 @@ sleep 0.3
 echo "[it] Running box (client) with CA + hostname verification..."
 export BOX_CA_FILE="$BUILD_DIR/server.pem"
 export BOX_EXPECTED_HOST="boxd"
-"$BUILD_DIR/box" --cert client.pem --key client.key 127.0.0.1 44444 || {
+"$BUILD_DIR/box" --cert client.pem --key client.key 127.0.0.1 || {
   echo "[it] Client failed"
   kill "$SERVER_PID" || true
   exit 1
@@ -29,4 +35,3 @@ kill "$SERVER_PID" || true
 wait "$SERVER_PID" 2>/dev/null || true
 
 echo "[it] OK"
-

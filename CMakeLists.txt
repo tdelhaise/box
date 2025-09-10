@@ -43,6 +43,7 @@ add_library(BoxFoundation
         src/lib/BFCommon.c
         src/lib/BFSocket.c
         src/lib/BFMemory.c
+        src/lib/BFRunloop.c
         src/lib/BFUdp.c
         src/lib/BFUdpServer.c
         src/lib/BFUdpClient.c
@@ -141,6 +142,10 @@ add_test(NAME test_BFMemory COMMAND test_BFMemory)
 
 # Integration test: DTLS with certificates (client verifies server via CA + hostname)
 add_test(NAME it_dtls_cert_verify COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/test_dtls_cert_verify.sh)
+add_executable(test_BFRunloop test/test_BFRunloop.c)
+target_include_directories(test_BFRunloop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(test_BFRunloop PRIVATE BoxFoundation)
+add_test(NAME test_BFRunloop COMMAND test_BFRunloop)
 
 # Cible utilitaire : génération de certificats autosignés (build dir)
 add_custom_target(certs

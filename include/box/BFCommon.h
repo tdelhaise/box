@@ -11,7 +11,7 @@ extern "C" {
 // -----------------------------------------------------------------------------
 // Constantes globales
 // -----------------------------------------------------------------------------
-static const uint16_t    BFDefaultPort    = 44444;
+static const uint16_t    BFDefaultPort    = 12567;
 static const char *const BFDefaultAddress = "127.0.0.1";
 static const size_t      BFMaxDatagram    = 1200; // taille max d'un datagramme UDP/DTLS
 
