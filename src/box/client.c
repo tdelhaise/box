@@ -1,11 +1,12 @@
 #include "box/BFBoxProtocol.h"
 #include "box/BFCommon.h"
-#include "box/BFDtls.h"
+#include "box/BFNetwork.h"
 #include "box/BFUdp.h"
 #include "box/BFUdpClient.h"
 
 #include <arpa/inet.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -15,6 +16,7 @@ typedef struct ClientDtlsOptions {
     const char *keyFile;
     const char *preShareKeyIdentity;
     const char *preShareKeyAscii;
+    const char *transport;
 } ClientDtlsOptions;
 
 static void ClientPrintUsage(const char *program) {
@@ -43,6 +45,8 @@ static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions
             outOptions->preShareKeyIdentity = argv[++i];
         } else if (strcmp(arg, "--pre-share-key") == 0 && i + 1 < argc) {
             outOptions->preShareKeyAscii = argv[++i];
+        } else if (strcmp(arg, "--transport") == 0 && i + 1 < argc) {
+            outOptions->transport = argv[++i];
         } else if (arg[0] != '-') {
             // positional
             if (address == BFDefaultAddress) {
@@ -80,41 +84,37 @@ int main(int argc, char **argv) {
         BFFatal("sendto (hello)");
     }
 
-    // 2) Handshake DTLS (optional config from CLI)
-    BFDtlsConfig         config            = {0};
+    // 2) Handshake secure transport via BFNetwork (DTLS backend in M1)
+    BFNetworkSecurity    sec               = {0};
     const unsigned char *preShareKeyPtr    = NULL;
     size_t               preShareKeyLength = 0;
     if (options.preShareKeyAscii != NULL) {
         preShareKeyPtr    = (const unsigned char *)options.preShareKeyAscii;
         preShareKeyLength = strlen(options.preShareKeyAscii);
     }
-    config.certificateFile     = options.certificateFile;
-    config.keyFile             = options.keyFile;
-    config.preShareKeyIdentity = options.preShareKeyIdentity;
-    config.preShareKey         = preShareKeyPtr;
-    config.preShareKeyLength   = preShareKeyLength;
+    sec.certificateFile     = options.certificateFile;
+    sec.keyFile             = options.keyFile;
+    sec.preShareKeyIdentity = options.preShareKeyIdentity;
+    sec.preShareKey         = preShareKeyPtr;
+    sec.preShareKeyLength   = preShareKeyLength;
+    sec.alpn                = "box/1";
 
-    BFDtls *dtls = NULL;
-    if (options.certificateFile != NULL || options.keyFile != NULL ||
-        options.preShareKeyIdentity != NULL || options.preShareKeyAscii != NULL) {
-        dtls = BFDtlsClientNewEx(udpSocket, &config);
-    } else {
-        dtls = BFDtlsClientNew(udpSocket);
-    }
-    if (!dtls) {
-        BFFatal("dtls_client_new");
-    }
+    BFNetworkTransport transport = BFNetworkTransportDTLS;
+    if (options.transport && strcmp(options.transport, "quic") == 0)
+        transport = BFNetworkTransportQUIC;
 
-    if (BFDtlsHandshakeClient(dtls, (struct sockaddr *)&server, sizeof(server)) != BF_OK) {
-        fprintf(stderr, "box: handshake DTLS a échoué (squelette)\n");
-        BFDtlsFree(dtls);
+    BFNetworkConnection *conn = BFNetworkConnectDatagram(transport, udpSocket,
+                                                         (struct sockaddr *)&server,
+                                                         sizeof(server), &sec);
+    if (!conn) {
+        fprintf(stderr, "box: handshake/connection failed\n");
         close(udpSocket);
         return 1;
     }
 
     // 3) Lire HELLO serveur
     uint8_t buffet[BFMaxDatagram];
-    int     readCount = BFDtlsRecv(dtls, buffet, (int)sizeof(buffet));
+    int     readCount = BFNetworkRecv(conn, buffet, (int)sizeof(buffet));
     if (readCount > 0) {
         BFHeader       header;
         const uint8_t *payload = NULL;
@@ -132,11 +132,11 @@ int main(int argc, char **argv) {
     int         packed = BFProtocolPack(transmitBuffet, sizeof(transmitBuffet), BFMessagePing, ping,
                                         (uint16_t)strlen(ping));
     if (packed > 0) {
-        (void)BFDtlsSend(dtls, transmitBuffet, packed);
+        (void)BFNetworkSend(conn, transmitBuffet, packed);
     }
 
     // 5) Lire PONG
-    readCount = BFDtlsRecv(dtls, buffet, (int)sizeof(buffet));
+    readCount = BFNetworkRecv(conn, buffet, (int)sizeof(buffet));
     if (readCount > 0) {
         BFHeader       header;
         const uint8_t *payload = NULL;
@@ -148,7 +148,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    BFDtlsFree(dtls);
+    BFNetworkClose(conn);
     close(udpSocket);
     return 0;
 }

@@ -1,6 +1,6 @@
 #include "box/BFBoxProtocol.h"
 #include "box/BFCommon.h"
-#include "box/BFDtls.h"
+#include "box/BFNetwork.h"
 #include "box/BFRunloop.h"
 #include "box/BFUdp.h"
 #include "box/BFUdpServer.h"
@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -18,6 +19,7 @@ typedef struct ServerDtlsOptions {
     const char *keyFile;
     const char *preShareKeyIdentity;
     const char *preShareKeyAscii;
+    const char *transport;
 } ServerDtlsOptions;
 
 static void ServerPrintUsage(const char *program) {
@@ -42,6 +44,8 @@ static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions
             outOptions->preShareKeyIdentity = argv[++i];
         } else if (strcmp(arg, "--pre-share-key") == 0 && i + 1 < argc) {
             outOptions->preShareKeyAscii = argv[++i];
+        } else if (strcmp(arg, "--transport") == 0 && i + 1 < argc) {
+            outOptions->transport = argv[++i];
         } else {
             BFError("Unknown option: %s", arg);
             ServerPrintUsage(argv[0]);
@@ -121,34 +125,29 @@ int main(int argc, char **argv) {
 
     BFLog("boxd: datagram initial %zd octets reçu — %s", received, (char *)receiveBuffer);
 
-    // 2) Handshake DTLS (optional config)
-    BFDtlsConfig         config            = {0};
+    // 2) Handshake secure transport via BFNetwork (DTLS backend in M1)
+    BFNetworkSecurity    sec               = {0};
     const unsigned char *preShareKeyPtr    = NULL;
     size_t               preShareKeyLength = 0;
     if (options.preShareKeyAscii != NULL) {
         preShareKeyPtr    = (const unsigned char *)options.preShareKeyAscii;
         preShareKeyLength = strlen(options.preShareKeyAscii);
     }
-    config.certificateFile     = options.certificateFile;
-    config.keyFile             = options.keyFile;
-    config.preShareKeyIdentity = options.preShareKeyIdentity;
-    config.preShareKey         = preShareKeyPtr;
-    config.preShareKeyLength   = preShareKeyLength;
+    sec.certificateFile     = options.certificateFile;
+    sec.keyFile             = options.keyFile;
+    sec.preShareKeyIdentity = options.preShareKeyIdentity;
+    sec.preShareKey         = preShareKeyPtr;
+    sec.preShareKeyLength   = preShareKeyLength;
+    sec.alpn                = "box/1";
 
-    BFDtls *dtls = NULL;
-    if (options.certificateFile != NULL || options.keyFile != NULL ||
-        options.preShareKeyIdentity != NULL || options.preShareKeyAscii != NULL) {
-        dtls = BFDtlsServerNewEx(udpSocket, &config);
-    } else {
-        dtls = BFDtlsServerNew(udpSocket);
-    }
-    if (!dtls) {
-        BFFatal("dtls_server_new");
-    }
+     BFNetworkTransport transport = BFNetworkTransportDTLS;
+    if (options.transport && strcmp(options.transport, "quic") == 0)
+        transport = BFNetworkTransportQUIC;
 
-    if (BFDtlsHandshakeServer(dtls, &peer, peerLength) != BF_OK) {
+    BFNetworkConnection *conn = BFNetworkAcceptDatagram(transport, udpSocket, &peer, peerLength, &sec);
+    if (!conn) {
         fprintf(stderr, "boxd: handshake DTLS a échoué (squelette)\n");
-        BFDtlsFree(dtls);
+        close(udpSocket);
         // Stop and free runloops (drain by default)
         if (staticGlobalRunloopNetIn)
             BFRunloopPostStop(staticGlobalRunloopNetIn);
@@ -172,19 +171,19 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // 3) Envoi d'un HELLO applicatif via DTLS
+    // 3) Envoi d'un HELLO applicatif via transport sécurisé
     uint8_t     transmitBuffer[BFMaxDatagram];
     const char *helloPayload = "hello from boxd";
 
     int packed = BFProtocolPack(transmitBuffer, sizeof(transmitBuffer), BFMessageHello,
                                 helloPayload, (uint16_t)strlen(helloPayload));
     if (packed > 0)
-        (void)BFDtlsSend(dtls, transmitBuffer, packed);
+        (void)BFNetworkSend(conn, transmitBuffer, packed);
 
     // 4) Boucle simple: attendre PING et répondre PONG
     int consecutiveErrors = 0;
     while (g_running) {
-        int readCount = BFDtlsRecv(dtls, receiveBuffer, (int)sizeof(receiveBuffer));
+        int readCount = BFNetworkRecv(conn, receiveBuffer, (int)sizeof(receiveBuffer));
         if (readCount <= 0) {
             // BFDtlsRecv already handles WANT_* and DTLS timers; treat errors as transient up to a
             // limit
@@ -211,7 +210,7 @@ int main(int argc, char **argv) {
             int k = BFProtocolPack(transmitBuffer, sizeof(transmitBuffer), BFMessagePong, pong,
                                    (uint16_t)strlen(pong));
             if (k > 0)
-                (void)BFDtlsSend(dtls, transmitBuffer, k);
+                (void)BFNetworkSend(conn, transmitBuffer, k);
             break;
         }
         case BFMessageData: {
@@ -225,7 +224,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    BFDtlsFree(dtls);
+    BFNetworkClose(conn);
     close(udpSocket);
     return 0;
 }

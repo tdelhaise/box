@@ -10,6 +10,9 @@ option(BOX_ENABLE_LTO "Enable LTO/IPO in Release/RelWithDebInfo" ON)
 option(BOX_HARDEN    "Enable hardening flags (by platform)"       ON)
 option(BOX_USE_PRESHAREKEY   "Enable PreShareKey"       ON)
 option(BOX_MEMORY_SIGNAL_TRACE "Enable BFMemory SIGUSR1 trace handler (POSIX)" ON)
+option(BOX_USE_QUIC "Enable QUIC backend (requires external library)" OFF)
+set(BOX_QUIC_IMPL "ngtcp2" CACHE STRING "QUIC implementation: ngtcp2|msquic|picoquic")
+set_property(CACHE BOX_QUIC_IMPL PROPERTY STRINGS ngtcp2 msquic picoquic)
 
 # Backward-compat: honor legacy -DBOX_USE_PSK=ON/OFF
 if(DEFINED BOX_USE_PSK)
@@ -46,6 +49,8 @@ add_library(BoxFoundation
         src/lib/BFRunloop.c
         src/lib/BFSharedArray.c
         src/lib/BFSharedDictionary.c
+        src/lib/BFNetwork.c
+        src/lib/BFNetworkQuic.c
         src/lib/BFUdp.c
         src/lib/BFUdpServer.c
         src/lib/BFUdpClient.c
@@ -54,6 +59,43 @@ add_library(BoxFoundation
 )
 
 target_link_libraries(BoxFoundation PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+if(BOX_USE_QUIC)
+  add_compile_definitions(BOX_USE_QUIC)
+  if(BOX_QUIC_IMPL STREQUAL "ngtcp2")
+    add_compile_definitions(BOX_QUIC_IMPL_NGTCP2)
+    message(STATUS "QUIC: using ngtcp2 (adapter stubs; TODO: wire real lib)")
+    # Try to discover ngtcp2 via pkg-config; tolerate absence (stubs will warn)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+      pkg_check_modules(NGTCP2 QUIET IMPORTED_TARGET ngtcp2)
+      pkg_check_modules(NGTCP2_CRYPTO QUIET IMPORTED_TARGET ngtcp2_crypto)
+      pkg_check_modules(NGTCP2_CRYPTO_OPENSSL QUIET IMPORTED_TARGET ngtcp2_crypto_openssl)
+      if(TARGET PkgConfig::NGTCP2)
+        target_link_libraries(BoxFoundation PRIVATE PkgConfig::NGTCP2)
+        add_compile_definitions(HAVE_NGTCP2)
+      endif()
+      if(TARGET PkgConfig::NGTCP2_CRYPTO)
+        target_link_libraries(BoxFoundation PRIVATE PkgConfig::NGTCP2_CRYPTO)
+        add_compile_definitions(HAVE_NGTCP2_CRYPTO)
+      endif()
+      if(TARGET PkgConfig::NGTCP2_CRYPTO_OPENSSL)
+        target_link_libraries(BoxFoundation PRIVATE PkgConfig::NGTCP2_CRYPTO_OPENSSL)
+        add_compile_definitions(HAVE_NGTCP2_CRYPTO_OPENSSL)
+      endif()
+    else()
+      message(STATUS "pkg-config not found; skipping ngtcp2 autodiscovery")
+    endif()
+  elseif(BOX_QUIC_IMPL STREQUAL "msquic")
+    add_compile_definitions(BOX_QUIC_IMPL_MSQUIC)
+    message(STATUS "QUIC: using MsQuic (adapter stubs; TODO: wire real lib)")
+  elseif(BOX_QUIC_IMPL STREQUAL "picoquic")
+    add_compile_definitions(BOX_QUIC_IMPL_PICOQUIC)
+    message(STATUS "QUIC: using picoquic (adapter stubs; TODO: wire real lib)")
+  else()
+    message(WARNING "Unknown BOX_QUIC_IMPL='${BOX_QUIC_IMPL}', defaulting to ngtcp2")
+    add_compile_definitions(BOX_QUIC_IMPL_NGTCP2)
+  endif()
+endif()
 
 if(BOX_ENABLE_WARNINGS)
 	if (MSVC)
