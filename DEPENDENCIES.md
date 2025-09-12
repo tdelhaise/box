@@ -46,20 +46,49 @@ Linux (Debian/Ubuntu)
 
 macOS (Homebrew)
 - Install tooling:
-  brew install cmake ninja openssl@3 pkg-config ripgrep llvm
+  xcode-select --install  # if CLI tools not installed
+  brew update
+  brew install cmake ninja openssl@3 pkg-config ripgrep llvm git
 - Configure with OpenSSL path:
-  cmake -S . -B build -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)
+  export OPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
+  cmake -S . -B build -DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR"
   cmake --build build -j
 
 Windows (MSVC + vcpkg)
 - Install tooling:
   - Visual Studio Build Tools (MSVC)
-  - CMake, Ninja, LLVM (clang-format), ripgrep
+  - CMake, Ninja, LLVM (clang-format), ripgrep, Git
 - OpenSSL via vcpkg:
-  vcpkg install openssl:x64-windows
+  # PowerShell (run as regular user)
+  git clone https://github.com/microsoft/vcpkg.git $env:USERPROFILE\vcpkg
+  & $env:USERPROFILE\vcpkg\bootstrap-vcpkg.bat
+  $env:VCPKG_ROOT = "$env:USERPROFILE\vcpkg"
+  $env:VCPKG_DEFAULT_TRIPLET = "x64-windows"
+  & $env:VCPKG_ROOT\vcpkg.exe install openssl:x64-windows
 - Configure (example using vcpkg toolchain):
-  cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="C:/path/to/vcpkg/scripts/buildsystems/vcpkg.cmake"
+  $toolchain = "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
+  cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$toolchain"
   cmake --build build
+
+Chocolatey (optional, for tooling installs)
+- PowerShell (Admin):
+  Set-ExecutionPolicy Bypass -Scope Process -Force; `
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; `
+    iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+- Then install tools:
+  choco install -y cmake ninja llvm ripgrep git
+
+vcpkg Toolchain Snippet (cross-platform)
+- Windows PowerShell:
+  $env:VCPKG_ROOT = "$env:USERPROFILE\vcpkg"
+  $toolchain = "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
+  cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$toolchain" -DCMAKE_BUILD_TYPE=Release
+- macOS/Linux (bash):
+  export VCPKG_ROOT="$HOME/vcpkg"
+  git clone https://github.com/microsoft/vcpkg "$VCPKG_ROOT" && "$VCPKG_ROOT/bootstrap-vcpkg.sh"
+  export VCPKG_DEFAULT_TRIPLET=x64-osx   # or x64-linux
+  cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+  cmake --build build -j
 
 Scripting and Utilities
 - OpenSSL CLI is used by the `certs` target to generate self‑signed certificates for DTLS tests.
@@ -74,4 +103,3 @@ Runtime Notes
 
 CI Dependencies
 - GitHub Actions workflow installs: cmake, build-essential, ninja, libssl-dev, pkg-config, ripgrep, clang-format.
-
