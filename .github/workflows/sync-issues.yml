@@ -1,0 +1,92 @@
+name: Sync NEXT_STEPS to Issues
+
+on:
+  push:
+    paths:
+      - 'NEXT_STEPS.md'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create issues from NEXT_STEPS.md
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'NEXT_STEPS.md';
+            const text = fs.readFileSync(path, 'utf8');
+
+            // Parse numbered items like "1) Title" and collect following indented bullets until blank line.
+            const lines = text.split(/\r?\n/);
+            const items = [];
+            let i = 0;
+            while (i < lines.length) {
+              const m = lines[i].match(/^\s*(\d+)\)\s+(.+)$/);
+              if (m) {
+                const title = m[2].trim();
+                const bodyLines = [];
+                i++;
+                while (i < lines.length) {
+                  const l = lines[i];
+                  if (/^\s*$/.test(l)) break; // stop at blank line
+                  if (/^\s*-\s+/.test(l) || /^\s+-.+/.test(l)) bodyLines.push(l.trim());
+                  i++;
+                }
+                items.push({ title, body: bodyLines.join('\n') });
+              } else {
+                i++;
+              }
+            }
+
+            core.info(`Parsed ${items.length} items from NEXT_STEPS.md`);
+
+            // Get existing open issues to avoid duplicates
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const titles = new Set(existing.map(it => it.title));
+
+            // Ensure labels exist
+            const ensureLabel = async (name, color, description) => {
+              try {
+                await github.rest.issues.getLabel({ owner: context.repo.owner, repo: context.repo.repo, name });
+              } catch (e) {
+                await github.rest.issues.createLabel({ owner: context.repo.owner, repo: context.repo.repo, name, color, description });
+              }
+            };
+            await ensureLabel('roadmap', '0e8a16', 'Created from NEXT_STEPS.md');
+            await ensureLabel('automation', '5319e7', 'Created by sync workflow');
+
+            // Create missing issues
+            for (const it of items) {
+              if (titles.has(it.title)) {
+                core.info(`Issue already exists: ${it.title}`);
+                continue;
+              }
+              const body = [
+                it.body ? it.body : '',
+                '',
+                'Source: NEXT_STEPS.md (auto-synced).',
+              ].join('\n');
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: it.title,
+                body,
+                labels: ['roadmap', 'automation'],
+              });
+              core.info(`Created issue: ${it.title}`);
+            }
+
