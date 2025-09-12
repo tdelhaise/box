@@ -44,6 +44,20 @@ Linux (Debian/Ubuntu)
   make configure BUILD_TYPE=Debug
   make build
 
+Fedora (dnf)
+- Install toolchain and libs:
+  sudo dnf install -y @development-tools cmake ninja-build pkg-config openssl-devel ripgrep clang-tools-extra
+- Configure and build:
+  make configure BUILD_TYPE=Debug
+  make build
+
+Arch Linux (pacman)
+- Install toolchain and libs:
+  sudo pacman -Syu --needed base-devel cmake ninja pkgconf openssl ripgrep clang-format
+- Configure and build:
+  make configure BUILD_TYPE=Debug
+  make build
+
 macOS (Homebrew)
 - Install tooling:
   xcode-select --install  # if CLI tools not installed
@@ -103,3 +117,12 @@ Runtime Notes
 
 CI Dependencies
 - GitHub Actions workflow installs: cmake, build-essential, ninja, libssl-dev, pkg-config, ripgrep, clang-format.
+
+Containerized Dev Environment (Docker)
+- A lightweight dev image is provided to avoid local setup differences.
+- Build the image:
+  docker build -f Dockerfile.dev -t box-dev .
+- Run a container with the repo mounted:
+  docker run --rm -it -v "$PWD":/work -w /work box-dev bash
+- Inside the container, build and test:
+  make configure BUILD_TYPE=Debug && make build && make test

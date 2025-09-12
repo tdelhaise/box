@@ -1,0 +1,20 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      build-essential cmake ninja-build pkg-config \
+      libssl-dev ripgrep clang-format git ca-certificates openssl && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work
+
+# Defaults: non-root user matching common UID/GID 1000 for volume mounts
+RUN useradd -ms /bin/bash dev && \
+    usermod -u 1000 dev || true && \
+    groupmod -g 1000 dev || true
+USER dev
+
+CMD ["bash"]
+
