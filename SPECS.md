@@ -151,6 +151,56 @@ Unlike traditional cloud offerings, Box is designed to run on user-controlled ha
   - `box://507FA643-A2A6-47AF-A09E-E235E9727332@203.0.113.20:9988?fp=ed25519:8c1f...ab42`
   - `box://507FA643-A2A6-47AF-A09E-E235E9727332?fp=sha256:3a7b...99c1` (endpoint inferred from context)
 
+6.6 Location Service API (Informative JSON Shapes)
+
+- Transport: Payloads are carried over the Box protocol (UDP) and protected by session encryption after HELLO. JSON here illustrates field semantics; CBOR/JSON encodings are acceptable.
+- Authentication: Requests are authenticated at the transport layer; sensitive fields may be signed by the node identity key where indicated.
+
+Register/Update Node
+- Request
+  {
+    "op": "register",
+    "record": {
+      "user_uuid": "507FA643-A2A6-47AF-A09E-E235E9727332",
+      "node_uuid": "776BA464-BA07-4B6D-B102-11D5D9917C6F",
+      "ip": "2001:db8::10",
+      "port": 9988,
+      "node_public_key": "ed25519:8c1f...ab42",
+      "online": true,
+      "since": 1736712345123,
+      "last_seen": 1736712389456,
+      "tags": {"role": "home", "ver": "1"}
+    },
+    "sig": "ed25519:..."  
+  }
+- Response
+  { "ok": true, "ts": 1736712390000 }
+
+Resolve by User UUID
+- Request
+  { "op": "resolve", "user_uuid": "507FA643-A2A6-47AF-A09E-E235E9727332" }
+- Response
+  {
+    "ok": true,
+    "nodes": [
+      {
+        "node_uuid": "776BA464-BA07-4B6D-B102-11D5D9917C6F",
+        "ip": "2001:db8::10",
+        "port": 9988,
+        "node_public_key": "ed25519:8c1f...ab42",
+        "online": true,
+        "since": 1736712345123,
+        "last_seen": 1736712389456
+      }
+    ]
+  }
+
+Resolve by Node UUID
+- Request
+  { "op": "resolve", "node_uuid": "776BA464-BA07-4B6D-B102-11D5D9917C6F" }
+- Response
+  { "ok": true, "node": { /* same shape as in nodes[] above */ } }
+
 7. Data Model
 
 - Queue: A namespace under a user’s server for storing objects. Example queues: `/message`, `/photos`, `/ids`.
@@ -322,6 +372,50 @@ BYE (7)
 
 - Max frame size: implementation‑defined; recommend supporting ≥ 4 MiB per frame, chunking for larger payloads.
 - Queue name: ASCII path segments, 1–64 chars per segment, max 256 bytes entire path.
+
+9.6 Frame Examples (Illustrative)
+
+Header layout (common)
+- Offset 0: magic 'B' (0x42)
+- Offset 1: version (1)
+- Offset 2–5: total_length (uint32, big‑endian)
+- Offset 6–9: command (uint32)
+- Offset 10–17: request_id (uint64)
+- Offset 18…: command‑specific payload
+
+HELLO example
+- Purpose: establish keys; payload typically cleartext, then both sides derive session keys.
+- Payload fields (example): user_uuid (16), node_uuid (16), client_identity_pubkey (32), timestamp (uint64), nonce (24), versions_count (uint8), versions[...] (uint16 each)
+- Example header bytes (hex):
+  42 01 00 00 00 5E 00 00 00 01 00 00 00 00 00 00 00 01
+  Where: magic=42, ver=01, len=0x0000005E (94 bytes payload), cmd=1 (HELLO), req_id=1.
+- Example payload (JSON for clarity):
+  {
+    "user_uuid": "507FA643-A2A6-47AF-A09E-E235E9727332",
+    "node_uuid": "776BA464-BA07-4B6D-B102-11D5D9917C6F",
+    "client_identity_pubkey": "ed25519:8c1f...ab42",
+    "timestamp": 1736712400123,
+    "nonce_hex": "a1b2...",  
+    "versions": [1]
+  }
+
+PUT example
+- Purpose: store an object in a queue; payload is AEAD‑encrypted after HELLO.
+- Cleartext logical layout before encryption:
+  - queue_path_len (uint16)
+  - queue_path (UTF‑8)
+  - content_type_len (uint16)
+  - content_type (UTF‑8)
+  - payload_len (uint32)
+  - payload bytes
+- Example (queue=/message, content_type=text/plain, payload="hello")
+  - queue_path_len = 8, queue_path = "/message"
+  - content_type_len = 10, content_type = "text/plain"
+  - payload_len = 5, payload = 68 65 6c 6c 6f
+- Example header bytes (hex):
+  42 01 00 00 00 2F 00 00 00 02 00 00 00 00 00 00 00 02
+  Where: magic=42, ver=01, len=0x0000002F (47 bytes logical payload), cmd=2 (PUT), req_id=2.
+  Note: Actual on‑wire payload is AEAD ciphertext with nonce and tag per session parameters.
 
 10. Server (`boxd`) Behavior
 
