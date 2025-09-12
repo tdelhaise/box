@@ -4,26 +4,26 @@
 #include <stdio.h>
 #include <string.h>
 
-static void free_value(void *p) {
-    BFMemoryRelease(p);
+static void free_value(void *pointer) {
+    BFMemoryRelease(pointer);
 }
 
 int main(void) {
-    BFSharedDictionary *d = BFSharedDictionaryCreate(free_value);
-    if (!d) {
+    BFSharedDictionary *dictionary = BFSharedDictionaryCreate(free_value);
+    if (!dictionary) {
         fprintf(stderr, "Failed to create BFSharedDictionary\n");
         return 1;
     }
     // Insert key/value
-    const char *msg = "hello";
-    char       *v   = (char *)BFMemoryAllocate(strlen(msg) + 1U);
-    memcpy(v, msg, strlen(msg) + 1U);
-    (void)BFSharedDictionarySet(d, "greeting", v);
+    const char *message = "hello";
+    char       *value   = (char *)BFMemoryAllocate(strlen(message) + 1U);
+    memcpy(value, message, strlen(message) + 1U);
+    (void)BFSharedDictionarySet(dictionary, "greeting", value);
 
     // Get and print
-    char *got = (char *)BFSharedDictionaryGet(d, "greeting");
-    printf("greeting = %s\n", got ? got : "<null>");
+    char *fetched = (char *)BFSharedDictionaryGet(dictionary, "greeting");
+    printf("greeting = %s\n", fetched ? fetched : "<null>");
 
-    BFSharedDictionaryFree(d);
+    BFSharedDictionaryFree(dictionary);
     return 0;
 }
