@@ -19,8 +19,8 @@ typedef enum BFRunloopEventType {
 
 typedef struct BFRunloopEvent {
     uint32_t type;
-    void    *payload;           // owned by the run loop
-    void (*destroy)(void *ptr); // optional; called after handling or on drop
+    void    *payload;               // owned by the run loop
+    void (*destroy)(void *pointer); // optional; called after handling or on drop
 } BFRunloopEvent;
 
 typedef void (*BFRunloopHandler)(BFRunloop *runloop, BFRunloopEvent *event, void *context);

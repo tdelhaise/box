@@ -16,7 +16,7 @@ void *BFMemoryAllocate(size_t size);
 
 // Releases memory previously allocated by BFMemoryAllocate (safe on NULL).
 // Thread-safe.
-void BFMemoryRelease(void *ptr);
+void BFMemoryRelease(void *pointer);
 
 // Optional stats to observe memory usage in real time.
 typedef struct BFMemoryStats {

@@ -74,29 +74,29 @@ void install_signal_handler(void) {
 // Runloop handlers (placeholders for now)
 typedef enum ServerEventType { ServerEventTick = 1000 } ServerEventType;
 
-static void ServerMainHandler(BFRunloop *rl, BFRunloopEvent *ev, void *ctx) {
-    (void)ctx;
-    if (ev->type == BFRunloopEventStop) {
+static void ServerMainHandler(BFRunloop *runloop, BFRunloopEvent *event, void *context) {
+    (void)context;
+    if (event->type == BFRunloopEventStop) {
         return;
     }
-    if (ev->type == ServerEventTick) {
+    if (event->type == ServerEventTick) {
         // Re-post a low-frequency tick as a heartbeat example
         BFRunloopEvent tick = {.type = ServerEventTick, .payload = NULL, .destroy = NULL};
-        (void)BFRunloopPost(rl, &tick);
+        (void)BFRunloopPost(runloop, &tick);
     }
 }
 
-static void ServerNetInHandler(BFRunloop *rl, BFRunloopEvent *ev, void *ctx) {
-    (void)rl;
-    (void)ctx;
-    if (ev->type == BFRunloopEventStop)
+static void ServerNetInHandler(BFRunloop *runloop, BFRunloopEvent *event, void *context) {
+    (void)runloop;
+    (void)context;
+    if (event->type == BFRunloopEventStop)
         return;
 }
 
-static void ServerNetOutHandler(BFRunloop *rl, BFRunloopEvent *ev, void *ctx) {
-    (void)rl;
-    (void)ctx;
-    if (ev->type == BFRunloopEventStop)
+static void ServerNetOutHandler(BFRunloop *runloop, BFRunloopEvent *event, void *context) {
+    (void)runloop;
+    (void)context;
+    if (event->type == BFRunloopEventStop)
         return;
 }
 
