@@ -52,22 +52,23 @@ static void destroyStoredObject(void *pointer) {
 }
 
 static void ServerPrintUsage(const char *program) {
-    fprintf(stderr,
-            "Usage: %s [--port <udp>] [--log-level <lvl>] [--log-target <tgt>]\n"
-            "          [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]\n"
-            "          [--pre-share-key <ascii>] [--version] [--help]\n\n"
-            "Options:\n"
-            "  --port <udp>           UDP port to bind (default %u)\n"
-            "  --log-level <lvl>      trace|debug|info|warn|error (default info)\n"
-            "  --log-target <tgt>     override default platform target (Windows=eventlog, "
-            "macOS=oslog, Unix=syslog, else=stderr); also accepts file:<path>\n"
-            "\n"
-            "Notes:\n"
-            "  - Refuses to run as root (Unix/macOS).\n"
-            "  - Admin channel (Unix): ~/.box/run/boxd.socket (mode 0600); try 'box admin status'.\n"
-            "  --version              Print version and exit\n"
-            "  --help                 Show this help and exit\n",
-            program, (unsigned)BFDefaultPort);
+    fprintf(
+        stderr,
+        "Usage: %s [--port <udp>] [--log-level <lvl>] [--log-target <tgt>]\n"
+        "          [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]\n"
+        "          [--pre-share-key <ascii>] [--version] [--help]\n\n"
+        "Options:\n"
+        "  --port <udp>           UDP port to bind (default %u)\n"
+        "  --log-level <lvl>      trace|debug|info|warn|error (default info)\n"
+        "  --log-target <tgt>     override default platform target (Windows=eventlog, "
+        "macOS=oslog, Unix=syslog, else=stderr); also accepts file:<path>\n"
+        "\n"
+        "Notes:\n"
+        "  - Refuses to run as root (Unix/macOS).\n"
+        "  - Admin channel (Unix): ~/.box/run/boxd.socket (mode 0600); try 'box admin status'.\n"
+        "  --version              Print version and exit\n"
+        "  --help                 Show this help and exit\n",
+        program, (unsigned)BFDefaultPort);
 }
 
 static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions) {
@@ -275,7 +276,8 @@ int main(int argc, char **argv) {
 #if defined(__unix__) || defined(__APPLE__)
     if (homeDirectory && *homeDirectory) {
         char adminSocketPath[512];
-        snprintf(adminSocketPath, sizeof(adminSocketPath), "%s/.box/run/boxd.socket", homeDirectory);
+        snprintf(adminSocketPath, sizeof(adminSocketPath), "%s/.box/run/boxd.socket",
+                 homeDirectory);
         adminListenSocket = (int)socket(AF_UNIX, SOCK_STREAM, 0);
         if (adminListenSocket >= 0) {
             struct sockaddr_un adminAddress;
