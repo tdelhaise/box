@@ -56,6 +56,7 @@ if(NOT BOX_BUILD_MINIMAL)
           src/lib/BFRunloop.c
           src/lib/BFSharedArray.c
           src/lib/BFSharedDictionary.c
+          src/lib/BFBoxProtocolV1.c
           src/lib/BFNetwork.c
           src/lib/BFNetworkQuic.c
           src/lib/BFUdp.c

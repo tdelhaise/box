@@ -100,7 +100,16 @@ int main(int argc, char **argv) {
         if (BFV1Unpack(buffer, (size_t)readCount, &command, &requestId, &payload, &payloadLength) >
                 0 &&
             command == BFV1_HELLO) {
-            BFLog("box: HELLO serveur: %.*s", payloadLength, (const char *)payload);
+            uint8_t        statusCode     = 0xFF;
+            const uint8_t *messagePointer = NULL;
+            uint32_t       messageLength  = 0;
+            if (BFV1UnpackStatus(payload, payloadLength, &statusCode, &messagePointer,
+                                 &messageLength) == 0) {
+                BFLog("box: HELLO serveur: status=%u message=%.*s", (unsigned)statusCode,
+                      messageLength, (const char *)messagePointer);
+            } else {
+                BFLog("box: HELLO serveur avec payload non conforme");
+            }
         } else {
             BFLog("box: premier message non-HELLO ou invalide");
         }
@@ -109,8 +118,8 @@ int main(int argc, char **argv) {
     // 4) Envoyer STATUS (ping)
     const char *ping = "ping";
     requestId        = 2;
-    packed = BFV1Pack(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, requestId, ping,
-                      (uint32_t)strlen(ping));
+    packed = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, requestId,
+                            BFV1_STATUS_OK, ping);
     if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed,
                                  (struct sockaddr *)&server, sizeof(server)) < 0) {
         BFFatal("sendto (STATUS)");
@@ -127,7 +136,16 @@ int main(int argc, char **argv) {
         if (BFV1Unpack(buffer, (size_t)readCount, &command, &requestId, &payload, &payloadLength) >
                 0 &&
             command == BFV1_STATUS) {
-            BFLog("box: STATUS (pong): %.*s", payloadLength, (const char *)payload);
+            uint8_t        statusCode     = 0xFF;
+            const uint8_t *messagePointer = NULL;
+            uint32_t       messageLength  = 0;
+            if (BFV1UnpackStatus(payload, payloadLength, &statusCode, &messagePointer,
+                                 &messageLength) == 0) {
+                BFLog("box: STATUS (pong): status=%u message=%.*s", (unsigned)statusCode,
+                      messageLength, (const char *)messagePointer);
+            } else {
+                BFLog("box: STATUS payload non conforme");
+            }
         } else {
             BFLog("box: réponse inattendue (commande=%u)", command);
         }

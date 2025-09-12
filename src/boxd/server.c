@@ -126,18 +126,17 @@ int main(int argc, char **argv) {
 
     // 2) Pas de DTLS: échanges v1 en UDP clair
 
-    // 3) Envoyer un HELLO applicatif (v1) en UDP clair
-    uint8_t     transmitBuffer[BFMaxDatagram];
-    const char *helloPayload = "hello from boxd";
-    uint64_t    requestId    = 1;
-    int         packed = BFV1Pack(transmitBuffer, sizeof(transmitBuffer), BFV1_HELLO, requestId,
-                                  helloPayload, (uint32_t)strlen(helloPayload));
+    // 3) Envoyer un HELLO applicatif (v1) en UDP clair avec statut OK
+    uint8_t  transmitBuffer[BFMaxDatagram];
+    uint64_t requestId = 1;
+    int      packed = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_HELLO, requestId,
+                                     BFV1_STATUS_OK, "server-ready");
     if (packed > 0) {
         (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)packed, (struct sockaddr *)&peer,
                         peerLength);
     }
 
-    // 4) Boucle simple: attendre PING et répondre PONG
+    // 4) Boucle simple: attendre STATUS (ping) et répondre STATUS (pong)
     int consecutiveErrors = 0;
     while (g_running) {
         struct sockaddr_storage from       = {0};
@@ -167,9 +166,8 @@ int main(int argc, char **argv) {
         switch (command) {
         case BFV1_STATUS: {
             BFLog("boxd: STATUS reçu (%u octets)", (unsigned)payloadLength);
-            const char *pong = "pong";
-            int k = BFV1Pack(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1,
-                             pong, (uint32_t)strlen(pong));
+            int k = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
+                                   receivedReqId + 1, BFV1_STATUS_OK, "pong");
             if (k > 0)
                 (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)k, (struct sockaddr *)&from,
                                 fromLength);
@@ -186,7 +184,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    BFNetworkClose(conn);
     close(udpSocket);
     return 0;
 }

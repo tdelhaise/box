@@ -112,3 +112,42 @@ int BFV1Unpack(const uint8_t *buffer, size_t bufferLength, uint32_t *outCommand,
 
     return (int)expectedTotal;
 }
+
+int BFV1PackStatus(uint8_t *buffer, size_t bufferLength, uint32_t command, uint64_t requestId,
+                   uint8_t statusCode, const char *message) {
+    const uint8_t *msgBytes = (const uint8_t *)message;
+    uint32_t       msgLen   = 0;
+    if (message != NULL) {
+        msgLen = (uint32_t)strlen(message);
+    }
+    // payload: 1 byte status + msgLen bytes
+    uint32_t payloadLength = 1 + msgLen;
+    if (bufferLength < (size_t)(18 + payloadLength)) {
+        return -1;
+    }
+    // Build payload in-place
+    uint8_t *payload = buffer + 18;
+    payload[0]       = statusCode;
+    if (msgLen) {
+        memcpy(payload + 1, msgBytes, msgLen);
+    }
+    // Now pack the whole frame using BFV1Pack
+    return BFV1Pack(buffer, bufferLength, command, requestId, payload, payloadLength);
+}
+
+int BFV1UnpackStatus(const uint8_t *payload, uint32_t payloadLength, uint8_t *outStatusCode,
+                     const uint8_t **outMessage, uint32_t *outMessageLength) {
+    if (payload == NULL || payloadLength == 0) {
+        return -1;
+    }
+    if (outStatusCode) {
+        *outStatusCode = payload[0];
+    }
+    if (outMessage) {
+        *outMessage = payloadLength > 1 ? payload + 1 : NULL;
+    }
+    if (outMessageLength) {
+        *outMessageLength = payloadLength > 1 ? (payloadLength - 1) : 0;
+    }
+    return 0;
+}
