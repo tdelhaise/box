@@ -122,6 +122,35 @@ Unlike traditional cloud offerings, Box is designed to run on user-controlled ha
   - Prefer IPv6 with globally routable addresses. If using IPv4, configure port forwarding on the gateway for the UDP port used by `boxd`.
   - Ensure firewall allows inbound UDP on the configured port.
 
+6.5 Bootstrap URI Specification
+
+- Canonical scheme: `box://`
+- Purpose: Convey a user identifier and at least one initial reachable endpoint for that user’s node/LS, optionally with a key fingerprint.
+- General form:
+  - `box://<user_uuid>@<host>:<port>`
+  - `<host>` accepts `IPv4`, `hostname`, or IPv6 in brackets `[IPv6]`.
+  - Optional query parameters for metadata: `?fp=<fingerprint>&node=<node_uuid>&v=<proto_version>`
+
+- ABNF (informative):
+  box-uri   = "box://" user-uuid [ "@" host ":" port ] [ "?" params ]
+  user-uuid = 8HEXDIG "-" 4HEXDIG "-" 4HEXDIG "-" 4HEXDIG "-" 12HEXDIG
+  node-uuid = user-uuid
+  host      = IPv6address / IPv4address / reg-name
+  port      = 1*DIGIT
+  params    = param *( "&" param )
+  param     = ( "fp=" fingerprint ) / ( "node=" node-uuid ) / ( "v=" 1*DIGIT ) / ( "proto=" "udp" )
+  fingerprint = alg ":" 1*HEXDIG
+  alg       = "ed25519" / "sha256"
+
+- Fingerprint
+  - Preferred: `ed25519:<hex>` the 32‑byte raw Ed25519 public key in lowercase hex.
+  - Accepted: `sha256:<hex>` the SHA‑256 of the raw Ed25519 public key (lowercase hex).
+
+- Examples
+  - `box://507FA643-A2A6-47AF-A09E-E235E9727332@[2001:db8::10]:9988`
+  - `box://507FA643-A2A6-47AF-A09E-E235E9727332@203.0.113.20:9988?fp=ed25519:8c1f...ab42`
+  - `box://507FA643-A2A6-47AF-A09E-E235E9727332?fp=sha256:3a7b...99c1` (endpoint inferred from context)
+
 7. Data Model
 
 - Queue: A namespace under a user’s server for storing objects. Example queues: `/message`, `/photos`, `/ids`.
@@ -144,6 +173,27 @@ Unlike traditional cloud offerings, Box is designed to run on user-controlled ha
     - since (timestamp), last_seen (timestamp)
     - node_public_key (bytes), protocol_versions ([uint16])
   - ACL: readable by authorized peers; writable by the owning user’s nodes; delete restricted to owner/admin.
+  - JSON example:
+    {
+      "user_uuid": "507FA643-A2A6-47AF-A09E-E235E9727332",
+      "node_uuid": "776BA464-BA07-4B6D-B102-11D5D9917C6F",
+      "status": "online",
+      "since": 1736712345123,
+      "last_seen": 1736712389456,
+      "node_public_key": "ed25519:8c1f...ab42",
+      "protocol_versions": [1]
+    }
+  - CBOR CDDL sketch (informative):
+    uuid = b16 .size 16 ; 16‑byte UUID
+    presence = {
+      "user_uuid": uuid,
+      "node_uuid": uuid,
+      "status": "online" / "offline",
+      "since": uint,
+      "last_seen": uint,
+      "node_public_key": tstr,   ; "ed25519:" + hex
+      "protocol_versions": [* uint]
+    }
 
 - `/location` (content_type: `application/cbor` or `application/json`):
   - Purpose: Publish optional geographic location per UUID.
@@ -152,6 +202,25 @@ Unlike traditional cloud offerings, Box is designed to run on user-controlled ha
     - latitude (float), longitude (float), altitude (float, optional)
     - accuracy_m (optional float), timestamp
   - ACL: readable by authorized peers; writable by the owning user’s nodes or clients as allowed; delete restricted to owner/admin.
+  - JSON example:
+    {
+      "user_uuid": "507FA643-A2A6-47AF-A09E-E235E9727332",
+      "latitude": 48.8566,
+      "longitude": 2.3522,
+      "altitude": 35.0,
+      "accuracy_m": 20.5,
+      "timestamp": 1736712400123
+    }
+  - CBOR CDDL sketch (informative):
+    location = {
+      ? "user_uuid": uuid,
+      ? "node_uuid": uuid,
+      "latitude": float,
+      "longitude": float,
+      ? "altitude": float,
+      ? "accuracy_m": float,
+      "timestamp": uint
+    }
 
 8. CLI Usage
 
@@ -572,4 +641,32 @@ Safety
 
 - Notes
   - Inbound verification requires a cooperating external peer or a user-owned relay; the admin channel cannot simulate Internet-origin traffic.
-  - The admin channel is optional; `box` falls back to best-effort local checks if unavailable.
+- The admin channel is optional; `box` falls back to best‑effort local checks if unavailable.
+
+18. Threat Model (Summary)
+
+Assets
+- Data in transit between nodes (messages/files, metadata).
+- Identity keys (Ed25519), session keys, ACL configurations.
+- Presence/location data in `/uuid` and `/location`.
+
+Adversaries and Capabilities
+- Passive network observer: can capture packets but cannot break modern crypto.
+- Active network attacker: can inject, replay, reorder, or drop UDP packets; can run their own nodes.
+- Compromised peer: presents valid UUIDs/keys but behaves maliciously within its authorization.
+- Local attacker on host: attempts to access files or admin channel without proper privileges.
+
+Threats and Mitigations
+- Eavesdropping on payloads → AEAD (XChaCha20‑Poly1305) with Noise NK/IK; payloads encrypted and authenticated.
+- Impersonation/MITM → verify server identity key via LS and/or bootstrap fingerprint; signed transcripts; replay protection.
+- Replay attacks → nonces + monotonic timestamps; per‑peer replay cache; reject stale/duplicate nonces.
+- Unauthorized access → default‑deny ACLs; admission control requiring LS registration; per‑queue capabilities.
+- Downgrade or version confusion → HELLO advertises and negotiates versions; reject unknown/unsupported versions.
+- DoS via floods → rate limiting, per‑source quotas, bounded buffers; optional port‑knock or proof‑of‑work in future.
+- Data tampering at rest → content digests (SHA‑256) and optional at‑rest encryption; integrity checks on read.
+- Local privilege escalation → `boxd` refuses to run as root/admin; key/dir permissions enforced; admin channel same‑user only.
+
+Out of Scope (Current)
+- STUN/ICE/TURN; third‑party relay services not under user control.
+- Protecting against a fully compromised host OS.
+- Metadata privacy across traffic analysis beyond timing/size obfuscation.
