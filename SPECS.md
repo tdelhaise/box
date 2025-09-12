@@ -272,29 +272,8 @@ Diagnostic notation
     }
   }
 
-Hex (one canonical encoding)
-  A2                                      # map(2)
-     62 6F 70                              # text(2) "op"
-     68 72 65 67 69 73 74 65 72            # text(8) "register"
-     66 72 65 63 6F 72 64                  # text(6) "record"
-     AB                                   # map(11)
-        69 75 73 65 72 5F 75 75 69 64      # text(9) "user_uuid"
-        50 000102030405060708090A0B0C0D0E0F # bytes(16)
-        69 6E 6F 64 65 5F 75 75 69 64      # text(9) "node_uuid"
-        50 F0E0D0C0B0A090807060504030201000 # bytes(16)
-        62 69 70                           # text(2) "ip"
-        6D 32 30 30 31 3A 64 62 38 3A 3A 31 30 # text(13) "2001:db8::10"
-        64 70 6F 72 74                     # text(4) "port"
-        19 26 F4                           # uint(9972) [example; replace with 9988 -> 0x2704]
-        6F 6E 6F 64 65 5F 70 75 62 6C 69 63 5F 6B 65 79 # text(15) "node_public_key"
-        78 42                               # text(66)
-           65 64 32 35 35 31 39 3A 30 30 ... 46 46      # "ed25519:0011...EEFF"
-        66 6F 6E 6C 69 6E 65               # text(6) "online"
-        F5                                  # true
-        65 73 69 6E 63 65                   # text(5) "since"
-        01                                  # 1
-        69 6C 61 73 74 5F 73 65 65 6E       # text(9) "last_seen"
-        02                                  # 2
+Exact hex (canonical CBOR, sorted map keys)
+  a2626f70687265676973746572667265636f7264a86269706c323030313a6462383a3a313064706f72741927046573696e636501666f6e6c696e65f5696c6173745f7365656e02696e6f64655f7575696450f0e0d0c0b0a09080706050403020100069757365725f7575696450000102030405060708090a0b0c0d0e0f6f6e6f64655f7075626c69635f6b65797848656432353531393a30303131323233333434353536363737383839394141424243434444454546463030313132323333343435353636373738383939414142424343444445454646
 
 Field note: Replace the example port 9972 (0x26F4) with 9988 (0x2704) in your encoder.
 
@@ -317,29 +296,8 @@ Diagnostic notation
     ]
   }
 
-Hex (one canonical encoding)
-  A2                                      # map(2)
-     65 6E 6F 64 65 73                     # text(5) "nodes"
-     81                                   # array(1)
-        AB                                # map(11)
-           69 75 73 65 72 5F 75 75 69 64   # "user_uuid"
-           50 000102030405060708090A0B0C0D0E0F
-           69 6E 6F 64 65 5F 75 75 69 64   # "node_uuid"
-           50 F0E0D0C0B0A090807060504030201000
-           62 69 70                        # "ip"
-           6D 32 30 30 31 3A 64 62 38 3A 3A 31 30
-           64 70 6F 72 74                  # "port"
-           19 27 04                        # 9988
-           6F 6E 6F 64 65 5F 70 75 62 6C 69 63 5F 6B 65 79
-           78 42 65 64 32 35 35 31 39 3A 30 30 ... 46 46
-           66 6F 6E 6C 69 6E 65            # "online"
-           F5                               # true
-           65 73 69 6E 63 65                # "since"
-           01                               # 1
-           69 6C 61 73 74 5F 73 65 65 6E    # "last_seen"
-           02                               # 2
-     62 6F 6B                              # text(2) "ok"
-     F5                                    # true
+Exact hex (canonical CBOR, sorted map keys)
+  a2626f6bf5656e6f64657381a86269706c323030313a6462383a3a313064706f72741927046573696e636501666f6e6c696e65f5696c6173745f7365656e02696e6f64655f7575696450f0e0d0c0b0a09080706050403020100069757365725f7575696450000102030405060708090a0b0c0d0e0f6f6e6f64655f7075626c69635f6b65797848656432353531393a30303131323233333434353536363737383839394141424243434444454546463030313132323333343435353636373738383939414142424343444445454646
 
 Ellipses (...) indicate trimmed string bodies for brevity; actual encodings include the full text contents.
 
