@@ -1,6 +1,5 @@
 #include "box/BFBoxProtocolV1.h"
 #include "box/BFCommon.h"
-#include "box/BFNetwork.h"
 #include "box/BFUdp.h"
 #include "box/BFUdpClient.h"
 
@@ -77,43 +76,22 @@ int main(int argc, char **argv) {
         BFFatal("BFUdpClient");
     }
 
-    // 1) datagram clair initial
-    const char *hello = "hello from box";
-    if (BFUdpSend(udpSocket, hello, strlen(hello), (struct sockaddr *)&server, sizeof(server)) <
-        0) {
-        BFFatal("sendto (hello)");
-    }
-
-    // 2) Handshake secure transport via BFNetwork (DTLS backend in M1)
-    BFNetworkSecurity    sec               = {0};
-    const unsigned char *preShareKeyPtr    = NULL;
-    size_t               preShareKeyLength = 0;
-    if (options.preShareKeyAscii != NULL) {
-        preShareKeyPtr    = (const unsigned char *)options.preShareKeyAscii;
-        preShareKeyLength = strlen(options.preShareKeyAscii);
-    }
-    sec.certificateFile     = options.certificateFile;
-    sec.keyFile             = options.keyFile;
-    sec.preShareKeyIdentity = options.preShareKeyIdentity;
-    sec.preShareKey         = preShareKeyPtr;
-    sec.preShareKeyLength   = preShareKeyLength;
-    sec.alpn                = "box/1";
-
-    BFNetworkTransport transport = BFNetworkTransportDTLS;
-    if (options.transport && strcmp(options.transport, "quic") == 0)
-        transport = BFNetworkTransportQUIC;
-
-    BFNetworkConnection *conn = BFNetworkConnectDatagram(
-        transport, udpSocket, (struct sockaddr *)&server, sizeof(server), &sec);
-    if (!conn) {
-        fprintf(stderr, "box: handshake/connection failed\n");
-        close(udpSocket);
-        return 1;
+    // 1) Envoyer HELLO (v1) en UDP clair
+    uint8_t     transmitBuffer[BFMaxDatagram];
+    const char *hello     = "hello from box";
+    uint64_t    requestId = 1;
+    int packed = BFV1Pack(transmitBuffer, sizeof(transmitBuffer), BFV1_HELLO, requestId, hello,
+                          (uint32_t)strlen(hello));
+    if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed,
+                                 (struct sockaddr *)&server, sizeof(server)) < 0) {
+        BFFatal("sendto (HELLO)");
     }
 
     // 3) Lire HELLO serveur (v1)
-    uint8_t buffer[BFMaxDatagram];
-    int     readCount = BFNetworkRecv(conn, buffer, (int)sizeof(buffer));
+    uint8_t         buffer[BFMaxDatagram];
+    struct sockaddr from    = {0};
+    socklen_t       fromLen = sizeof(from);
+    int readCount           = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLen);
     if (readCount > 0) {
         uint32_t       command       = 0;
         uint64_t       requestId     = 0;
@@ -129,17 +107,18 @@ int main(int argc, char **argv) {
     }
 
     // 4) Envoyer STATUS (ping)
-    uint8_t     transmitBuffer[BFMaxDatagram];
-    const char *ping      = "ping";
-    uint64_t    requestId = 2;
-    int packed = BFV1Pack(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, requestId, ping,
-                          (uint32_t)strlen(ping));
-    if (packed > 0) {
-        (void)BFNetworkSend(conn, transmitBuffer, packed);
+    const char *ping = "ping";
+    requestId        = 2;
+    packed = BFV1Pack(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, requestId, ping,
+                      (uint32_t)strlen(ping));
+    if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed,
+                                 (struct sockaddr *)&server, sizeof(server)) < 0) {
+        BFFatal("sendto (STATUS)");
     }
 
     // 5) Lire réponse STATUS (pong)
-    readCount = BFNetworkRecv(conn, buffer, (int)sizeof(buffer));
+    fromLen   = sizeof(from);
+    readCount = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLen);
     if (readCount > 0) {
         uint32_t       command       = 0;
         uint64_t       requestId     = 0;
@@ -154,7 +133,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    BFNetworkClose(conn);
     close(udpSocket);
     return 0;
 }

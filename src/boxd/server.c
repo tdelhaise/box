@@ -1,6 +1,5 @@
 #include "box/BFBoxProtocolV1.h"
 #include "box/BFCommon.h"
-#include "box/BFNetwork.h"
 #include "box/BFRunloop.h"
 #include "box/BFUdp.h"
 #include "box/BFUdpServer.h"
@@ -123,74 +122,31 @@ int main(int argc, char **argv) {
         BFFatal("recvfrom (hello)");
     }
 
-    BFLog("boxd: datagram initial %zd octets reçu — %s", received, (char *)receiveBuffer);
+    BFLog("boxd: datagram initial %zd octets reçu", received);
 
-    // 2) Handshake secure transport via BFNetwork (DTLS backend in M1)
-    BFNetworkSecurity    sec               = {0};
-    const unsigned char *preShareKeyPtr    = NULL;
-    size_t               preShareKeyLength = 0;
-    if (options.preShareKeyAscii != NULL) {
-        preShareKeyPtr    = (const unsigned char *)options.preShareKeyAscii;
-        preShareKeyLength = strlen(options.preShareKeyAscii);
-    }
-    sec.certificateFile     = options.certificateFile;
-    sec.keyFile             = options.keyFile;
-    sec.preShareKeyIdentity = options.preShareKeyIdentity;
-    sec.preShareKey         = preShareKeyPtr;
-    sec.preShareKeyLength   = preShareKeyLength;
-    sec.alpn                = "box/1";
+    // 2) Pas de DTLS: échanges v1 en UDP clair
 
-    BFNetworkTransport transport = BFNetworkTransportDTLS;
-    if (options.transport && strcmp(options.transport, "quic") == 0)
-        transport = BFNetworkTransportQUIC;
-
-    BFNetworkConnection *conn =
-        BFNetworkAcceptDatagram(transport, udpSocket, &peer, peerLength, &sec);
-    if (!conn) {
-        fprintf(stderr, "boxd: handshake DTLS a échoué (squelette)\n");
-        close(udpSocket);
-        // Stop and free runloops (drain by default)
-        if (staticGlobalRunloopNetIn)
-            BFRunloopPostStop(staticGlobalRunloopNetIn);
-        if (staticGlobalRunloopNetOut)
-            BFRunloopPostStop(staticGlobalRunloopNetOut);
-        if (staticGlobalRunloopMain)
-            BFRunloopPostStop(staticGlobalRunloopMain);
-        if (staticGlobalRunloopNetIn)
-            BFRunloopJoin(staticGlobalRunloopNetIn);
-        if (staticGlobalRunloopNetOut)
-            BFRunloopJoin(staticGlobalRunloopNetOut);
-        if (staticGlobalRunloopMain)
-            BFRunloopJoin(staticGlobalRunloopMain);
-        if (staticGlobalRunloopNetIn)
-            BFRunloopFree(staticGlobalRunloopNetIn);
-        if (staticGlobalRunloopNetOut)
-            BFRunloopFree(staticGlobalRunloopNetOut);
-        if (staticGlobalRunloopMain)
-            BFRunloopFree(staticGlobalRunloopMain);
-        close(udpSocket);
-        return 1;
-    }
-
-    // 3) Envoi d'un HELLO applicatif (v1) — trame non chiffrée au niveau applicatif
+    // 3) Envoyer un HELLO applicatif (v1) en UDP clair
     uint8_t     transmitBuffer[BFMaxDatagram];
     const char *helloPayload = "hello from boxd";
     uint64_t    requestId    = 1;
     int         packed = BFV1Pack(transmitBuffer, sizeof(transmitBuffer), BFV1_HELLO, requestId,
                                   helloPayload, (uint32_t)strlen(helloPayload));
     if (packed > 0) {
-        (void)BFNetworkSend(conn, transmitBuffer, packed);
+        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)packed, (struct sockaddr *)&peer,
+                        peerLength);
     }
 
     // 4) Boucle simple: attendre PING et répondre PONG
     int consecutiveErrors = 0;
     while (g_running) {
-        int readCount = BFNetworkRecv(conn, receiveBuffer, (int)sizeof(receiveBuffer));
+        struct sockaddr_storage from       = {0};
+        socklen_t               fromLength = sizeof(from);
+        int readCount = (int)BFUdpRecieve(udpSocket, receiveBuffer, sizeof(receiveBuffer),
+                                          (struct sockaddr *)&from, &fromLength);
         if (readCount <= 0) {
-            // BFDtlsRecv already handles WANT_* and DTLS timers; treat errors as transient up to a
-            // limit
             consecutiveErrors++;
-            BFWarn("boxd: lecture DTLS en erreur (compteur=%d)", consecutiveErrors);
+            BFWarn("boxd: lecture UDP en erreur (compteur=%d)", consecutiveErrors);
             if (consecutiveErrors > 5) {
                 BFError("boxd: trop d'erreurs consécutives en lecture, arrêt de la boucle");
                 break;
@@ -214,9 +170,9 @@ int main(int argc, char **argv) {
             const char *pong = "pong";
             int k = BFV1Pack(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1,
                              pong, (uint32_t)strlen(pong));
-            if (k > 0) {
-                (void)BFNetworkSend(conn, transmitBuffer, k);
-            }
+            if (k > 0)
+                (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)k, (struct sockaddr *)&from,
+                                fromLength);
             break;
         }
         case BFV1_PUT: {
