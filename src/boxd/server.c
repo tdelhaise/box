@@ -140,11 +140,12 @@ int main(int argc, char **argv) {
     sec.preShareKeyLength   = preShareKeyLength;
     sec.alpn                = "box/1";
 
-     BFNetworkTransport transport = BFNetworkTransportDTLS;
+    BFNetworkTransport transport = BFNetworkTransportDTLS;
     if (options.transport && strcmp(options.transport, "quic") == 0)
         transport = BFNetworkTransportQUIC;
 
-    BFNetworkConnection *conn = BFNetworkAcceptDatagram(transport, udpSocket, &peer, peerLength, &sec);
+    BFNetworkConnection *conn =
+        BFNetworkAcceptDatagram(transport, udpSocket, &peer, peerLength, &sec);
     if (!conn) {
         fprintf(stderr, "boxd: handshake DTLS a échoué (squelette)\n");
         close(udpSocket);

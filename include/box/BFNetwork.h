@@ -45,7 +45,8 @@ BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int 
 // (peer discovered by a cleartext datagram). Returns NULL on failure.
 BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int udpSocket,
                                              const struct sockaddr_storage *peer,
-                                             socklen_t peerLength, const BFNetworkSecurity *security);
+                                             socklen_t                      peerLength,
+                                             const BFNetworkSecurity       *security);
 
 // I/O operations (blocking). Return number of bytes or BF_ERR (<0) on error.
 int BFNetworkSend(BFNetworkConnection *c, const void *buffer, int length);

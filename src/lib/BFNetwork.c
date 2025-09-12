@@ -10,10 +10,10 @@
 #include <string.h>
 
 struct BFNetworkConnection {
-    int           udp_fd;
+    int                udp_fd;
     BFNetworkTransport transport;
-    BFDtls       *dtls; // M1: DTLS backend only
-    void         *quic; // M2: QUIC backend handle (opaque)
+    BFDtls            *dtls; // M1: DTLS backend only
+    void              *quic; // M2: QUIC backend handle (opaque)
 };
 
 static void fill_dtls_config(const BFNetworkSecurity *sec, BFDtlsConfig *out) {
@@ -66,15 +66,15 @@ BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int 
     if (!c)
         return NULL;
     memset(c, 0, sizeof(*c));
-    c->udp_fd   = udpSocket;
+    c->udp_fd    = udpSocket;
     c->transport = transport;
 
     BFDtlsConfig cfg;
     fill_dtls_config(security, &cfg);
     BFDtls *dtls = NULL;
-    if (security && (security->certificateFile || security->keyFile ||
-                     (security->preShareKeyIdentity && security->preShareKey &&
-                      security->preShareKeyLength))) {
+    if (security &&
+        (security->certificateFile || security->keyFile ||
+         (security->preShareKeyIdentity && security->preShareKey && security->preShareKeyLength))) {
         dtls = BFDtlsClientNewEx(udpSocket, &cfg);
     } else {
         dtls = BFDtlsClientNew(udpSocket);
@@ -94,7 +94,8 @@ BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int 
 
 BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int udpSocket,
                                              const struct sockaddr_storage *peer,
-                                             socklen_t peerLength, const BFNetworkSecurity *security) {
+                                             socklen_t                      peerLength,
+                                             const BFNetworkSecurity       *security) {
     if (transport == BFNetworkTransportQUIC) {
 #ifdef BOX_USE_QUIC
         BFNetworkConnection *c = (BFNetworkConnection *)BFMemoryAllocate(sizeof(*c));
@@ -122,15 +123,15 @@ BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int u
     if (!c)
         return NULL;
     memset(c, 0, sizeof(*c));
-    c->udp_fd   = udpSocket;
+    c->udp_fd    = udpSocket;
     c->transport = transport;
 
     BFDtlsConfig cfg;
     fill_dtls_config(security, &cfg);
     BFDtls *dtls = NULL;
-    if (security && (security->certificateFile || security->keyFile ||
-                     (security->preShareKeyIdentity && security->preShareKey &&
-                      security->preShareKeyLength))) {
+    if (security &&
+        (security->certificateFile || security->keyFile ||
+         (security->preShareKeyIdentity && security->preShareKey && security->preShareKeyLength))) {
         dtls = BFDtlsServerNewEx(udpSocket, &cfg);
     } else {
         dtls = BFDtlsServerNew(udpSocket);

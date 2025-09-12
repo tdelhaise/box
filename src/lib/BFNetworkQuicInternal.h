@@ -14,4 +14,3 @@ void *BFNetworkQuicAccept(int udpFileDescriptor, const struct sockaddr_storage *
 int   BFNetworkQuicSend(void *handle, const void *buffer, int length);
 int   BFNetworkQuicRecv(void *handle, void *buffer, int length);
 void  BFNetworkQuicClose(void *handle);
-

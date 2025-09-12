@@ -103,9 +103,8 @@ int main(int argc, char **argv) {
     if (options.transport && strcmp(options.transport, "quic") == 0)
         transport = BFNetworkTransportQUIC;
 
-    BFNetworkConnection *conn = BFNetworkConnectDatagram(transport, udpSocket,
-                                                         (struct sockaddr *)&server,
-                                                         sizeof(server), &sec);
+    BFNetworkConnection *conn = BFNetworkConnectDatagram(
+        transport, udpSocket, (struct sockaddr *)&server, sizeof(server), &sec);
     if (!conn) {
         fprintf(stderr, "box: handshake/connection failed\n");
         close(udpSocket);

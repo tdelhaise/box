@@ -13,4 +13,3 @@ const char *BFVersionString(void);
 #endif
 
 #endif // BF_VERSION_H
-

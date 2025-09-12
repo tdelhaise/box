@@ -7,4 +7,3 @@
 const char *BFVersionString(void) {
     return BOX_VERSION;
 }
-
