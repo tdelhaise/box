@@ -93,3 +93,34 @@ Planned (Future)
 CI (Build-Only, Minimal)
 - Workflow includes a job that sets up the Android NDK and compiles `BoxCoreMinimal` for `arm64-v8a` to validate cross-builds.
  - The job also builds the JNI wrapper (`boxjni`) to validate linking.
+
+Try Locally (Device/Emulator)
+
+Prereqs
+- An Android device or emulator with Developer Options enabled and `adb` available.
+- Android Studio (recommended) or command-line Gradle, plus the NDK if you plan to build natively.
+
+Option A — Android Studio sample app
+1) Create a new Android app (e.g., package `org.box.sample`).
+2) Either:
+   - Add externalNativeBuild to point to `android/jni/CMakeLists.txt` (preferred), or
+   - Copy the built `libboxjni.so` into `app/src/main/jniLibs/<abi>/` (e.g., `arm64-v8a`).
+3) Add a Java/Kotlin bridge class matching the JNI signature:
+   - Java:
+     package org.box;
+     public final class Native {
+       static { System.loadLibrary("boxjni"); }
+       public static native String boxVersion();
+     }
+4) Call the native method from your Activity and log/Toast the result:
+   - `Log.i("Box", "version=" + org.box.Native.boxVersion());`
+5) Install and run on the device. You should see the version string (e.g., `0.1.0`).
+
+Option B — Command-line verification
+- Build the JNI library as above, then verify on host that the exported symbol exists:
+  - `nm -D build-android-jni/libboxjni.so | grep Java_org_box_Native_boxVersion`
+- To load on device, you will still need an Android app process; JNI cannot run standalone from shell without a Java VM process. Use Option A for a true runtime check.
+
+Notes
+- Ensure your app includes `android:extractNativeLibs=true` in the manifest if targeting API levels where Play’s native lib extraction behavior changes.
+- For multi-ABI support, build and package `arm64-v8a` and (optionally) `armeabi-v7a` and `x86_64` variants of `libboxjni.so`.
