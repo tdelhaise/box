@@ -2,6 +2,7 @@
 #include "box/BFCommon.h"
 #include "box/BFConfig.h"
 #include "box/BFMemory.h"
+#include "box/BFNetwork.h"
 #include "box/BFRunloop.h"
 #include "box/BFSharedDictionary.h"
 #include "box/BFUdp.h"
@@ -319,9 +320,40 @@ int main(int argc, char **argv) {
 
     BFLog("boxd: datagram initial %zd octets reçu", received);
 
-    // 2) Pas de DTLS: échanges v1 en UDP clair
+    // 2) Noise transport (optional smoke mode): enter encrypted echo loop if requested
+    if (options.transport && strcmp(options.transport, "noise") == 0) {
+        BFNetworkSecurity security = {0};
+        if (options.preShareKeyAscii) {
+            security.preShareKey       = (const unsigned char *)options.preShareKeyAscii;
+            security.preShareKeyLength = (size_t)strlen(options.preShareKeyAscii);
+        }
+        BFNetworkConnection *nc = BFNetworkAcceptDatagram(BFNetworkTransportNOISE, udpSocket, &peer,
+                                                          peerLength, &security);
+        if (!nc) {
+            BFFatal("Noise accept failed");
+        }
+        for (;;) {
+            char plaintext[256];
+            int  r = BFNetworkRecv(nc, plaintext, (int)sizeof(plaintext));
+            if (r <= 0) {
+                BFWarn("boxd(noise): recv error");
+                break;
+            }
+            BFLog("boxd(noise): received %d bytes", r);
+            const char *pong = "pong";
+            if (BFNetworkSend(nc, pong, (int)strlen(pong)) <= 0) {
+                BFWarn("boxd(noise): send error");
+                break;
+            }
+        }
+        BFNetworkClose(nc);
+        close(udpSocket);
+        return 0;
+    }
 
-    // 3) Envoyer un HELLO applicatif (v1) en UDP clair avec statut OK et versions supportées
+    // 3) Pas de DTLS: échanges v1 en UDP clair
+
+    // Envoyer un HELLO applicatif (v1) en UDP clair avec statut OK et versions supportées
     uint8_t  transmitBuffer[BFMaxDatagram];
     uint64_t requestId            = 1;
     uint16_t supportedVersions[1] = {1};

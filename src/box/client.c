@@ -1,6 +1,7 @@
 #include "box/BFBoxProtocolV1.h"
 #include "box/BFCommon.h"
 #include "box/BFMemory.h"
+#include "box/BFNetwork.h"
 #include "box/BFUdp.h"
 #include "box/BFUdpClient.h"
 #include "box/BFVersion.h"
@@ -358,6 +359,33 @@ int main(int argc, char **argv) {
 
     if (action.queueAllocated && action.queue) {
         BFMemoryRelease((void *)action.queue);
+    }
+
+    // Noise transport smoke test if requested
+    if (options.transport && strcmp(options.transport, "noise") == 0) {
+        BFNetworkSecurity security = {0};
+        if (options.preShareKeyAscii) {
+            security.preShareKey       = (const unsigned char *)options.preShareKeyAscii;
+            security.preShareKeyLength = (size_t)strlen(options.preShareKeyAscii);
+        }
+        BFNetworkConnection *nc =
+            BFNetworkConnectDatagram(BFNetworkTransportNOISE, udpSocket, (struct sockaddr *)&server,
+                                     sizeof(server), &security);
+        if (!nc) {
+            BFFatal("BFNetworkConnectDatagram(noise)");
+        }
+        const char *pingText = "ping";
+        if (BFNetworkSend(nc, pingText, (int)strlen(pingText)) <= 0) {
+            BFFatal("noise send");
+        }
+        char reply[256];
+        int  rr = BFNetworkRecv(nc, reply, (int)sizeof(reply));
+        if (rr > 0) {
+            BFLog("box(noise): reply %.*s", rr, reply);
+        }
+        BFNetworkClose(nc);
+        close(udpSocket);
+        return 0;
     }
 
     close(udpSocket);
