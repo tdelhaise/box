@@ -51,6 +51,7 @@ if(NOT BOX_BUILD_MINIMAL)
   # Full BoxFoundation library (with DTLS/OpenSSL)
   add_library(BoxFoundation
           src/lib/BFCommon.c
+          src/lib/BFLogger.c
           src/lib/BFSocket.c
           src/lib/BFMemory.c
           src/lib/BFRunloop.c
@@ -67,6 +68,9 @@ if(NOT BOX_BUILD_MINIMAL)
           src/lib/BFVersion.c
   )
   target_link_libraries(BoxFoundation PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+  if (WIN32)
+    target_link_libraries(BoxFoundation PRIVATE advapi32)
+  endif()
 else()
   # Minimal core library (no DTLS/QUIC/OpenSSL), for cross builds like Android
   add_library(BoxCoreMinimal

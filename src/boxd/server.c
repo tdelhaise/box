@@ -1,8 +1,11 @@
 #include "box/BFBoxProtocolV1.h"
 #include "box/BFCommon.h"
+#include "box/BFMemory.h"
 #include "box/BFRunloop.h"
+#include "box/BFSharedDictionary.h"
 #include "box/BFUdp.h"
 #include "box/BFUdpServer.h"
+#include "box/BFVersion.h"
 
 #include <arpa/inet.h>
 #include <signal.h>
@@ -19,7 +22,26 @@ typedef struct ServerDtlsOptions {
     const char *preShareKeyIdentity;
     const char *preShareKeyAscii;
     const char *transport;
+    uint16_t    port; // optional CLI override
 } ServerDtlsOptions;
+
+// Simple in-memory object for demo GET/PUT
+typedef struct StoredObject {
+    char     *contentType;
+    uint8_t  *data;
+    uint32_t  dataLength;
+} StoredObject;
+
+static void destroy_stored_object(void *pointer) {
+    if (!pointer)
+        return;
+    StoredObject *object = (StoredObject *)pointer;
+    if (object->contentType)
+        BFMemoryRelease(object->contentType);
+    if (object->data)
+        BFMemoryRelease(object->data);
+    BFMemoryRelease(object);
+}
 
 static void ServerPrintUsage(const char *program) {
     fprintf(stderr,
@@ -27,12 +49,12 @@ static void ServerPrintUsage(const char *program) {
             "          [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]\n"
             "          [--pre-share-key <ascii>] [--version] [--help]\n\n"
             "Options:\n"
-            "  --port <udp>           UDP port to bind (default 9988)\n"
+            "  --port <udp>           UDP port to bind (default %u)\n"
             "  --log-level <lvl>      trace|debug|info|warn|error (default info)\n"
-            "  --log-target <tgt>     stderr (default); future: syslog|oslog|eventlog|file:<path>\n"
+            "  --log-target <tgt>     override default platform target (Windows=eventlog, macOS=oslog, Unix=syslog, else=stderr); also accepts file:<path>\n"
             "  --version              Print version and exit\n"
             "  --help                 Show this help and exit\n",
-            program);
+            program, (unsigned)BFDefaultPort);
 }
 
 static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions) {
@@ -60,7 +82,14 @@ static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions
         } else if (strcmp(arg, "--log-target") == 0 && argumentIndex + 1 < argc) {
             (void)BFLoggerSetTarget(argv[++argumentIndex]);
         } else if (strcmp(arg, "--port") == 0 && argumentIndex + 1 < argc) {
-            ++argumentIndex; // placeholder, future: set custom port
+            const char *pv = argv[++argumentIndex];
+            long        v  = strtol(pv, NULL, 10);
+            if (v > 0 && v < 65536) {
+                outOptions->port = (uint16_t)v;
+            } else {
+                BFError("Invalid --port: %s", pv);
+                exit(2);
+            }
         } else if (strcmp(arg, "--cert") == 0 && argumentIndex + 1 < argc) {
             outOptions->certificateFile = argv[++argumentIndex];
         } else if (strcmp(arg, "--key") == 0 && argumentIndex + 1 < argc) {
@@ -132,7 +161,41 @@ int main(int argc, char **argv) {
     BFLoggerSetLevel(BF_LOG_INFO);
     install_signal_handler();
 
-    int udpSocket = BFUdpServer(BFDefaultPort);
+    // Parse optional port from environment or default (CLI --port reserved for future)
+    uint16_t    serverPort   = BFDefaultPort;
+    const char *portOrigin   = "default";
+    const char *portEnvValue = getenv("BOXD_PORT");
+    if (options.port > 0) {
+        serverPort = options.port;
+        portOrigin = "cli-flag";
+    } else if (portEnvValue && *portEnvValue) {
+        long pv = strtol(portEnvValue, NULL, 10);
+        if (pv > 0 && pv < 65536) {
+            serverPort = (uint16_t)pv;
+            portOrigin = "env";
+        }
+    }
+
+    // Log startup parameters (avoid printing secrets)
+    char        targetName[256] = {0};
+    BFLoggerGetTarget(targetName, sizeof(targetName));
+    const char *levelName = BFLoggerLevelName(BFLoggerGetLevel());
+    BFLog(
+        "boxd: start port=%u portOrigin=%s logLevel=%s logTarget=%s cert=%s key=%s pskId=%s psk=%s transport=%s",
+        (unsigned)serverPort, portOrigin, levelName, targetName,
+        options.certificateFile ? options.certificateFile : "(none)",
+        options.keyFile ? options.keyFile : "(none)",
+        options.preShareKeyIdentity ? options.preShareKeyIdentity : "(none)",
+        options.preShareKeyAscii ? "[set]" : "(unset)",
+        options.transport ? options.transport : "(default)");
+
+    // Create in-memory store for demo
+    BFSharedDictionary *store = BFSharedDictionaryCreate(destroy_stored_object);
+    if (!store) {
+        BFFatal("cannot allocate store");
+    }
+
+    int udpSocket = BFUdpServer(serverPort);
     if (udpSocket < 0) {
         BFFatal("BFUdpServer");
     }

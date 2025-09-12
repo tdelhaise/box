@@ -2,6 +2,7 @@
 #include "box/BFCommon.h"
 #include "box/BFUdp.h"
 #include "box/BFUdpClient.h"
+#include "box/BFVersion.h"
 
 #include <arpa/inet.h>
 #include <stdio.h>
@@ -18,43 +19,84 @@ typedef struct ClientDtlsOptions {
     const char *transport;
 } ClientDtlsOptions;
 
+typedef struct ClientAction {
+    int         doPut;
+    int         doGet;
+    const char *queue;
+    const char *contentType; // optional
+    const char *data;        // for put
+} ClientAction;
+
 static void ClientPrintUsage(const char *program) {
     fprintf(stderr,
-            "Usage: %s [address] [port] [--put <queue>[:type] <data>] [--get <queue>]\n"
+            "Usage: %s [address] [port] [--port <udp>] [--put <queue>[:type] <data>] [--get <queue>]\n"
             "          [--version] [--help]\n\n"
             "Examples:\n"
             "  %s 127.0.0.1 9988 --put /message:text/plain \"Hello\"\n"
-            "  %s 127.0.0.1 9988 --get /message\n",
+            "  %s 127.0.0.1 --port 9988 --get /message\n",
             program, program, program);
 }
 
 static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions,
-                            const char **outAddress, uint16_t *outPort) {
+                            const char **outAddress, uint16_t *outPort, const char **outPortOrigin,
+                            ClientAction *outAction) {
     memset(outOptions, 0, sizeof(*outOptions));
+    memset(outAction, 0, sizeof(*outAction));
     const char *address = BFDefaultAddress;
     uint16_t    port    = BFDefaultPort;
+    const char *portOrigin = "default";
 
     for (int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
         const char *arg = argv[argumentIndex];
         if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
             ClientPrintUsage(argv[0]);
             exit(0);
-        } else if (strcmp(arg, "--cert") == 0 && argumentIndex + 1 < argc) {
-            outOptions->certificateFile = argv[++argumentIndex];
-        } else if (strcmp(arg, "--key") == 0 && argumentIndex + 1 < argc) {
-            outOptions->keyFile = argv[++argumentIndex];
-        } else if (strcmp(arg, "--pre-share-key-identity") == 0 && argumentIndex + 1 < argc) {
-            outOptions->preShareKeyIdentity = argv[++argumentIndex];
-        } else if (strcmp(arg, "--pre-share-key") == 0 && argumentIndex + 1 < argc) {
-            outOptions->preShareKeyAscii = argv[++argumentIndex];
-        } else if (strcmp(arg, "--transport") == 0 && argumentIndex + 1 < argc) {
-            outOptions->transport = argv[++argumentIndex];
+        } else if (strcmp(arg, "--version") == 0 || strcmp(arg, "-V") == 0) {
+            fprintf(stdout, "box %s\n", BFVersionString());
+            exit(0);
+        } else if (strcmp(arg, "--port") == 0 && argumentIndex + 1 < argc) {
+            const char *pv = argv[++argumentIndex];
+            long        v  = strtol(pv, NULL, 10);
+            if (v > 0 && v < 65536) {
+                port       = (uint16_t)v;
+                portOrigin = "cli-flag";
+            } else {
+                BFError("Invalid --port: %s", pv);
+                exit(2);
+            }
+        } else if (strcmp(arg, "--put") == 0 && argumentIndex + 2 < argc) {
+            outAction->doPut = 1;
+            const char *spec = argv[++argumentIndex];
+            const char *sep  = strchr(spec, ':');
+            if (sep) {
+                size_t len = (size_t)(sep - spec);
+                char  *q   = (char *)malloc(len + 1U);
+                if (q) {
+                    memcpy(q, spec, len);
+                    q[len]           = '\0';
+                    outAction->queue = q; // leak accepted for short-lived process
+                }
+                outAction->contentType = sep + 1;
+            } else {
+                outAction->queue = spec;
+            }
+            outAction->data = argv[++argumentIndex];
+        } else if (strcmp(arg, "--get") == 0 && argumentIndex + 1 < argc) {
+            outAction->doGet = 1;
+            outAction->queue = argv[++argumentIndex];
         } else if (arg[0] != '-') {
             // positional
             if (address == BFDefaultAddress) {
                 address = arg;
             } else {
-                port = (uint16_t)atoi(arg);
+                long v = strtol(arg, NULL, 10);
+                if (v > 0 && v < 65536) {
+                    port       = (uint16_t)v;
+                    portOrigin = "positional";
+                } else {
+                    BFError("Invalid port: %s", arg);
+                    exit(2);
+                }
             }
         } else {
             BFError("Unknown option: %s", arg);
@@ -65,15 +107,37 @@ static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions
 
     *outAddress = address;
     *outPort    = port;
+    *outPortOrigin = portOrigin;
 }
 
 int main(int argc, char **argv) {
     ClientDtlsOptions options;
+    ClientAction      action;
     const char       *address = NULL;
     uint16_t          port    = 0;
-    ClientParseArgs(argc, argv, &options, &address, &port);
+    const char       *portOrigin = NULL;
+    ClientParseArgs(argc, argv, &options, &address, &port, &portOrigin, &action);
     BFLoggerInit("box");
     BFLoggerSetLevel(BF_LOG_INFO);
+
+    // Log startup parameters (no secrets in client CLI yet)
+    char        targetName[256] = {0};
+    BFLoggerGetTarget(targetName, sizeof(targetName));
+    const char *levelName = BFLoggerLevelName(BFLoggerGetLevel());
+    if (action.doPut && action.queue && action.data) {
+        const char *contentType =
+            action.contentType ? action.contentType : "application/octet-stream";
+        size_t dataSize = strlen(action.data);
+        BFLog("box: start address=%s port=%u portOrigin=%s action=put queue=%s type=%s size=%zu logLevel=%s logTarget=%s",
+              address, (unsigned)port, portOrigin, action.queue, contentType, dataSize, levelName,
+              targetName);
+    } else if (action.doGet && action.queue) {
+        BFLog("box: start address=%s port=%u portOrigin=%s action=get queue=%s logLevel=%s logTarget=%s",
+              address, (unsigned)port, portOrigin, action.queue, levelName, targetName);
+    } else {
+        BFLog("box: start address=%s port=%u portOrigin=%s action=handshake logLevel=%s logTarget=%s",
+              address, (unsigned)port, portOrigin, levelName, targetName);
+    }
 
     struct sockaddr_in server;
     int                udpSocket = BFUdpClient(address, port, &server);

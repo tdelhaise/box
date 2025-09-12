@@ -73,6 +73,24 @@ Note: les API/ciphers OpenSSL conservent l’acronyme historique "PSK" (ex. `SSL
 
 Les binaires `box` (client) et `boxd` (serveur) acceptent des options pour configurer DTLS à l’exécution. Si aucune option n’est fournie, les valeurs par défaut sont utilisées (certificats `server.pem`/`server.key` si présents, sinon PreShareKey si activé à la compilation).
 
+### Journalisation
+
+- Cible par défaut selon la plateforme (modifiable via `--log-target`):
+  - Windows: `eventlog`
+  - macOS: `oslog` (bascule sur `syslog` si `os/log.h` indisponible)
+  - Unix: `syslog`
+  - Autres: `stderr`
+- Exemple de redirection vers stderr (pratique pour tests locaux): `./boxd --log-target stderr`
+- Au démarrage, `box` et `boxd` journalisent leurs paramètres résolus, notamment: `port`, `portOrigin`, `logLevel`, `logTarget` et, côté serveur, `cert`, `key`, `pskId`, `psk` (indiqué `[set]`/`(unset)`), `transport`.
+
+### Ports et origine
+
+- `boxd` (serveur): la valeur finale du port suit l’ordre de priorité suivant et la source est indiquée dans `portOrigin`:
+  1) `--port <udp>` (portOrigin=`cli-flag`)
+  2) variable d’environnement `BOXD_PORT` (portOrigin=`env`)
+  3) valeur par défaut (portOrigin=`default`) — actuellement `12567`
+- `box` (client): le port peut être fourni en positionnel (`[port]`, portOrigin=`positional`) ou via `--port <udp>` (portOrigin=`cli-flag`). À défaut, la valeur par défaut est utilisée (portOrigin=`default`).
+
 ### Client `box`
 
 Certificats (DTLS avec certificats X.509):
@@ -117,14 +135,15 @@ Sortie simplifiée des aides intégrées:
 
 Client `box`:
 ```
-Usage: box [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]
-          [--pre-share-key <ascii>] [address] [port]
+Usage: box [address] [port] [--port <udp>] [--put <queue>[:type] <data>] [--get <queue>]
+          [--version] [--help]
 ```
 
 Serveur `boxd`:
 ```
-Usage: boxd [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]
-          [--pre-share-key <ascii>]
+Usage: boxd [--port <udp>] [--log-level <lvl>] [--log-target <tgt>]
+          [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]
+          [--pre-share-key <ascii>] [--version] [--help]
 ```
 
 ### Exemple de bout-en-bout (PreShareKey)
