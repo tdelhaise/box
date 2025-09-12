@@ -51,6 +51,7 @@ if(NOT BOX_BUILD_MINIMAL)
           src/lib/BFCommon.c
           src/lib/BFLogger.c
           src/lib/BFSocket.c
+          src/lib/BFConfig.c
           src/lib/BFMemory.c
           src/lib/BFRunloop.c
           src/lib/BFSharedArray.c

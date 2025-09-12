@@ -1,5 +1,6 @@
 #include "box/BFBoxProtocolV1.h"
 #include "box/BFCommon.h"
+#include "box/BFConfig.h"
 #include "box/BFMemory.h"
 #include "box/BFRunloop.h"
 #include "box/BFSharedDictionary.h"
@@ -197,9 +198,9 @@ int main(int argc, char **argv) {
         serverPort = options.port;
         portOrigin = "cli-flag";
     } else if (portEnvValue && *portEnvValue) {
-        long pv = strtol(portEnvValue, NULL, 10);
-        if (pv > 0 && pv < 65536) {
-            serverPort = (uint16_t)pv;
+        long envPortValue = strtol(portEnvValue, NULL, 10);
+        if (envPortValue > 0 && envPortValue < 65536) {
+            serverPort = (uint16_t)envPortValue;
             portOrigin = "environment";
         }
     }
@@ -208,9 +209,16 @@ int main(int argc, char **argv) {
     char targetName[256] = {0};
     BFLoggerGetTarget(targetName, sizeof(targetName));
     const char *levelName = BFLoggerLevelName(BFLoggerGetLevel());
-    BFLog("boxd: start port=%u portOrigin=%s logLevel=%s logTarget=%s cert=%s key=%s pskId=%s "
-          "psk=%s transport=%s",
+    BFLog("boxd: start port=%u portOrigin=%s logLevel=%s logTarget=%s config=%s cert=%s key=%s "
+          "pskId=%s psk=%s transport=%s",
           (unsigned)serverPort, portOrigin, levelName, targetName,
+          (
+#if defined(__unix__) || defined(__APPLE__)
+               (homeDirectory && *homeDirectory) ? "present" : "absent"
+#else
+               "absent"
+#endif
+           ),
           options.certificateFile ? options.certificateFile : "(none)",
           options.keyFile ? options.keyFile : "(none)",
           options.preShareKeyIdentity ? options.preShareKeyIdentity : "(none)",
