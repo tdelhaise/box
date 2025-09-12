@@ -23,8 +23,15 @@ typedef struct ServerDtlsOptions {
 
 static void ServerPrintUsage(const char *program) {
     fprintf(stderr,
-            "Usage: %s [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]\n"
-            "          [--pre-share-key <ascii>]\n",
+            "Usage: %s [--port <udp>] [--log-level <lvl>] [--log-target <tgt>]\n"
+            "          [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]\n"
+            "          [--pre-share-key <ascii>] [--version] [--help]\n\n"
+            "Options:\n"
+            "  --port <udp>           UDP port to bind (default 9988)\n"
+            "  --log-level <lvl>      trace|debug|info|warn|error (default info)\n"
+            "  --log-target <tgt>     stderr (default); future: syslog|oslog|eventlog|file:<path>\n"
+            "  --version              Print version and exit\n"
+            "  --help                 Show this help and exit\n",
             program);
 }
 
@@ -35,6 +42,25 @@ static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions
         if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
             ServerPrintUsage(argv[0]);
             exit(0);
+        } else if (strcmp(arg, "--version") == 0 || strcmp(arg, "-V") == 0) {
+            fprintf(stdout, "boxd %s\n", BFVersionString());
+            exit(0);
+        } else if (strcmp(arg, "--log-level") == 0 && argumentIndex + 1 < argc) {
+            const char *lvl = argv[++argumentIndex];
+            if (strcmp(lvl, "trace") == 0)
+                BFLoggerSetLevel(BF_LOG_TRACE);
+            else if (strcmp(lvl, "debug") == 0)
+                BFLoggerSetLevel(BF_LOG_DEBUG);
+            else if (strcmp(lvl, "info") == 0)
+                BFLoggerSetLevel(BF_LOG_INFO);
+            else if (strcmp(lvl, "warn") == 0)
+                BFLoggerSetLevel(BF_LOG_WARN);
+            else if (strcmp(lvl, "error") == 0)
+                BFLoggerSetLevel(BF_LOG_ERROR);
+        } else if (strcmp(arg, "--log-target") == 0 && argumentIndex + 1 < argc) {
+            (void)BFLoggerSetTarget(argv[++argumentIndex]);
+        } else if (strcmp(arg, "--port") == 0 && argumentIndex + 1 < argc) {
+            ++argumentIndex; // placeholder, future: set custom port
         } else if (strcmp(arg, "--cert") == 0 && argumentIndex + 1 < argc) {
             outOptions->certificateFile = argv[++argumentIndex];
         } else if (strcmp(arg, "--key") == 0 && argumentIndex + 1 < argc) {
@@ -102,6 +128,8 @@ static void ServerNetOutHandler(BFRunloop *runloop, BFRunloopEvent *event, void 
 int main(int argc, char **argv) {
     ServerDtlsOptions options;
     ServerParseArgs(argc, argv, &options);
+    BFLoggerInit("boxd");
+    BFLoggerSetLevel(BF_LOG_INFO);
     install_signal_handler();
 
     int udpSocket = BFUdpServer(BFDefaultPort);

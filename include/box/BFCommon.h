@@ -1,6 +1,7 @@
 #ifndef BF_COMMON_H
 #define BF_COMMON_H
 
+#include "box/BFLogger.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -25,11 +26,9 @@ enum { BF_OK = 0, BF_ERR = -1 };
 // -----------------------------------------------------------------------------
 
 // Macro simple de log
-#define BFLog(fmt, ...) fprintf(stderr, "[BOX ] " fmt "\n", ##__VA_ARGS__)
-
-#define BFError(fmt, ...) fprintf(stderr, "[ERR ] " fmt "\n", ##__VA_ARGS__)
-
-#define BFWarn(fmt, ...) fprintf(stderr, "[WARN] " fmt "\n", ##__VA_ARGS__)
+#define BFLog(fmt, ...) BFLogWrite(BF_LOG_INFO, fmt, ##__VA_ARGS__)
+#define BFError(fmt, ...) BFLogWrite(BF_LOG_ERROR, fmt, ##__VA_ARGS__)
+#define BFWarn(fmt, ...) BFLogWrite(BF_LOG_WARN, fmt, ##__VA_ARGS__)
 
 // Helper d'erreur fatale (arrête le programme avec perror)
 void BFFatal(const char *message);

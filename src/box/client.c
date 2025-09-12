@@ -20,9 +20,12 @@ typedef struct ClientDtlsOptions {
 
 static void ClientPrintUsage(const char *program) {
     fprintf(stderr,
-            "Usage: %s [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]\n"
-            "          [--pre-share-key <ascii>] [address] [port]\n",
-            program);
+            "Usage: %s [address] [port] [--put <queue>[:type] <data>] [--get <queue>]\n"
+            "          [--version] [--help]\n\n"
+            "Examples:\n"
+            "  %s 127.0.0.1 9988 --put /message:text/plain \"Hello\"\n"
+            "  %s 127.0.0.1 9988 --get /message\n",
+            program, program, program);
 }
 
 static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions,
@@ -69,6 +72,8 @@ int main(int argc, char **argv) {
     const char       *address = NULL;
     uint16_t          port    = 0;
     ClientParseArgs(argc, argv, &options, &address, &port);
+    BFLoggerInit("box");
+    BFLoggerSetLevel(BF_LOG_INFO);
 
     struct sockaddr_in server;
     int                udpSocket = BFUdpClient(address, port, &server);
@@ -164,16 +169,57 @@ int main(int argc, char **argv) {
         }
     }
 
-    // 6) Envoyer un PUT minimal (queue=/message, text/plain)
-    const char *queuePath   = "/message";
-    const char *contentType = "text/plain";
-    const char *putText     = "Hello from client";
-    requestId               = 3;
-    packed = BFV1PackPut(transmitBuffer, sizeof(transmitBuffer), requestId, queuePath, contentType,
-                         (const uint8_t *)putText, (uint32_t)strlen(putText));
-    if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed,
-                                 (struct sockaddr *)&server, sizeof(server)) < 0) {
-        BFFatal("sendto (PUT)");
+    // 6) CLI action: PUT/GET if requested
+    if (action.doPut && action.queue && action.data) {
+        const char *queuePath = action.queue;
+        const char *contentType =
+            action.contentType ? action.contentType : "application/octet-stream";
+        const char *putText = action.data;
+        requestId           = 3;
+        packed = BFV1PackPut(transmitBuffer, sizeof(transmitBuffer), requestId, queuePath,
+                             contentType, (const uint8_t *)putText, (uint32_t)strlen(putText));
+        if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed,
+                                     (struct sockaddr *)&server, sizeof(server)) < 0) {
+            BFFatal("sendto (PUT)");
+        }
+    } else if (action.doGet && action.queue) {
+        requestId = 4;
+        packed    = BFV1PackGet(transmitBuffer, sizeof(transmitBuffer), requestId, action.queue);
+        if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed,
+                                     (struct sockaddr *)&server, sizeof(server)) < 0) {
+            BFFatal("sendto (GET)");
+        }
+        // Read one response and print summary
+        fromLen   = sizeof(from);
+        readCount = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLen);
+        if (readCount > 0) {
+            uint32_t       rcmd       = 0;
+            uint64_t       rid        = 0;
+            const uint8_t *rpayload   = NULL;
+            uint32_t       rpayLength = 0;
+            if (BFV1Unpack(buffer, (size_t)readCount, &rcmd, &rid, &rpayload, &rpayLength) > 0) {
+                if (rcmd == BFV1_PUT) {
+                    const uint8_t *qp = NULL;
+                    uint16_t       ql = 0;
+                    const uint8_t *ct = NULL;
+                    uint16_t       cl = 0;
+                    const uint8_t *dd = NULL;
+                    uint32_t       dl = 0;
+                    if (BFV1UnpackPut(rpayload, rpayLength, &qp, &ql, &ct, &cl, &dd, &dl) == 0) {
+                        BFLog("box: GET result queue=%.*s type=%.*s size=%u", (int)ql,
+                              (const char *)qp, (int)cl, (const char *)ct, (unsigned)dl);
+                    }
+                } else if (rcmd == BFV1_STATUS) {
+                    uint8_t        sc = 0xFF;
+                    const uint8_t *mp = NULL;
+                    uint32_t       ml = 0;
+                    if (BFV1UnpackStatus(rpayload, rpayLength, &sc, &mp, &ml) == 0) {
+                        BFLog("box: GET status=%u message=%.*s", (unsigned)sc, ml,
+                              (const char *)mp);
+                    }
+                }
+            }
+        }
     }
 
     close(udpSocket);
