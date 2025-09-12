@@ -11,6 +11,9 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/un.h>
+#endif
 
 typedef struct ClientDtlsOptions {
     const char *certificateFile;
@@ -36,8 +39,9 @@ static void ClientPrintUsage(const char *program) {
         "          [--version] [--help]\n\n"
         "Examples:\n"
         "  %s 127.0.0.1 9988 --put /message:text/plain \"Hello\"\n"
-        "  %s 127.0.0.1 --port 9988 --get /message\n",
-        program, program, program);
+        "  %s 127.0.0.1 --port 9988 --get /message\n"
+        "  %s admin status\n",
+        program, program, program, program);
 }
 
 static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions,
@@ -114,7 +118,60 @@ static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions
     *outPortOrigin = portOrigin;
 }
 
+static int ClientAdminStatus(void) {
+#if defined(__unix__) || defined(__APPLE__)
+    const char *homeDirectory = getenv("HOME");
+    if (!homeDirectory || !*homeDirectory) {
+        fprintf(stderr, "box: HOME not set; cannot locate admin socket\n");
+        return 2;
+    }
+    char               socketPath[512];
+    struct sockaddr_un address;
+    int                clientSocket = -1;
+    snprintf(socketPath, sizeof(socketPath), "%s/.box/run/boxd.sock", homeDirectory);
+    clientSocket = (int)socket(AF_UNIX, SOCK_STREAM, 0);
+    if (clientSocket < 0) {
+        perror("socket");
+        return 2;
+    }
+    memset(&address, 0, sizeof(address));
+    address.sun_family = AF_UNIX;
+    strncpy(address.sun_path, socketPath, sizeof(address.sun_path) - 1);
+    if (connect(clientSocket, (struct sockaddr *)&address, sizeof(address)) != 0) {
+        perror("connect");
+        close(clientSocket);
+        return 2;
+    }
+    const char *request = "status\n";
+    if (write(clientSocket, request, strlen(request)) < 0) {
+        perror("write");
+        close(clientSocket);
+        return 2;
+    }
+    char    buffer[512];
+    ssize_t totalRead = 0;
+    for (;;) {
+        ssize_t readCount = read(clientSocket, buffer, sizeof(buffer));
+        if (readCount <= 0)
+            break;
+        totalRead += readCount;
+        (void)fwrite(buffer, 1U, (size_t)readCount, stdout);
+    }
+    if (totalRead == 0) {
+        fprintf(stderr, "box: empty response from admin channel\n");
+    }
+    close(clientSocket);
+    return 0;
+#else
+    fprintf(stderr, "box: admin channel not supported on this platform\n");
+    return 2;
+#endif
+}
+
 int main(int argc, char **argv) {
+    if (argc >= 3 && strcmp(argv[1], "admin") == 0 && strcmp(argv[2], "status") == 0) {
+        return ClientAdminStatus();
+    }
     ClientDtlsOptions options;
     ClientAction      action;
     const char       *address    = NULL;
