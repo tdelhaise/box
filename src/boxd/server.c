@@ -233,6 +233,39 @@ int main(int argc, char **argv) {
                 BFLog("boxd: PUT path=%.*s contentType=%.*s size=%u", (int)queuePathLength,
                       (const char *)queuePathPointer, (int)contentTypeLength,
                       (const char *)contentTypePointer, (unsigned)dataLength);
+                // build in-memory object
+                char *queueKey = (char *)BFMemoryAllocate((size_t)queuePathLength + 1U);
+                if (!queueKey)
+                    break;
+                memcpy(queueKey, queuePathPointer, queuePathLength);
+                queueKey[queuePathLength] = '\0';
+                char *contentTypeStr = (char *)BFMemoryAllocate((size_t)contentTypeLength + 1U);
+                if (!contentTypeStr) {
+                    BFMemoryRelease(queueKey);
+                    break;
+                }
+                memcpy(contentTypeStr, contentTypePointer, contentTypeLength);
+                contentTypeStr[contentTypeLength] = '\0';
+                StoredObject *object = (StoredObject *)BFMemoryAllocate(sizeof(StoredObject));
+                if (!object) {
+                    BFMemoryRelease(queueKey);
+                    BFMemoryRelease(contentTypeStr);
+                    break;
+                }
+                object->contentType = contentTypeStr;
+                object->dataLength  = dataLength;
+                object->data        = NULL;
+                if (dataLength > 0) {
+                    object->data = (uint8_t *)BFMemoryAllocate(dataLength);
+                    if (!object->data) {
+                        BFMemoryRelease(queueKey);
+                        destroy_stored_object(object);
+                        break;
+                    }
+                    memcpy(object->data, dataPointer, dataLength);
+                }
+                (void)BFSharedDictionarySet(store, queueKey, object);
+                BFMemoryRelease(queueKey);
                 int responseSize =
                     BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
                                    receivedReqId + 1, BFV1_STATUS_OK, "stored");
@@ -254,12 +287,28 @@ int main(int argc, char **argv) {
             uint16_t       queuePathLength  = 0;
             int ok = BFV1UnpackGet(payload, payloadLength, &queuePathPointer, &queuePathLength);
             if (ok == 0) {
-                int responseSize =
-                    BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
-                                   receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "not-implemented");
-                if (responseSize > 0)
-                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
-                                    (struct sockaddr *)&from, fromLength);
+                char *queueKey = (char *)BFMemoryAllocate((size_t)queuePathLength + 1U);
+                if (!queueKey)
+                    break;
+                memcpy(queueKey, queuePathPointer, queuePathLength);
+                queueKey[queuePathLength] = '\0';
+                StoredObject *object      = (StoredObject *)BFSharedDictionaryGet(store, queueKey);
+                if (object) {
+                    int responseSize = BFV1PackPut(transmitBuffer, sizeof(transmitBuffer),
+                                                   receivedReqId + 1, queueKey, object->contentType,
+                                                   object->data, object->dataLength);
+                    if (responseSize > 0)
+                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
+                                        (struct sockaddr *)&from, fromLength);
+                } else {
+                    int responseSize =
+                        BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
+                                       receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "not-found");
+                    if (responseSize > 0)
+                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
+                                        (struct sockaddr *)&from, fromLength);
+                }
+                BFMemoryRelease(queueKey);
             } else {
                 int responseSize =
                     BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
