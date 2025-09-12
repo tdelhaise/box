@@ -9,8 +9,8 @@
 #include <sys/time.h>
 #include <time.h>
 
-static void destroy_value(void *p) {
-    BFMemoryRelease(p);
+static void destroy_value(void *pointer) {
+    BFMemoryRelease(pointer);
 }
 
 static double now_sec(void) {
@@ -26,34 +26,34 @@ static double now_sec(void) {
 }
 
 int main(void) {
-    BFSharedDictionary *d = BFSharedDictionaryCreate(destroy_value);
-    if (!d) {
+    BFSharedDictionary *dictionary = BFSharedDictionaryCreate(destroy_value);
+    if (!dictionary) {
         fprintf(stderr, "cannot create dict\n");
         return 1;
     }
-    const int N = 100000; // 100k
+    const int operationCount = 100000; // 100k
     char      key[32];
-    double    t0 = now_sec();
-    for (int i = 0; i < N; ++i) {
-        int   n = snprintf(key, sizeof(key), "k%d", i);
-        char *v = (char *)BFMemoryAllocate((size_t)n + 1U);
-        memcpy(v, key, (size_t)n + 1U);
-        (void)BFSharedDictionarySet(d, key, v);
+    double    startSeconds = now_sec();
+    for (int index = 0; index < operationCount; ++index) {
+        int   written = snprintf(key, sizeof(key), "k%d", index);
+        char *value   = (char *)BFMemoryAllocate((size_t)written + 1U);
+        memcpy(value, key, (size_t)written + 1U);
+        (void)BFSharedDictionarySet(dictionary, key, value);
     }
-    double t1     = now_sec();
-    double set_ps = (double)N / (t1 - t0);
-    printf("BFSharedDictionary set: %.0f ops/s (N=%d)\n", set_ps, N);
+    double endSeconds    = now_sec();
+    double setsPerSecond = (double)operationCount / (endSeconds - startSeconds);
+    printf("BFSharedDictionary set: %.0f ops/s (N=%d)\n", setsPerSecond, operationCount);
 
     // Sampled lookups
-    volatile int sum = 0;
-    for (int i = 0; i < N; i += 97) {
-        int n = snprintf(key, sizeof(key), "k%d", i);
-        (void)n;
-        char *v = (char *)BFSharedDictionaryGet(d, key);
-        sum += (v && v[0]) ? 1 : 0;
+    volatile int sampledSum = 0;
+    for (int index = 0; index < operationCount; index += 97) {
+        int written = snprintf(key, sizeof(key), "k%d", index);
+        (void)written;
+        char *value = (char *)BFSharedDictionaryGet(dictionary, key);
+        sampledSum += (value && value[0]) ? 1 : 0;
     }
-    printf("BFSharedDictionary sampled gets sum=%d\n", sum);
+    printf("BFSharedDictionary sampled gets sum=%d\n", sampledSum);
 
-    BFSharedDictionaryFree(d);
+    BFSharedDictionaryFree(dictionary);
     return 0;
 }
