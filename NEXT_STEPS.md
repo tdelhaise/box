@@ -45,7 +45,14 @@ Android Track (parallel)
 - Extend minimal C API with a couple of no-op methods we can invoke from JNI (e.g., BFCoreSelfTest()).
 - Prepare OpenSSL/libsodium Android builds and add a BoxFoundation-android target (later milestone).
 
+8) Android sample: expand coverage (app + JNI)
+   - Build JNI via externalNativeBuild from the sample app (use android/jni CMake).
+   - Package multi-ABI native libs (arm64-v8a, armeabi-v7a, x86_64) and verify on devices/emulator.
+   - Expose and call additional JNI methods (e.g., connectivity check stub) and render results in UI.
+   - Add required permissions (WAKE_LOCK, ACCESS_NETWORK_STATE, CHANGE_WIFI_MULTICAST_STATE) and request flows where needed.
+   - Add a GitHub Actions job to assemble the sample in CI (build-only, no emulator).
+   - Exit: app builds in CI, runs on a device to display version and a stub connectivity check result.
+
 Notes
 - Keep patch size small and focused per milestone item.
 - Update docs as behavior changes; add tests where missing.
-
