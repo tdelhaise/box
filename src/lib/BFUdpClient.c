@@ -19,9 +19,9 @@ int BFUdpClient(const char *address, uint16_t port, struct sockaddr_in *outAddre
     outAddress->sin_family = AF_INET;
     outAddress->sin_port   = htons(port);
     if (inet_pton(AF_INET, address, &outAddress->sin_addr) != 1) {
-        int e = errno ? errno : EINVAL;
+        int errorCode = errno ? errno : EINVAL;
         close(fileDescriptor);
-        errno = e;
+        errno = errorCode;
         return -1;
     }
     return fileDescriptor;

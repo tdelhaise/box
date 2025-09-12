@@ -22,9 +22,9 @@ int BFUdpServer(uint16_t port) {
     address.sin_port        = htons(port);
 
     if (bind(fileDescriptor, (struct sockaddr *)&address, sizeof(address)) < 0) {
-        int e = errno;
+        int errorCode = errno;
         close(fileDescriptor);
-        errno = e;
+        errno = errorCode;
         return -1;
     }
     return fileDescriptor;

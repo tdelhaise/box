@@ -146,8 +146,8 @@ static int verify_cookie(SSL *ssl, const unsigned char *cookie, unsigned int coo
         return 0;
     // comparaison constante
     unsigned int diff = 0;
-    for (unsigned int i = 0; i < cookie_len; ++i)
-        diff |= (cookie[i] ^ expected[i]);
+    for (unsigned int index = 0; index < cookie_len; ++index)
+        diff |= (cookie[index] ^ expected[index]);
     return diff == 0;
 }
 
