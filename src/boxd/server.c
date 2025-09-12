@@ -8,13 +8,16 @@
 #include "box/BFVersion.h"
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 typedef struct ServerDtlsOptions {
     const char *certificateFile;
@@ -162,6 +165,30 @@ int main(int argc, char **argv) {
     BFLoggerSetLevel(BF_LOG_INFO);
     install_signal_handler();
 
+    // Non-root policy enforcement (Unix-like)
+#if defined(__unix__) || defined(__APPLE__)
+    if (geteuid() == 0) {
+        BFError("boxd: must not run as root; refusing to start");
+        return 77; // EX_NOPERM-like
+    }
+#endif
+
+    // Create ~/.box and ~/.box/run with strict permissions (Unix-like)
+#if defined(__unix__) || defined(__APPLE__)
+    const char *homeDirectory = getenv("HOME");
+    char        pathBuffer[512];
+    if (homeDirectory && *homeDirectory) {
+        // ~/.box
+        snprintf(pathBuffer, sizeof(pathBuffer), "%s/.box", homeDirectory);
+        (void)mkdir(pathBuffer, 0700);
+        chmod(pathBuffer, 0700);
+        // ~/.box/run
+        snprintf(pathBuffer, sizeof(pathBuffer), "%s/.box/run", homeDirectory);
+        (void)mkdir(pathBuffer, 0700);
+        chmod(pathBuffer, 0700);
+    }
+#endif
+
     // Parse optional port from environment or default (CLI --port reserved for future)
     uint16_t    serverPort   = BFDefaultPort;
     const char *portOrigin   = "default";
@@ -201,6 +228,38 @@ int main(int argc, char **argv) {
         BFFatal("BFUdpServer");
     }
 
+    // Admin channel (Unix domain socket, non-bloquant, minimal skeleton)
+    int adminListenSocket = -1;
+#if defined(__unix__) || defined(__APPLE__)
+    if (homeDirectory && *homeDirectory) {
+        char adminSocketPath[512];
+        snprintf(adminSocketPath, sizeof(adminSocketPath), "%s/.box/run/boxd.sock", homeDirectory);
+        adminListenSocket = (int)socket(AF_UNIX, SOCK_STREAM, 0);
+        if (adminListenSocket >= 0) {
+            struct sockaddr_un adminAddress;
+            memset(&adminAddress, 0, sizeof(adminAddress));
+            adminAddress.sun_family = AF_UNIX;
+            strncpy(adminAddress.sun_path, adminSocketPath, sizeof(adminAddress.sun_path) - 1);
+            // Remove any stale socket file, then bind
+            unlink(adminSocketPath);
+            if (bind(adminListenSocket, (struct sockaddr *)&adminAddress, sizeof(adminAddress)) ==
+                0) {
+                (void)chmod(adminSocketPath, 0600);
+                (void)listen(adminListenSocket, 4);
+                // Non-blocking accept
+                int flags = fcntl(adminListenSocket, F_GETFL, 0);
+                if (flags >= 0)
+                    (void)fcntl(adminListenSocket, F_SETFL, flags | O_NONBLOCK);
+                BFLog("boxd: admin channel ready at %s", adminSocketPath);
+            } else {
+                BFError("boxd: failed to bind admin channel");
+                close(adminListenSocket);
+                adminListenSocket = -1;
+            }
+        }
+    }
+#endif
+
     // 1) Attente d'un datagram clair pour connaître l'adresse du client
     struct sockaddr_storage peer       = {0};
     socklen_t               peerLength = sizeof(peer);
@@ -232,6 +291,30 @@ int main(int argc, char **argv) {
     // 4) Boucle simple: attendre STATUS (ping) et répondre STATUS (pong)
     int consecutiveErrors = 0;
     while (globalRunning) {
+        // Handle one admin connection if pending (non-blocking)
+#if defined(__unix__) || defined(__APPLE__)
+        if (adminListenSocket >= 0) {
+            int adminClient = accept(adminListenSocket, NULL, NULL);
+            if (adminClient >= 0) {
+                char requestBuffer[128] = {0};
+                ssize_t requestSize     = read(adminClient, requestBuffer, sizeof(requestBuffer));
+                if (requestSize > 0) {
+                    // Trim and check for "status"
+                    if (strstr(requestBuffer, "status") != NULL) {
+                        char response[256];
+                        snprintf(response, sizeof(response),
+                                 "{\"status\":\"ok\",\"version\":\"%s\"}\n",
+                                 BFVersionString());
+                        (void)write(adminClient, response, strlen(response));
+                    } else {
+                        const char *msg = "unknown-command\n";
+                        (void)write(adminClient, msg, strlen(msg));
+                    }
+                }
+                close(adminClient);
+            }
+        }
+#endif
         struct sockaddr_storage from       = {0};
         socklen_t               fromLength = sizeof(from);
         int readCount = (int)BFUdpRecieve(udpSocket, receiveBuffer, sizeof(receiveBuffer),
@@ -426,5 +509,9 @@ int main(int argc, char **argv) {
     }
 
     close(udpSocket);
+#if defined(__unix__) || defined(__APPLE__)
+    if (adminListenSocket >= 0)
+        close(adminListenSocket);
+#endif
     return 0;
 }
