@@ -1,14 +1,14 @@
 Development Strategy and Milestones
 
 Assumptions
-- Codebase language: C, existing modules under `include/box` and `src/lib` (UDP, DTLS, runloop, protocol).
+- Codebase language: C, existing modules under `include/box` and `src/lib` (UDP, runloop, protocol). Legacy DTLS is being removed.
 - Targets: `box` (CLI) and `boxd` (daemon) in `src/box` and `src/boxd`.
 - Platform: Linux/macOS first; Windows later. IPv6 preferred; IPv4 supported.
 - Spec reference: current `SPECS.md` (protocol v1 framing, Noise/XChaCha AEAD, embedded self‑hosted LS, queues, ACLs, NAT section).
 
 Guiding Approach
-- Prioritize a working vertical slice early: local IPv6 on LAN, minimal HELLO/PUT/GET with AEAD.
-- Keep DTLS path for early bring‑up; introduce Noise/XChaCha as a new transport and flip default when stable.
+- Prioritize a working vertical slice early: local IPv6 on LAN, minimal HELLO/PUT/GET.
+- Use libsodium‑based Noise/XChaCha transport for encryption (Issue #16). No DTLS fallback.
 - Small, verifiable steps with tests and demo commands per milestone.
 
 Milestones
@@ -19,11 +19,12 @@ M0 — Build, Tests, Hygiene (Baseline)
 - Add sanitizers presets (ASan/UBSan) and `scripts/fast_build.sh` integration.
 - Exit criteria: one‑command build; unit tests green; formatting checks in place.
 
-M1 — Protocol Framing v1 and CLI Skeleton
+M1 — Protocol Framing v1 and CLI Skeleton (DTLS removed)
 - Update BFBoxProtocol to support v1 framing from SPECS (magic 'B', version, length, command, request_id) behind a feature flag while preserving current simple header for interim use in tests.
 - Add request/response enums for HELLO/PUT/GET/DELETE/STATUS/SEARCH/BYE.
-- Scaffold CLI subcommands in `box` for `sendTo`, `getFrom`, `list`, `deleteFrom`, and `check connectivity` (stubbed behaviors that exercise framing only).
-- Exit criteria: round‑trip HELLO over existing DTLS transport using new frame; unit tests for pack/unpack and request_id correlation.
+- Remove DTLS code paths and references from build, code, CLI help, and docs.
+- Scaffold CLI subcommands in `box` for `sendTo`, `getFrom`, `list`, `deleteFrom`, and `check connectivity` (stub behaviors exercising framing only) over UDP (unencrypted, temporary).
+- Exit criteria: round‑trip HELLO over UDP using the new frame; unit tests for pack/unpack and request_id correlation; no DTLS symbols or build flags remain.
 
 M2 — Config, Identity, and Non‑Root Enforcement
 - Refuse to run `boxd` as root/admin. Create `~/.box` (or `%USERPROFILE%\.box`) on first run with correct permissions.
@@ -33,10 +34,9 @@ M2 — Config, Identity, and Non‑Root Enforcement
 - Exit criteria: `boxd` loads config, runs as non‑root, exposes admin channel `status` action.
 
 M3 — Crypto Subsystem (Noise + XChaCha20‑Poly1305)
-- Introduce `libsodium` (or equivalent) and a new transport path (e.g., BFNetworkTransportNoise) implementing Noise NK/IK over UDP with X25519/Ed25519 and XChaCha20‑Poly1305 AEAD.
+- Introduce `libsodium` and a new transport path (e.g., BFNetworkTransportNoise) implementing Noise NK/IK over UDP with X25519/Ed25519 and XChaCha20‑Poly1305 AEAD.
 - Replay protection (nonces + timestamp) and session key lifecycle.
-- Keep DTLS path available for comparison; hide behind `--transport noise|dtls`.
-- Exit criteria: `box`/`boxd` complete HELLO + encrypted echo using Noise path; unit tests for AEAD and transcript signing.
+- Exit criteria: `box`/`boxd` complete HELLO + encrypted echo using the Noise path; unit tests for AEAD and transcript signing.
 
 M4 — Storage and Queues (Filesystem + Index)
 - Implement storage root layout `<root>/<user_uuid>/<queue>/<digest>` with metadata sidecar.
@@ -93,18 +93,17 @@ Cross‑Cutting Tasks
 - Security Posture: default deny ACLs; explicit user opt‑in for any port mapping; never run as root.
 
 Risks and Mitigations
-- Crypto path migration: keep DTLS as a fallback during Noise bring‑up; flip default when stable; deprecate DTLS in a later minor.
+- Crypto path: ensure robust libsodium integration and test coverage for AEAD and key handling.
 - NAT variability: clearly message fallbacks; provide actionable remediation; maintain IPv6‑first guidance.
 - Storage backend portability: start with a simple portable B‑tree; gate optional backends (BSD libdb/LMDB) behind build flags.
 
 Demo Checkpoints (per Milestone)
-- M1: HELLO over DTLS using v1 frame; unit test for framing.
-- M3: HELLO+encrypted echo over Noise; request_id correlation.
+- M1: HELLO over UDP using v1 frame; unit test for framing.
+- M3: HELLO + encrypted echo over Noise; request_id correlation.
 - M4: PUT/GET small text and a photo file on localhost.
 - M5: Client resolves server via LS; presence visible in `/uuid`.
 - M6: Unauthorized PUT denied; authorized PUT succeeds per ACL.
-- M7: `box check connectivity` shows IPv6 reachable; acquires IPv4 mapping on a Freebox (or simulated gateway).
+- M7: `box check connectivity` shows IPv6 reachable; acquires IPv4 mapping on a supported gateway.
 
 Next Steps
-- Await design architecture inputs for `boxd`/`box` internals (module boundaries, state machines) to refine sequencing (e.g., where BFNetworkNoise lives, storage interfaces, ACL engine API) before commencing M1–M2.
-
+- Align with architecture details in `SPECS.md` and `DEVELOPMENT_STRATEGY.md` for the Noise transport module boundaries (e.g., where BFNetworkNoise lives), storage interfaces, and ACL engine API before progressing M2–M3.
