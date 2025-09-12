@@ -64,7 +64,7 @@ static void ServerPrintUsage(const char *program) {
             "\n"
             "Notes:\n"
             "  - Refuses to run as root (Unix/macOS).\n"
-            "  - Admin channel (Unix): ~/.box/run/boxd.sock (mode 0600); try 'box admin status'.\n"
+            "  - Admin channel (Unix): ~/.box/run/boxd.socket (mode 0600); try 'box admin status'.\n"
             "  --version              Print version and exit\n"
             "  --help                 Show this help and exit\n",
             program, (unsigned)BFDefaultPort);
@@ -224,18 +224,16 @@ int main(int argc, char **argv) {
 
     // Apply config-based log level/target unless overridden by CLI
 #if defined(__unix__) || defined(__APPLE__)
-    if (
-        // hasConfig is true if HOME set and file parse succeeded
-        (homeDirectory && *homeDirectory)) {
-        BFServerConfig tmp;
+    if ((homeDirectory && *homeDirectory)) {
+        BFServerConfig serverConfigurationLoaded;
         char           configPath[512];
         snprintf(configPath, sizeof(configPath), "%s/.box/boxd.toml", homeDirectory);
-        if (BFConfigLoadServer(configPath, &tmp) == 0) {
-            if (!options.hasLogLevel && tmp.hasLogLevel) {
-                BFLoggerSetLevel(tmp.logLevel);
+        if (BFConfigLoadServer(configPath, &serverConfigurationLoaded) == 0) {
+            if (!options.hasLogLevel && serverConfigurationLoaded.hasLogLevel) {
+                BFLoggerSetLevel(serverConfigurationLoaded.logLevel);
             }
-            if (!options.hasLogTarget && tmp.hasLogTarget) {
-                (void)BFLoggerSetTarget(tmp.logTarget);
+            if (!options.hasLogTarget && serverConfigurationLoaded.hasLogTarget) {
+                (void)BFLoggerSetTarget(serverConfigurationLoaded.logTarget);
             }
         }
     }
@@ -277,7 +275,7 @@ int main(int argc, char **argv) {
 #if defined(__unix__) || defined(__APPLE__)
     if (homeDirectory && *homeDirectory) {
         char adminSocketPath[512];
-        snprintf(adminSocketPath, sizeof(adminSocketPath), "%s/.box/run/boxd.sock", homeDirectory);
+        snprintf(adminSocketPath, sizeof(adminSocketPath), "%s/.box/run/boxd.socket", homeDirectory);
         adminListenSocket = (int)socket(AF_UNIX, SOCK_STREAM, 0);
         if (adminListenSocket >= 0) {
             struct sockaddr_un adminAddress;
@@ -350,8 +348,8 @@ int main(int argc, char **argv) {
                                  "{\"status\":\"ok\",\"version\":\"%s\"}\n", BFVersionString());
                         (void)write(adminClient, response, strlen(response));
                     } else {
-                        const char *msg = "unknown-command\n";
-                        (void)write(adminClient, msg, strlen(msg));
+                        const char *messageText = "unknown-command\n";
+                        (void)write(adminClient, messageText, strlen(messageText));
                     }
                 }
                 close(adminClient);

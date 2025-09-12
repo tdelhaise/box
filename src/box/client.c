@@ -129,7 +129,7 @@ static int ClientAdminStatus(void) {
     char               socketPath[512];
     struct sockaddr_un address;
     int                clientSocket = -1;
-    snprintf(socketPath, sizeof(socketPath), "%s/.box/run/boxd.sock", homeDirectory);
+    snprintf(socketPath, sizeof(socketPath), "%s/.box/run/boxd.socket", homeDirectory);
     clientSocket = (int)socket(AF_UNIX, SOCK_STREAM, 0);
     if (clientSocket < 0) {
         perror("socket");

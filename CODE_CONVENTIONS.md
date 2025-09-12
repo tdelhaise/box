@@ -93,7 +93,7 @@ Documentation
 Platform Notes
 - Linux/macOS supported first; Windows later. Always run `boxd` under a non‑privileged user.
 - Prefer IPv6; if using IPv4 under CGNAT, expect to rely on mappings or a user‑owned relay.
-- Admin channel (Unix): local socket `~/.box/run/boxd.sock` (0600). A Windows named pipe will be added later.
+- Admin channel (Unix): local socket `~/.box/run/boxd.socket` (0600). A Windows named pipe will be added later.
 
 Change Management
 - Conventions evolve with the project; propose changes via PRs that update this file alongside the impacted code.

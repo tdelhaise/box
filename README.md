@@ -57,7 +57,7 @@ Afficher l’aide:
 Remarques:
 - L’option `--log-target` permet de diriger la journalisation vers `stderr|syslog|oslog|eventlog|file:<path>`.
 - Le binaire refuse de démarrer en tant que root (Unix/macOS).
-- Canal d’administration (Unix): socket `~/.box/run/boxd.sock` (droits 0600). Commande supportée: `status` (retour JSON).
+- Canal d’administration (Unix): socket `~/.box/run/boxd.socket` (droits 0600). Commande supportée: `status` (retour JSON).
 
 ### Aide (`--help`)
 

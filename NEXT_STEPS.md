@@ -5,7 +5,7 @@ Status (high level)
 - Conventions and dependencies documented; CI in place (native, dockerized, Android minimal + JNI build).
 - Baseline C code builds/tests. DTLS and OpenSSL have been removed (Issue #21 complete).
 - Libsodium groundwork present: AEAD helpers (XChaCha20‑Poly1305) and Noise transport skeleton compiled/linked when available.
-- Non‑root enforcement active on Unix/macOS; admin channel skeleton is live on `~/.box/run/boxd.sock` with a `status` command; `box admin status` CLI added.
+- Non‑root enforcement active on Unix/macOS; admin channel skeleton is live on `~/.box/run/boxd.socket` with a `status` command; `box admin status` CLI added.
 - Minimal config parser loads `~/.box/boxd.toml` (port/log settings) with CLI/env precedence.
 
 Immediate TODOs (near-term)

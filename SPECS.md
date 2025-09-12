@@ -813,7 +813,7 @@ Safety
 - Purpose: Secure, local-only control plane for `box` to query/drive the co-resident `boxd` during diagnostics and administration.
 
 - Transport
-  - Unix/macOS: Unix domain socket at `~/.box/run/boxd.sock` (directory mode 700; socket mode 600).
+  - Unix/macOS: Unix domain socket at `~/.box/run/boxd.socket` (directory mode 700; socket mode 600).
   - Windows: Named pipe `\\.\pipe\boxd` with an ACL restricting access to the owning user.
 
 - Authentication/Authorization
