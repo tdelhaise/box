@@ -25,6 +25,10 @@ typedef struct BFNetworkNoiseHandle {
     int      hasAeadKey;
     uint8_t  nonceSalt[16];
     uint64_t nextNonceCounter;
+    uint8_t  peerSalt[16];
+    int      hasPeerSalt;
+    uint64_t recvWindowMax;
+    uint64_t recvWindowBitmap;
 } BFNetworkNoiseHandle;
 
 static void derive_key_from_security(const BFNetworkSecurity *security, uint8_t *outKey,
@@ -175,12 +179,51 @@ int BFNetworkNoiseRecv(void *handlePointer, void *buffer, int length) {
     uint32_t       ciphertextLength = (uint32_t)(received - (4 + BF_AEAD_NONCE_BYTES));
     if (ciphertextLength > (uint32_t)(length + BF_AEAD_ABYTES))
         return BF_ERR;
+    // Replay checks: salt consistency and sliding window over counters
+    uint64_t counter = ((uint64_t)nonce[16] << 56) | ((uint64_t)nonce[17] << 48) |
+                       ((uint64_t)nonce[18] << 40) | ((uint64_t)nonce[19] << 32) |
+                       ((uint64_t)nonce[20] << 24) | ((uint64_t)nonce[21] << 16) |
+                       ((uint64_t)nonce[22] << 8) | ((uint64_t)nonce[23]);
+    if (!handle->hasPeerSalt) {
+        memcpy(handle->peerSalt, nonce, 16);
+        handle->hasPeerSalt      = 1;
+        handle->recvWindowMax    = 0;
+        handle->recvWindowBitmap = 0;
+    } else if (memcmp(handle->peerSalt, nonce, 16) != 0) {
+        return BF_ERR;
+    }
+    if (handle->recvWindowMax != 0 && counter <= handle->recvWindowMax) {
+        uint64_t delta = handle->recvWindowMax - counter;
+        if (delta >= 64U)
+            return BF_ERR; // too old
+        uint64_t mask = (uint64_t)1 << delta;
+        if ((handle->recvWindowBitmap & mask) != 0)
+            return BF_ERR; // replayed
+    }
     uint32_t plaintextLength = 0;
     int      dec =
         BFAeadDecrypt(handle->aeadKey, nonce, associatedHeader, 4, ciphertext, ciphertextLength,
                       (uint8_t *)buffer, (uint32_t)length, &plaintextLength);
     if (dec != BF_OK)
         return BF_ERR;
+    // Update window after successful decrypt
+    if (handle->recvWindowMax == 0 || counter > handle->recvWindowMax) {
+        if (handle->recvWindowMax == 0) {
+            handle->recvWindowBitmap = 1ULL; // mark newest
+        } else {
+            uint64_t shift = counter - handle->recvWindowMax;
+            if (shift >= 64U) {
+                handle->recvWindowBitmap = 0;
+            } else {
+                handle->recvWindowBitmap <<= shift;
+            }
+            handle->recvWindowBitmap |= 1ULL; // mark newest
+        }
+        handle->recvWindowMax = counter;
+    } else {
+        uint64_t delta = handle->recvWindowMax - counter;
+        handle->recvWindowBitmap |= ((uint64_t)1 << delta);
+    }
     return (int)plaintextLength;
 }
 

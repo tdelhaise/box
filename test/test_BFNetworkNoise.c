@@ -1,5 +1,5 @@
-#include "box/BFNetwork.h"
 #include "box/BFCommon.h"
+#include "box/BFNetwork.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -9,8 +9,8 @@
 #include <unistd.h>
 
 static int create_udp_server(struct sockaddr_in *outAddress, int *outErrorCode) {
-    int                 fileDescriptor = (int)socket(AF_INET, SOCK_DGRAM, 0);
-    struct sockaddr_in  address;
+    int                fileDescriptor = (int)socket(AF_INET, SOCK_DGRAM, 0);
+    struct sockaddr_in address;
     memset(&address, 0, sizeof(address));
     address.sin_family      = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -47,9 +47,10 @@ static int create_udp_client(const struct sockaddr_in *serverAddress) {
 int main(void) {
     struct sockaddr_in serverBindAddress;
     int                lastErrorCode = 0;
-    int                serverSocket = create_udp_server(&serverBindAddress, &lastErrorCode);
+    int                serverSocket  = create_udp_server(&serverBindAddress, &lastErrorCode);
     if (serverSocket < 0) {
-        fprintf(stderr, "Skipping test_BFNetworkNoise: cannot bind UDP socket in this environment\n");
+        fprintf(stderr,
+                "Skipping test_BFNetworkNoise: cannot bind UDP socket in this environment\n");
         return 0; // skip gracefully in restricted sandboxes (CI will run it normally)
     }
 
@@ -61,8 +62,8 @@ int main(void) {
 
     // 1) Send initial clear datagram so server learns peer address
     const char *initialHello = "hello";
-    if (sendto(clientSocket, initialHello, strlen(initialHello), 0, (struct sockaddr *)&serverBindAddress,
-               sizeof(serverBindAddress)) < 0) {
+    if (sendto(clientSocket, initialHello, strlen(initialHello), 0,
+               (struct sockaddr *)&serverBindAddress, sizeof(serverBindAddress)) < 0) {
         perror("sendto initial");
         close(clientSocket);
         close(serverSocket);
@@ -83,8 +84,9 @@ int main(void) {
 
     BFNetworkSecurity clientSecurity = serverSecurity;
 
-    BFNetworkConnection *serverConn = BFNetworkAcceptDatagram(
-        BFNetworkTransportNOISE, serverSocket, &learnedPeerAddress, learnedPeerLength, &serverSecurity);
+    BFNetworkConnection *serverConn =
+        BFNetworkAcceptDatagram(BFNetworkTransportNOISE, serverSocket, &learnedPeerAddress,
+                                learnedPeerLength, &serverSecurity);
     if (!serverConn) {
         fprintf(stderr, "server noise accept failed\n");
         close(clientSocket);
@@ -160,9 +162,9 @@ int main(void) {
     BFNetworkSecurity wrongServerSecurity = {0};
     wrongServerSecurity.preShareKey       = (const unsigned char *)"wrong";
     wrongServerSecurity.preShareKeyLength = 5U;
-    BFNetworkConnection *serverWrong = BFNetworkAcceptDatagram(
-        BFNetworkTransportNOISE, serverSocket, &learnedPeerAddress, learnedPeerLength,
-        &wrongServerSecurity);
+    BFNetworkConnection *serverWrong =
+        BFNetworkAcceptDatagram(BFNetworkTransportNOISE, serverSocket, &learnedPeerAddress,
+                                learnedPeerLength, &wrongServerSecurity);
     if (!serverWrong) {
         fprintf(stderr, "server wrong accept failed\n");
         BFNetworkClose(clientConn);
