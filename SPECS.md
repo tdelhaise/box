@@ -201,6 +201,55 @@ Resolve by Node UUID
 - Response
   { "ok": true, "node": { /* same shape as in nodes[] above */ } }
 
+6.7 Location Service CBOR CDDL (Informative)
+
+- The following CDDL sketches the CBOR encoding for LS messages. Field names mirror the JSON forms above.
+
+  ; Primitives
+  uuid = b16 .size 16         ; 16-byte UUID (binary)
+  tstr-nonempty = tstr .regexp ".+" ; non-empty text
+  port = 0..65535
+
+  ; Node record as used by LS
+  node-record = {
+    "user_uuid": uuid,
+    "node_uuid": uuid,
+    "ip": tstr-nonempty,             ; textual IP (IPv6/IPv4)
+    "port": port,
+    "node_public_key": tstr-nonempty, ; e.g., "ed25519:" + hex
+    "online": bool,
+    "since": uint,
+    "last_seen": uint,
+    ? "tags": { * tstr => tstr }
+  }
+
+  ; Register/Update request (signed at transport layer; optional explicit signature field)
+  ls-register = {
+    "op": "register",
+    "record": node-record,
+    ? "sig": tstr
+  }
+
+  ; Generic resolve requests
+  ls-resolve-user = { "op": "resolve", "user_uuid": uuid }
+  ls-resolve-node = { "op": "resolve", "node_uuid": uuid }
+
+  ; Responses
+  ls-ok = true
+  ls-ts = uint
+
+  ls-register-resp = { "ok": ls-ok, "ts": ls-ts }
+
+  ls-resolve-user-resp = {
+    "ok": ls-ok,
+    "nodes": [* node-record]
+  }
+
+  ls-resolve-node-resp = {
+    "ok": ls-ok,
+    "node": node-record
+  }
+
 7. Data Model
 
 - Queue: A namespace under a user’s server for storing objects. Example queues: `/message`, `/photos`, `/ids`.
