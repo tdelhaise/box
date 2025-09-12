@@ -33,12 +33,12 @@ static char        g_filePath[256] = {0};
 _Static_assert(sizeof(g_filePath) >= 64, "file path buffer too small for target name");
 #endif
 #if defined(BF_HAVE_OSLOG)
-static os_log_t    g_oslog         = NULL;
+static os_log_t g_oslog = NULL;
 #endif
 #if defined(_WIN32)
-static HANDLE      g_eventSource   = NULL;
+static HANDLE g_eventSource = NULL;
 #endif
-static int         g_targetExplicit = 0; // whether user explicitly set target
+static int g_targetExplicit = 0; // whether user explicitly set target
 
 void BFLoggerInit(const char *programName) {
     if (programName && *programName) {
@@ -50,11 +50,11 @@ void BFLoggerInit(const char *programName) {
 #if defined(_WIN32)
         (void)BFLoggerSetTarget("eventlog");
 #elif defined(__APPLE__)
-  #if defined(BF_HAVE_OSLOG)
+#if defined(BF_HAVE_OSLOG)
         (void)BFLoggerSetTarget("oslog");
-  #else
+#else
         (void)BFLoggerSetTarget("syslog");
-  #endif
+#endif
 #elif defined(__unix__)
         (void)BFLoggerSetTarget("syslog");
 #else
@@ -71,12 +71,12 @@ void BFLoggerSetLevel(BFLogLevel level) {
 
 int BFLoggerSetTarget(const char *target) {
     if (!target) {
-        g_target = TARGET_STDERR;
+        g_target         = TARGET_STDERR;
         g_targetExplicit = 1;
         return 0;
     }
     if (strncmp(target, "stderr", 6) == 0) {
-        g_target = TARGET_STDERR;
+        g_target         = TARGET_STDERR;
         g_targetExplicit = 1;
         return 0;
     }
@@ -93,7 +93,7 @@ int BFLoggerSetTarget(const char *target) {
         g_target = TARGET_OSLOG;
         if (!g_oslog) {
             const char *subsystem = g_prog[0] ? g_prog : "box";
-            g_oslog              = os_log_create(subsystem, "general");
+            g_oslog               = os_log_create(subsystem, "general");
             if (!g_oslog) {
                 g_oslog = OS_LOG_DEFAULT;
             }
@@ -111,7 +111,7 @@ int BFLoggerSetTarget(const char *target) {
         }
         const char *sourceName = g_prog[0] ? g_prog : "box";
         g_eventSource          = RegisterEventSourceA(NULL, sourceName);
-        g_targetExplicit = 1;
+        g_targetExplicit       = 1;
         return 0;
     }
 #endif
@@ -125,15 +125,15 @@ int BFLoggerSetTarget(const char *target) {
         g_filePath[sizeof(g_filePath) - 1] = '\0';
         g_file                             = fopen(g_filePath, "a");
         if (!g_file) {
-            g_target = TARGET_STDERR;
+            g_target         = TARGET_STDERR;
             g_targetExplicit = 1;
             return -1;
         }
-        g_target = TARGET_FILE;
+        g_target         = TARGET_FILE;
         g_targetExplicit = 1;
         return 0;
     }
-    g_target = TARGET_STDERR;
+    g_target         = TARGET_STDERR;
     g_targetExplicit = 1;
     return 0;
 }
@@ -237,21 +237,21 @@ void BFLogWriteV(BFLogLevel level, const char *fmt, va_list ap) {
             eventType = EVENTLOG_ERROR_TYPE;
             break;
         }
-        char      buffer[512];
-        LPCSTR    strings[1];
-        WORD      stringCount = 0;
-        DWORD     eventId     = 0x1000; /* generic */
+        char   buffer[512];
+        LPCSTR strings[1];
+        WORD   stringCount = 0;
+        DWORD  eventId     = 0x1000; /* generic */
         vsnprintf(buffer, sizeof(buffer), fmt, ap);
-        strings[0]   = buffer;
-        stringCount  = 1;
+        strings[0]    = buffer;
+        stringCount   = 1;
         HANDLE source = g_eventSource;
         if (!source) {
             const char *sourceName = g_prog[0] ? g_prog : "box";
             source                 = RegisterEventSourceA(NULL, sourceName);
         }
         if (source) {
-            ReportEventA(source, eventType, 0 /*category*/, eventId,
-                         NULL /*userSid*/, stringCount, 0 /*dataSize*/, strings, NULL /*rawData*/);
+            ReportEventA(source, eventType, 0 /*category*/, eventId, NULL /*userSid*/, stringCount,
+                         0 /*dataSize*/, strings, NULL /*rawData*/);
             if (source != g_eventSource) {
                 DeregisterEventSource(source);
             }

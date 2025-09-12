@@ -30,7 +30,7 @@ void BFLogWrite(BFLogLevel level, const char *fmt, ...);
 void BFLogWriteV(BFLogLevel level, const char *fmt, va_list ap);
 
 // Helpers for introspection / diagnostics
-BFLogLevel BFLoggerGetLevel(void);
+BFLogLevel  BFLoggerGetLevel(void);
 const char *BFLoggerLevelName(BFLogLevel level); // returns lowercase canonical name
 // Writes current target name into buffer: stderr|syslog|oslog|eventlog|file:/path
 void BFLoggerGetTarget(char *buffer, size_t bufferSize);

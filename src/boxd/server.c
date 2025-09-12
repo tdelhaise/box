@@ -27,9 +27,9 @@ typedef struct ServerDtlsOptions {
 
 // Simple in-memory object for demo GET/PUT
 typedef struct StoredObject {
-    char     *contentType;
-    uint8_t  *data;
-    uint32_t  dataLength;
+    char    *contentType;
+    uint8_t *data;
+    uint32_t dataLength;
 } StoredObject;
 
 static void destroy_stored_object(void *pointer) {
@@ -51,7 +51,8 @@ static void ServerPrintUsage(const char *program) {
             "Options:\n"
             "  --port <udp>           UDP port to bind (default %u)\n"
             "  --log-level <lvl>      trace|debug|info|warn|error (default info)\n"
-            "  --log-target <tgt>     override default platform target (Windows=eventlog, macOS=oslog, Unix=syslog, else=stderr); also accepts file:<path>\n"
+            "  --log-target <tgt>     override default platform target (Windows=eventlog, "
+            "macOS=oslog, Unix=syslog, else=stderr); also accepts file:<path>\n"
             "  --version              Print version and exit\n"
             "  --help                 Show this help and exit\n",
             program, (unsigned)BFDefaultPort);
@@ -172,22 +173,22 @@ int main(int argc, char **argv) {
         long pv = strtol(portEnvValue, NULL, 10);
         if (pv > 0 && pv < 65536) {
             serverPort = (uint16_t)pv;
-            portOrigin = "env";
+            portOrigin = "environment";
         }
     }
 
     // Log startup parameters (avoid printing secrets)
-    char        targetName[256] = {0};
+    char targetName[256] = {0};
     BFLoggerGetTarget(targetName, sizeof(targetName));
     const char *levelName = BFLoggerLevelName(BFLoggerGetLevel());
-    BFLog(
-        "boxd: start port=%u portOrigin=%s logLevel=%s logTarget=%s cert=%s key=%s pskId=%s psk=%s transport=%s",
-        (unsigned)serverPort, portOrigin, levelName, targetName,
-        options.certificateFile ? options.certificateFile : "(none)",
-        options.keyFile ? options.keyFile : "(none)",
-        options.preShareKeyIdentity ? options.preShareKeyIdentity : "(none)",
-        options.preShareKeyAscii ? "[set]" : "(unset)",
-        options.transport ? options.transport : "(default)");
+    BFLog("boxd: start port=%u portOrigin=%s logLevel=%s logTarget=%s cert=%s key=%s pskId=%s "
+          "psk=%s transport=%s",
+          (unsigned)serverPort, portOrigin, levelName, targetName,
+          options.certificateFile ? options.certificateFile : "(none)",
+          options.keyFile ? options.keyFile : "(none)",
+          options.preShareKeyIdentity ? options.preShareKeyIdentity : "(none)",
+          options.preShareKeyAscii ? "[set]" : "(unset)",
+          options.transport ? options.transport : "(default)");
 
     // Create in-memory store for demo
     BFSharedDictionary *store = BFSharedDictionaryCreate(destroy_stored_object);
