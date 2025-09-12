@@ -62,6 +62,17 @@ int BFV1PackStatus(uint8_t *buffer, size_t bufferLength, uint32_t command, uint6
 int BFV1UnpackStatus(const uint8_t *payload, uint32_t payloadLength, uint8_t *outStatusCode,
                      const uint8_t **outMessage, uint32_t *outMessageLength);
 
+// HELLO convenience helpers
+// Payload layout (unencrypted):
+//   - 1 byte  : statusCode (BFV1StatusCode)
+//   - 1 byte  : versionCount (N)
+//   - 2*N     : versions (uint16 big-endian)
+int BFV1PackHello(uint8_t *buffer, size_t bufferLength, uint64_t requestId, uint8_t statusCode,
+                  const uint16_t *versions, uint8_t versionCount);
+
+int BFV1UnpackHello(const uint8_t *payload, uint32_t payloadLength, uint8_t *outStatusCode,
+                    uint16_t *outVersions, uint8_t maxVersions, uint8_t *outVersionCount);
+
 #ifdef __cplusplus
 }
 #endif

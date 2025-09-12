@@ -100,13 +100,14 @@ int main(int argc, char **argv) {
         if (BFV1Unpack(buffer, (size_t)readCount, &command, &requestId, &payload, &payloadLength) >
                 0 &&
             command == BFV1_HELLO) {
-            uint8_t        statusCode     = 0xFF;
-            const uint8_t *messagePointer = NULL;
-            uint32_t       messageLength  = 0;
-            if (BFV1UnpackStatus(payload, payloadLength, &statusCode, &messagePointer,
-                                 &messageLength) == 0) {
-                BFLog("box: HELLO serveur: status=%u message=%.*s", (unsigned)statusCode,
-                      messageLength, (const char *)messagePointer);
+            uint8_t  statusCode   = 0xFF;
+            uint16_t versions[4]  = {0};
+            uint8_t  versionCount = 0;
+            if (BFV1UnpackHello(payload, payloadLength, &statusCode, versions,
+                                (uint8_t)(sizeof(versions) / sizeof(versions[0])),
+                                &versionCount) == 0) {
+                BFLog("box: HELLO serveur: status=%u versions=%u", (unsigned)statusCode,
+                      (unsigned)versionCount);
             } else {
                 BFLog("box: HELLO serveur avec payload non conforme");
             }

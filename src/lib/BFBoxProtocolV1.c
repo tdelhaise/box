@@ -151,3 +151,50 @@ int BFV1UnpackStatus(const uint8_t *payload, uint32_t payloadLength, uint8_t *ou
     }
     return 0;
 }
+
+int BFV1PackHello(uint8_t *buffer, size_t bufferLength, uint64_t requestId, uint8_t statusCode,
+                  const uint16_t *versions, uint8_t versionCount) {
+    if (buffer == NULL) {
+        return -1;
+    }
+    // payload size: 1 (status) + 1 (count) + 2*count (versions)
+    uint32_t payloadLength = (uint32_t)(2U * versionCount + 2U);
+    if (bufferLength < 18 + payloadLength) {
+        return -2;
+    }
+    uint8_t *payload = buffer + 18;
+    payload[0]       = statusCode;
+    payload[1]       = versionCount;
+    for (uint8_t index = 0; index < versionCount; ++index) {
+        uint16_t beVersion = htons(versions[index]);
+        memcpy(&payload[2 + index * 2U], &beVersion, sizeof(beVersion));
+    }
+    return BFV1Pack(buffer, bufferLength, BFV1_HELLO, requestId, payload, payloadLength);
+}
+
+int BFV1UnpackHello(const uint8_t *payload, uint32_t payloadLength, uint8_t *outStatusCode,
+                    uint16_t *outVersions, uint8_t maxVersions, uint8_t *outVersionCount) {
+    if (payload == NULL || payloadLength < 2U) {
+        return -1;
+    }
+    uint8_t status = payload[0];
+    uint8_t count  = payload[1];
+    if (outStatusCode) {
+        *outStatusCode = status;
+    }
+    if ((uint32_t)(2U + 2U * count) > payloadLength) {
+        return -2; // truncated
+    }
+    if (outVersionCount) {
+        *outVersionCount = count;
+    }
+    if (outVersions && maxVersions > 0 && count > 0) {
+        uint8_t copyCount = (count > maxVersions) ? maxVersions : count;
+        for (uint8_t index = 0; index < copyCount; ++index) {
+            uint16_t beVersion = 0;
+            memcpy(&beVersion, &payload[2 + index * 2U], sizeof(beVersion));
+            outVersions[index] = ntohs(beVersion);
+        }
+    }
+    return 0;
+}
