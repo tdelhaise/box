@@ -33,3 +33,25 @@ jobs:
       - name: Run tests
         run: make test
 
+  dockerized-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build dev image
+        run: docker build -f Dockerfile.dev -t box-dev .
+
+      - name: Build and test inside container
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}":/work \
+            -w /work \
+            --user root \
+            box-dev bash -lc '
+              make configure BUILD_TYPE=Debug && \
+              make build && \
+              scripts/check_format.sh && \
+              make check && \
+              make test
+            '
