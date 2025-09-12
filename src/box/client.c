@@ -66,8 +66,8 @@ static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions
                 exit(2);
             }
         } else if (strcmp(arg, "--put") == 0 && argumentIndex + 2 < argc) {
-            outAction->doPut = 1;
-            const char *spec = argv[++argumentIndex];
+            outAction->doPut  = 1;
+            const char *spec  = argv[++argumentIndex];
             const char *colon = strchr(spec, ':');
             if (colon) {
                 size_t queuePathLength = (size_t)(colon - spec);
