@@ -145,17 +145,19 @@ if(BOX_ENABLE_UBSAN AND CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT MSVC)
   add_link_options(-fsanitize=undefined)
 endif()
 
-# Executables
-add_executable(boxd src/boxd/server.c)
-target_link_libraries(boxd PRIVATE BoxFoundation)
+if(NOT BOX_BUILD_MINIMAL)
+  # Executables
+  add_executable(boxd src/boxd/server.c)
+  target_link_libraries(boxd PRIVATE BoxFoundation)
 
-add_executable(box src/box/client.c)
-target_link_libraries(box PRIVATE BoxFoundation)
+  add_executable(box src/box/client.c)
+  target_link_libraries(box PRIVATE BoxFoundation)
+endif()
 
 # ---- LTO / IPO ----
 # CMake gère l'IPO via la propriété INTERPROCEDURAL_OPTIMIZATION (>= 3.9)
 include(CheckIPOSupported)
-if(BOX_ENABLE_LTO AND (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
+if(BOX_ENABLE_LTO AND (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo") AND NOT BOX_BUILD_MINIMAL)
   check_ipo_supported(RESULT ipo_ok OUTPUT ipo_msg)
   if(ipo_ok)
     message(STATUS "IPO/LTO: enabled")
@@ -190,57 +192,59 @@ if(BOX_HARDEN AND (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQ
   endif()
 endif()
 
-# Tests
-enable_testing()
-include(CTest)
-add_executable(test_BFBoxProtocol test/test_BFBoxProtocol.c src/lib/BFBoxProtocol.c)
-target_include_directories(test_BFBoxProtocol PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-add_test(NAME test_BFBoxProtocol COMMAND test_BFBoxProtocol)
+if(NOT BOX_BUILD_MINIMAL)
+  # Tests
+  enable_testing()
+  include(CTest)
+  add_executable(test_BFBoxProtocol test/test_BFBoxProtocol.c src/lib/BFBoxProtocol.c)
+  target_include_directories(test_BFBoxProtocol PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  add_test(NAME test_BFBoxProtocol COMMAND test_BFBoxProtocol)
 
-# BFMemory unit test (links against BoxFoundation for implementation)
-add_executable(test_BFMemory test/test_BFMemory.c)
-target_include_directories(test_BFMemory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(test_BFMemory PRIVATE BoxFoundation)
-add_test(NAME test_BFMemory COMMAND test_BFMemory)
+  # BFMemory unit test (links against BoxFoundation for implementation)
+  add_executable(test_BFMemory test/test_BFMemory.c)
+  target_include_directories(test_BFMemory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFMemory PRIVATE BoxFoundation)
+  add_test(NAME test_BFMemory COMMAND test_BFMemory)
 
-# Integration test: DTLS with certificates (client verifies server via CA + hostname)
-add_test(NAME it_dtls_cert_verify COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/test_dtls_cert_verify.sh)
-add_executable(test_BFRunloop test/test_BFRunloop.c)
-target_include_directories(test_BFRunloop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(test_BFRunloop PRIVATE BoxFoundation)
-add_test(NAME test_BFRunloop COMMAND test_BFRunloop)
+  # Integration test: DTLS with certificates (client verifies server via CA + hostname)
+  add_test(NAME it_dtls_cert_verify COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/test_dtls_cert_verify.sh)
+  add_executable(test_BFRunloop test/test_BFRunloop.c)
+  target_include_directories(test_BFRunloop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFRunloop PRIVATE BoxFoundation)
+  add_test(NAME test_BFRunloop COMMAND test_BFRunloop)
 
-# BFSharedArray unit test
-add_executable(test_BFSharedArray test/test_BFSharedArray.c)
-target_include_directories(test_BFSharedArray PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(test_BFSharedArray PRIVATE BoxFoundation)
-add_test(NAME test_BFSharedArray COMMAND test_BFSharedArray)
+  # BFSharedArray unit test
+  add_executable(test_BFSharedArray test/test_BFSharedArray.c)
+  target_include_directories(test_BFSharedArray PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFSharedArray PRIVATE BoxFoundation)
+  add_test(NAME test_BFSharedArray COMMAND test_BFSharedArray)
 
-# BFSharedDictionary unit test
-add_executable(test_BFSharedDictionary test/test_BFSharedDictionary.c)
-target_include_directories(test_BFSharedDictionary PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(test_BFSharedDictionary PRIVATE BoxFoundation)
-add_test(NAME test_BFSharedDictionary COMMAND test_BFSharedDictionary)
-add_executable(test_BFSharedArrayStress test/test_BFSharedArrayStress.c)
-target_include_directories(test_BFSharedArrayStress PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(test_BFSharedArrayStress PRIVATE BoxFoundation)
-add_test(NAME test_BFSharedArrayStress COMMAND test_BFSharedArrayStress)
-add_executable(test_BFSharedDictionaryStress test/test_BFSharedDictionaryStress.c)
-target_include_directories(test_BFSharedDictionaryStress PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(test_BFSharedDictionaryStress PRIVATE BoxFoundation)
-add_test(NAME test_BFSharedDictionaryStress COMMAND test_BFSharedDictionaryStress)
-add_executable(bench_BFSharedArray bench/bench_BFSharedArray.c)
-target_include_directories(bench_BFSharedArray PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(bench_BFSharedArray PRIVATE BoxFoundation)
-add_executable(bench_BFSharedDictionary bench/bench_BFSharedDictionary.c)
-target_include_directories(bench_BFSharedDictionary PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(bench_BFSharedDictionary PRIVATE BoxFoundation)
-add_executable(example_shared_array examples/shared_array.c)
-target_include_directories(example_shared_array PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(example_shared_array PRIVATE BoxFoundation)
-add_executable(example_shared_dictionary examples/shared_dictionary.c)
-target_include_directories(example_shared_dictionary PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(example_shared_dictionary PRIVATE BoxFoundation)
+  # BFSharedDictionary unit test
+  add_executable(test_BFSharedDictionary test/test_BFSharedDictionary.c)
+  target_include_directories(test_BFSharedDictionary PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFSharedDictionary PRIVATE BoxFoundation)
+  add_test(NAME test_BFSharedDictionary COMMAND test_BFSharedDictionary)
+  add_executable(test_BFSharedArrayStress test/test_BFSharedArrayStress.c)
+  target_include_directories(test_BFSharedArrayStress PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFSharedArrayStress PRIVATE BoxFoundation)
+  add_test(NAME test_BFSharedArrayStress COMMAND test_BFSharedArrayStress)
+  add_executable(test_BFSharedDictionaryStress test/test_BFSharedDictionaryStress.c)
+  target_include_directories(test_BFSharedDictionaryStress PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFSharedDictionaryStress PRIVATE BoxFoundation)
+  add_test(NAME test_BFSharedDictionaryStress COMMAND test_BFSharedDictionaryStress)
+  add_executable(bench_BFSharedArray bench/bench_BFSharedArray.c)
+  target_include_directories(bench_BFSharedArray PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(bench_BFSharedArray PRIVATE BoxFoundation)
+  add_executable(bench_BFSharedDictionary bench/bench_BFSharedDictionary.c)
+  target_include_directories(bench_BFSharedDictionary PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(bench_BFSharedDictionary PRIVATE BoxFoundation)
+  add_executable(example_shared_array examples/shared_array.c)
+  target_include_directories(example_shared_array PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(example_shared_array PRIVATE BoxFoundation)
+  add_executable(example_shared_dictionary examples/shared_dictionary.c)
+  target_include_directories(example_shared_dictionary PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(example_shared_dictionary PRIVATE BoxFoundation)
+endif()
 
 # Cible utilitaire : génération de certificats autosignés (build dir)
 add_custom_target(certs
@@ -250,20 +254,17 @@ add_custom_target(certs
 	BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/server.key ${CMAKE_CURRENT_BINARY_DIR}/server.pem
 VERBATIM)
 
-include(GNUInstallDirs)
-install(TARGETS boxd box BoxFoundation
+if(NOT BOX_BUILD_MINIMAL)
+  include(GNUInstallDirs)
+  install(TARGETS boxd box BoxFoundation
 	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(FILES systemd/boxd.service DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/systemd/system)
-# Installe le fichier tmpfiles.d
-# Debian/Ubuntu préfèrent /usr/lib/tmpfiles.d (système),
-# /etc/tmpfiles.d est pour les overrides locaux.
-install(FILES packaging/tmpfiles.d/boxd.conf
-        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/tmpfiles.d)  # maps to /usr/share/tmpfiles.d
-# OU, si on veux vraiment /usr/lib/tmpfiles.d :
-# install(FILES packaging/tmpfiles.d/boxd.conf DESTINATION /usr/lib/tmpfiles.d)
+  install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  install(FILES systemd/boxd.service DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/systemd/system)
+  install(FILES packaging/tmpfiles.d/boxd.conf
+          DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/tmpfiles.d)
+endif()
 
 
 set(CPACK_PACKAGE_NAME "box")

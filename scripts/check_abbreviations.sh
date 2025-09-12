@@ -12,7 +12,18 @@ cd "$ROOT_DIR"
 echo "Checking for abbreviated identifiers (warn-only by default)..."
 
 PATTERN='\b(buf|addr|var|len|sock|cfg|env|tmp|ptr|idx|cnt|fn|str|num|sz|pkt|hdr|req|resp|msg|ctx|src|dst|cb)\b'
-FILES=$(rg -n --no-heading --color never -e "$PATTERN" include src test || true)
+
+# Allow overriding directories via args or ABBREV_PATHS env var
+if [ "$#" -gt 0 ]; then
+  DIRS=("$@")
+elif [ -n "${ABBREV_PATHS:-}" ]; then
+  # shellcheck disable=SC2206
+  DIRS=(${ABBREV_PATHS})
+else
+  DIRS=(include src test)
+fi
+
+FILES=$(rg -n --no-heading --color never -e "$PATTERN" "${DIRS[@]}" || true)
 
 if [ -n "$FILES" ]; then
   echo "--- Abbreviation matches ---"
@@ -27,4 +38,3 @@ else
 fi
 
 echo "Abbreviation check: OK (warn-only mode)"
-
