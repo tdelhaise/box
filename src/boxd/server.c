@@ -61,6 +61,10 @@ static void ServerPrintUsage(const char *program) {
             "  --log-level <lvl>      trace|debug|info|warn|error (default info)\n"
             "  --log-target <tgt>     override default platform target (Windows=eventlog, "
             "macOS=oslog, Unix=syslog, else=stderr); also accepts file:<path>\n"
+            "\n"
+            "Notes:\n"
+            "  - Refuses to run as root (Unix/macOS).\n"
+            "  - Admin channel (Unix): ~/.box/run/boxd.sock (mode 0600); try 'box admin status'.\n"
             "  --version              Print version and exit\n"
             "  --help                 Show this help and exit\n",
             program, (unsigned)BFDefaultPort);
