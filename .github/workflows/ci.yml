@@ -49,6 +49,7 @@ jobs:
             -w /work \
             --user root \
             box-dev bash -lc '
+              git config --global --add safe.directory /work || true && \
               make configure BUILD_TYPE=Debug && \
               make build && \
               scripts/check_format.sh && \
