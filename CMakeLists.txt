@@ -44,6 +44,9 @@ endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+# Expose project version to C as BOX_VERSION
+add_compile_definitions(BOX_VERSION="${PROJECT_VERSION}")
+
 if(NOT BOX_BUILD_MINIMAL)
   # Full BoxFoundation library (with DTLS/OpenSSL)
   add_library(BoxFoundation
@@ -60,6 +63,7 @@ if(NOT BOX_BUILD_MINIMAL)
           src/lib/BFUdpClient.c
           src/lib/BFDtlsOpenSSL.c
           src/lib/BFBoxProtocol.c
+          src/lib/BFVersion.c
   )
   target_link_libraries(BoxFoundation PUBLIC OpenSSL::SSL OpenSSL::Crypto)
 else()
@@ -70,6 +74,7 @@ else()
           src/lib/BFSharedArray.c
           src/lib/BFSharedDictionary.c
           src/lib/BFBoxProtocol.c
+          src/lib/BFVersion.c
   )
   target_include_directories(BoxCoreMinimal PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 endif()

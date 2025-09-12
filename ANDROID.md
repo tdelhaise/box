@@ -28,6 +28,19 @@ Example (arm64-v8a)
 Artifacts
 - Static or shared lib `libBoxCoreMinimal` suitable for packaging in an AAR via JNI.
 
+JNI Wrapper (android/jni)
+- A minimal JNI wrapper is provided under `android/jni` that links to `BoxCoreMinimal` and exposes:
+  - `org.box.Native.boxVersion()` → returns version string from the C core.
+- Build JNI wrapper:
+  export ANDROID_NDK=$HOME/Android/Sdk/ndk/26.1.10909125
+  cmake -S android/jni -B build-android-jni \
+    -D CMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
+    -D ANDROID_ABI=arm64-v8a \
+    -D ANDROID_PLATFORM=android-24 \
+    -D BOX_BUILD_MINIMAL=ON \
+    -D CMAKE_BUILD_TYPE=Release
+  cmake --build build-android-jni -j
+
 JNI Wrapper (Sketch)
 - Create an Android module that loads `libBoxCoreMinimal` and wraps C APIs with JNI methods.
 - Example class method:
@@ -79,4 +92,4 @@ Planned (Future)
 
 CI (Build-Only, Minimal)
 - Workflow includes a job that sets up the Android NDK and compiles `BoxCoreMinimal` for `arm64-v8a` to validate cross-builds.
-
+ - The job also builds the JNI wrapper (`boxjni`) to validate linking.
