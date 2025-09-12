@@ -246,6 +246,11 @@ if(NOT BOX_BUILD_MINIMAL)
   target_link_libraries(test_BFAead PRIVATE BoxFoundation)
   add_test(NAME test_BFAead COMMAND test_BFAead)
 
+  add_executable(test_BFNetworkNoise test/test_BFNetworkNoise.c)
+  target_include_directories(test_BFNetworkNoise PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFNetworkNoise PRIVATE BoxFoundation)
+  add_test(NAME test_BFNetworkNoise COMMAND test_BFNetworkNoise)
+
   # Integration tests placeholder (DTLS removed; Noise to be added later)
   add_executable(test_BFRunloop test/test_BFRunloop.c)
   target_include_directories(test_BFRunloop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
