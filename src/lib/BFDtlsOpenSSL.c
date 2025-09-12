@@ -29,13 +29,14 @@ static void init_cookie_secret(void) {
     if (g_cookie_secret_inited)
         return;
 
-    const char *env = getenv("BOX_COOKIE_SECRET");
-    if (env && *env) {
+    const char *environmentValue = getenv("BOX_COOKIE_SECRET");
+    if (environmentValue && *environmentValue) {
         // Tronque/pad à 32 octets
-        size_t elen = strlen(env);
+        size_t environmentLength = strlen(environmentValue);
         memset(g_cookie_secret, 0, sizeof(g_cookie_secret));
-        memcpy(g_cookie_secret, env,
-               elen > sizeof(g_cookie_secret) ? sizeof(g_cookie_secret) : elen);
+        memcpy(g_cookie_secret, environmentValue,
+               environmentLength > sizeof(g_cookie_secret) ? sizeof(g_cookie_secret)
+                                                           : environmentLength);
         g_cookie_secret_inited = 1;
         return;
     }
@@ -329,14 +330,14 @@ static BFDtls *dtls_new_common(int fileDescriptor, int is_server, const BFDtlsCo
 }
 
 static int wait_fd_ready(int fd, int want_write, const struct timeval *timeout) {
-    fd_set rfds;
-    fd_set wfds;
-    FD_ZERO(&rfds);
-    FD_ZERO(&wfds);
+    fd_set readFds;
+    fd_set writeFds;
+    FD_ZERO(&readFds);
+    FD_ZERO(&writeFds);
     if (want_write) {
-        FD_SET(fd, &wfds);
+        FD_SET(fd, &writeFds);
     } else {
-        FD_SET(fd, &rfds);
+        FD_SET(fd, &readFds);
     }
     // select modifies the timeout; make a local copy if provided
     struct timeval  tv_copy;
@@ -345,10 +346,11 @@ static int wait_fd_ready(int fd, int want_write, const struct timeval *timeout) 
         tv_copy = *timeout;
         ptv     = &tv_copy;
     }
-    int r = select(fd + 1, want_write ? NULL : &rfds, want_write ? &wfds : NULL, NULL, ptv);
-    if (r < 0 && errno == EINTR)
+    int selectResult =
+        select(fd + 1, want_write ? NULL : &readFds, want_write ? &writeFds : NULL, NULL, ptv);
+    if (selectResult < 0 && errno == EINTR)
         return 0; // treat as timeout/continue
-    return r;
+    return selectResult;
 }
 
 static int dtls_handle_want(BFDtls *dtls, int want_write) {
@@ -393,16 +395,16 @@ int BFDtlsHandshakeServer(BFDtls *dtls, struct sockaddr_storage *peer, socklen_t
     // Perform blocking handshake with DTLS timers and retransmissions
     unsigned int timeouts = 0;
     for (;;) {
-        int ret = SSL_do_handshake(dtls->ssl);
-        if (ret == 1)
+        int handshakeResult = SSL_do_handshake(dtls->ssl);
+        if (handshakeResult == 1)
             return BF_OK;
 
-        int err = SSL_get_error(dtls->ssl, ret);
-        if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
-            int r = dtls_handle_want(dtls, err == SSL_ERROR_WANT_WRITE);
-            if (r < 0)
+        int errorCode = SSL_get_error(dtls->ssl, handshakeResult);
+        if (errorCode == SSL_ERROR_WANT_READ || errorCode == SSL_ERROR_WANT_WRITE) {
+            int wantResult = dtls_handle_want(dtls, errorCode == SSL_ERROR_WANT_WRITE);
+            if (wantResult < 0)
                 return BF_ERR;
-            if (r == 0) {
+            if (wantResult == 0) {
                 // Count retransmit timeouts to avoid infinite loops
                 timeouts++;
                 if (timeouts > 8)
@@ -430,16 +432,16 @@ int BFDtlsHandshakeClient(BFDtls *dtls, const struct sockaddr *server, socklen_t
     // Blocking handshake with DTLS timers
     unsigned int timeouts = 0;
     for (;;) {
-        int ret = SSL_do_handshake(dtls->ssl);
-        if (ret == 1)
+        int handshakeResult = SSL_do_handshake(dtls->ssl);
+        if (handshakeResult == 1)
             return BF_OK;
 
-        int err = SSL_get_error(dtls->ssl, ret);
-        if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
-            int r = dtls_handle_want(dtls, err == SSL_ERROR_WANT_WRITE);
-            if (r < 0)
+        int errorCode = SSL_get_error(dtls->ssl, handshakeResult);
+        if (errorCode == SSL_ERROR_WANT_READ || errorCode == SSL_ERROR_WANT_WRITE) {
+            int wantResult = dtls_handle_want(dtls, errorCode == SSL_ERROR_WANT_WRITE);
+            if (wantResult < 0)
                 return BF_ERR;
-            if (r == 0) {
+            if (wantResult == 0) {
                 timeouts++;
                 if (timeouts > 8)
                     return BF_ERR;
@@ -454,13 +456,13 @@ int BFDtlsSend(BFDtls *dtls, const void *buffet, int length) {
     if (!dtls)
         return BF_ERR;
     for (;;) {
-        int n = SSL_write(dtls->ssl, buffet, length);
-        if (n > 0)
-            return n;
-        int err = SSL_get_error(dtls->ssl, n);
-        if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
-            int r = dtls_handle_want(dtls, err == SSL_ERROR_WANT_WRITE);
-            if (r < 0)
+        int bytesWritten = SSL_write(dtls->ssl, buffet, length);
+        if (bytesWritten > 0)
+            return bytesWritten;
+        int errorCode = SSL_get_error(dtls->ssl, bytesWritten);
+        if (errorCode == SSL_ERROR_WANT_READ || errorCode == SSL_ERROR_WANT_WRITE) {
+            int wantResult = dtls_handle_want(dtls, errorCode == SSL_ERROR_WANT_WRITE);
+            if (wantResult < 0)
                 return BF_ERR;
             continue; // retry
         }
@@ -472,13 +474,13 @@ int BFDtlsRecv(BFDtls *dtls, void *buffet, int length) {
     if (!dtls)
         return BF_ERR;
     for (;;) {
-        int n = SSL_read(dtls->ssl, buffet, length);
-        if (n > 0)
-            return n;
-        int err = SSL_get_error(dtls->ssl, n);
-        if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
-            int r = dtls_handle_want(dtls, err == SSL_ERROR_WANT_WRITE);
-            if (r < 0)
+        int bytesRead = SSL_read(dtls->ssl, buffet, length);
+        if (bytesRead > 0)
+            return bytesRead;
+        int errorCode = SSL_get_error(dtls->ssl, bytesRead);
+        if (errorCode == SSL_ERROR_WANT_READ || errorCode == SSL_ERROR_WANT_WRITE) {
+            int wantResult = dtls_handle_want(dtls, errorCode == SSL_ERROR_WANT_WRITE);
+            if (wantResult < 0)
                 return BF_ERR;
             continue; // retry
         }

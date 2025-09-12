@@ -69,13 +69,13 @@ BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int 
     c->udp_fd    = udpSocket;
     c->transport = transport;
 
-    BFDtlsConfig cfg;
-    fill_dtls_config(security, &cfg);
+    BFDtlsConfig dtlsConfig;
+    fill_dtls_config(security, &dtlsConfig);
     BFDtls *dtls = NULL;
     if (security &&
         (security->certificateFile || security->keyFile ||
          (security->preShareKeyIdentity && security->preShareKey && security->preShareKeyLength))) {
-        dtls = BFDtlsClientNewEx(udpSocket, &cfg);
+        dtls = BFDtlsClientNewEx(udpSocket, &dtlsConfig);
     } else {
         dtls = BFDtlsClientNew(udpSocket);
     }
@@ -126,13 +126,13 @@ BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int u
     c->udp_fd    = udpSocket;
     c->transport = transport;
 
-    BFDtlsConfig cfg;
-    fill_dtls_config(security, &cfg);
+    BFDtlsConfig dtlsConfig;
+    fill_dtls_config(security, &dtlsConfig);
     BFDtls *dtls = NULL;
     if (security &&
         (security->certificateFile || security->keyFile ||
          (security->preShareKeyIdentity && security->preShareKey && security->preShareKeyLength))) {
-        dtls = BFDtlsServerNewEx(udpSocket, &cfg);
+        dtls = BFDtlsServerNewEx(udpSocket, &dtlsConfig);
     } else {
         dtls = BFDtlsServerNew(udpSocket);
     }

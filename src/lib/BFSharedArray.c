@@ -79,10 +79,10 @@ size_t BFSharedArrayCount(BFSharedArray *array) {
     return currentCount;
 }
 
-static int size_to_index(size_t idx) {
-    if (idx > (size_t)INT_MAX)
+static int size_to_index(size_t sizeIndex) {
+    if (sizeIndex > (size_t)INT_MAX)
         return BF_ERR;
-    return (int)idx;
+    return (int)sizeIndex;
 }
 
 int BFSharedArrayInsert(BFSharedArray *array, size_t index, void *object) {
