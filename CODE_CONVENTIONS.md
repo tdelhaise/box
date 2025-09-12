@@ -1,0 +1,98 @@
+Code Conventions and Shared Guidelines
+
+Purpose
+- Provide a concise, shared reference for technical architecture choices, dependencies, naming/style conventions, and operational constraints used across `box` and `boxd`.
+- When in doubt, the specification in `SPECS.md` is the source of truth for protocol and behavior.
+
+Architecture Conventions
+- Components: `box` (CLI) and `boxd` (daemon). The Location Service (LS) is embedded within `boxd` and is strictly self‑hosted per user.
+- Transport: UDP over IPv6 preferred; IPv4 supported. A single configurable UDP port per node.
+- Protocol: Binary framing with magic 'B', version, length, command, request_id. Commands: HELLO, PUT, GET, DELETE, STATUS, SEARCH, BYE.
+- Queues: Logical destinations under a user’s server (e.g., `/message`, `/photos`, `/uuid`, `/location`).
+- ACLs: Default‑deny, intersection of global and queue‑level rules. Principals: owner, user UUID, node UUID, any. Capabilities: put/get/list/delete.
+- Location Service data: uses `/uuid` for presence and `/location` for geo; LS persists and consumes via queues (no external DB required).
+
+Security and Identity
+- Identities: User UUID and Node UUID. Each node has a long‑term identity keypair (Ed25519).
+- Crypto suite: Noise NK/IK over UDP using X25519 (ECDH), Ed25519 (signatures), and XChaCha20‑Poly1305 (AEAD). Replay protection via nonces + timestamps.
+- Authorization: Servers accept requests only from peers registered in LS per user. Enforce ACLs on all commands.
+- Privileges: `boxd` must not run as root (Unix) or Administrator (Windows). Refuse to start if elevated.
+- Admin channel: local‑only (Unix socket `~/.box/run/boxd.sock` or Windows named pipe), same‑user access enforced by OS permissions.
+
+Networking and NAT
+- Prefer IPv6 with a firewall allow rule for the chosen UDP port. For IPv4, use manual port forwarding or opt‑in automatic mapping.
+- Port mapping methods (opt‑in, gateway‑scoped only): PCP → NAT‑PMP → UPnP. Keepalive every ~25s to maintain mappings.
+- Hole punching and user‑owned relays are optional fallbacks; end‑to‑end encryption applies regardless of path.
+
+Storage and Data
+- Storage root: `<root>/<user_uuid>/<queue>/<digest>` with metadata sidecar; digest is SHA‑256 of content.
+- Index: portable binary B‑tree by default; pluggable backends allowed (BSD libdb, LMDB) behind build flags.
+- Data at rest: optional encryption with a server‑managed key (future enhancement).
+
+Configuration and Paths
+- Format: TOML for human‑editable configs.
+- Unix/macOS
+  - Config: `~/.box/box.toml` (CLI), `~/.box/boxd.toml` (daemon)
+  - Data: `~/.box/data`
+  - Keys: `~/.box/keys/identity.ed25519`, `~/.box/keys/client.ed25519` (optional)
+  - Admin socket: `~/.box/run/boxd.sock`
+- Windows
+  - Config: `%USERPROFILE%\.box\box.toml`, `%USERPROFILE%\.box\boxd.toml`
+  - Data: `%USERPROFILE%\.box\data`
+  - Keys: `%USERPROFILE%\.box\keys\identity.ed25519`
+  - Admin pipe: `\\.\pipe\boxd`
+- Permissions: directories `700`, key files `600`.
+
+Dependencies
+- Crypto: `libsodium` (or equivalent) for Ed25519/X25519 and XChaCha20‑Poly1305.
+- DTLS (legacy/bring‑up path): OpenSSL backend is present; used only while Noise path matures.
+- Storage: portable B‑tree (in‑tree) with optional BSD libdb or LMDB backends.
+- Build: Make/CMake; scripts for formatting and naming exist under `scripts/`.
+
+C Coding Style
+- Standard: C11 (or C99 if required by toolchain). No compiler extensions unless guarded.
+- Headers
+  - Public headers under `include/box/` expose stable APIs (prefix `BF` for BoxFoundation).
+  - Internal headers stay in `src/lib` or have `*Internal.h` suffix; not installed.
+- Naming
+  - Types and enums: `PascalCase` with `BF` prefix (e.g., `BFNetworkConnection`, `BFMessageType`).
+  - Functions: `BF` prefix + `PascalCase` (e.g., `BFNetworkSend`, `BFProtocolPack`).
+  - Macros/constants: `BF_SOMETHING` or `BFMaxDatagram` (follow existing style for constants).
+  - Modules: files named `BF<Module>.c` / `BF<Module>.h` (e.g., `BFNetwork.c`, `BFRunloop.c`).
+  - App‑specific code can use `box_`/`boxd_` prefixes for non‑library helpers.
+- Formatting
+  - Indentation: 4 spaces (no tabs). Brace on same line. Keep lines under ~100 columns when practical.
+  - Use `scripts/format.sh` and `scripts/check_format.sh` where available; do not reformat unrelated code in functional PRs.
+- Error handling
+  - Return non‑negative on success (byte counts, 0/1) and negative error codes on failure where applicable.
+  - Use logging helpers: `BFLog`, `BFWarn`, `BFError`, `BFFatal`. Do not print directly to stdout/stderr outside of CLI UX or fatal diagnostics.
+- Memory
+  - Ownership clear at API boundaries; provide `*Free` or `Close` functions for allocated/opaque types.
+  - Avoid global mutable state; if unavoidable, guard with runloop or atomics.
+- Concurrency
+  - Prefer `BFRunloop` for eventing; avoid ad‑hoc threads. If threads are required, encapsulate and document synchronization.
+- Protocol
+  - Follow `SPECS.md` for framing and versioning. Do not break wire compatibility within a major version.
+
+Testing
+- Unit tests live under `test/` with file names `test_<Module>.c` mirroring the library components.
+- Focus tests on serialization, storage correctness, ACL evaluation, and crypto primitives via mocks.
+- For integration tests, prefer loopback/IPv6 first; add network tests behind an opt‑in flag.
+
+Operational Conventions
+- Default‑deny ACLs; explicit grants required. Public queues like `/uuid` and `/location` may allow `get/list` for `any`, but `delete` is owner‑only by default.
+- NAT features are opt‑in. Mapping is attempted only against the local gateway and never persisted without user consent.
+- `box check connectivity` is the standard diagnostic sequence; JSON output used for automation.
+
+Documentation
+- Protocol and behavior live in `SPECS.md`.
+- Roadmap and phases in `DEVELOPMENT_STRATEGY.md`.
+- Service setup guidance: `systemd/boxd.service` and platform notes in README.
+
+Platform Notes
+- Linux/macOS supported first; Windows later. Always run `boxd` under a non‑privileged user.
+- Prefer IPv6; if using IPv4 under CGNAT, expect to rely on mappings or a user‑owned relay.
+
+Change Management
+- Conventions evolve with the project; propose changes via PRs that update this file alongside the impacted code.
+
