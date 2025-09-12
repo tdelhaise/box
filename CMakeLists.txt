@@ -59,6 +59,7 @@ if(NOT BOX_BUILD_MINIMAL)
           src/lib/BFNetwork.c
           src/lib/BFNetworkQuic.c
           src/lib/BFNetworkNoise.c
+          src/lib/BFAead.c
           src/lib/BFUdp.c
           src/lib/BFUdpServer.c
           src/lib/BFUdpClient.c
@@ -238,6 +239,11 @@ if(NOT BOX_BUILD_MINIMAL)
   target_include_directories(test_BFMemory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(test_BFMemory PRIVATE BoxFoundation)
   add_test(NAME test_BFMemory COMMAND test_BFMemory)
+
+  add_executable(test_BFAead test/test_BFAead.c)
+  target_include_directories(test_BFAead PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFAead PRIVATE BoxFoundation)
+  add_test(NAME test_BFAead COMMAND test_BFAead)
 
   # Integration tests placeholder (DTLS removed; Noise to be added later)
   add_executable(test_BFRunloop test/test_BFRunloop.c)
