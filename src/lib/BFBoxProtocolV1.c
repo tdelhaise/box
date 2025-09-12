@@ -5,11 +5,11 @@
 
 static uint64_t bf_htonll(uint64_t value) {
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    uint32_t high = (uint32_t)(value >> 32);
-    uint32_t low  = (uint32_t)(value & 0xFFFFFFFFu);
-    uint64_t a    = ((uint64_t)htonl(low)) << 32;
-    uint64_t b    = ((uint64_t)htonl(high));
-    return a | b;
+    uint32_t highPart       = (uint32_t)(value >> 32);
+    uint32_t lowPart        = (uint32_t)(value & 0xFFFFFFFFu);
+    uint64_t swappedLowHigh = ((uint64_t)htonl(lowPart)) << 32;
+    uint64_t swappedHighLow = ((uint64_t)htonl(highPart));
+    return swappedLowHigh | swappedHighLow;
 #else
     return value;
 #endif
@@ -17,11 +17,11 @@ static uint64_t bf_htonll(uint64_t value) {
 
 static uint64_t bf_ntohll(uint64_t value) {
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    uint32_t high = (uint32_t)(value >> 32);
-    uint32_t low  = (uint32_t)(value & 0xFFFFFFFFu);
-    uint64_t a    = ((uint64_t)ntohl(low)) << 32;
-    uint64_t b    = ((uint64_t)ntohl(high));
-    return a | b;
+    uint32_t highPart        = (uint32_t)(value >> 32);
+    uint32_t lowPart         = (uint32_t)(value & 0xFFFFFFFFu);
+    uint64_t combinedLowHigh = ((uint64_t)ntohl(lowPart)) << 32;
+    uint64_t combinedHighLow = ((uint64_t)ntohl(highPart));
+    return combinedLowHigh | combinedHighLow;
 #else
     return value;
 #endif
