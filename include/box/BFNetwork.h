@@ -15,7 +15,8 @@ extern "C" {
 typedef struct BFNetworkConnection BFNetworkConnection;
 
 typedef enum BFNetworkTransport {
-    BFNetworkTransportQUIC = 1, // reserved; not implemented yet
+    BFNetworkTransportQUIC  = 1, // reserved; not implemented yet
+    BFNetworkTransportNOISE = 2, // libsodium/Noise (groundwork)
 } BFNetworkTransport;
 
 // Security configuration (for future Noise/QUIC transports)

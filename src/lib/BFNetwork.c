@@ -2,6 +2,7 @@
 #ifdef BOX_USE_QUIC
 #include "BFNetworkQuicInternal.h"
 #endif
+#include "BFNetworkNoiseInternal.h"
 
 #include "box/BFCommon.h"
 #include "box/BFMemory.h"
@@ -36,6 +37,20 @@ BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int 
         return NULL;
 #endif
     }
+    if (transport == BFNetworkTransportNOISE) {
+        BFNetworkConnection *c = (BFNetworkConnection *)BFMemoryAllocate(sizeof(*c));
+        if (!c)
+            return NULL;
+        memset(c, 0, sizeof(*c));
+        c->udp_fd    = udpSocket;
+        c->transport = transport;
+        c->quic      = BFNetworkNoiseConnect(udpSocket, server, serverLength, security);
+        if (!c->quic) {
+            BFMemoryRelease(c);
+            return NULL;
+        }
+        return c;
+    }
     BFWarn("BFNetwork: transport not implemented (code=%d)", (int)transport);
     return NULL;
 }
@@ -63,6 +78,20 @@ BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int u
         return NULL;
 #endif
     }
+    if (transport == BFNetworkTransportNOISE) {
+        BFNetworkConnection *c = (BFNetworkConnection *)BFMemoryAllocate(sizeof(*c));
+        if (!c)
+            return NULL;
+        memset(c, 0, sizeof(*c));
+        c->udp_fd    = udpSocket;
+        c->transport = transport;
+        c->quic      = BFNetworkNoiseAccept(udpSocket, peer, peerLength, security);
+        if (!c->quic) {
+            BFMemoryRelease(c);
+            return NULL;
+        }
+        return c;
+    }
     BFWarn("BFNetwork: transport not implemented (code=%d)", (int)transport);
     return NULL;
 }
@@ -74,6 +103,8 @@ int BFNetworkSend(BFNetworkConnection *c, const void *buffer, int length) {
     if (c->transport == BFNetworkTransportQUIC)
         return BFNetworkQuicSend(c->quic, buffer, length);
 #endif
+    if (c->transport == BFNetworkTransportNOISE)
+        return BFNetworkNoiseSend(c->quic, buffer, length);
     return BF_ERR;
 }
 
@@ -84,6 +115,8 @@ int BFNetworkRecv(BFNetworkConnection *c, void *buffer, int length) {
     if (c->transport == BFNetworkTransportQUIC)
         return BFNetworkQuicRecv(c->quic, buffer, length);
 #endif
+    if (c->transport == BFNetworkTransportNOISE)
+        return BFNetworkNoiseRecv(c->quic, buffer, length);
     return BF_ERR;
 }
 
@@ -94,5 +127,9 @@ void BFNetworkClose(BFNetworkConnection *c) {
     if (c->quic)
         BFNetworkQuicClose(c->quic);
 #endif
+    // For NOISE we reuse the same opaque pointer field
+    // (close is a no-op if not a NOISE handle)
+    // Try closing via NOISE adapter as well.
+    BFNetworkNoiseClose(c->quic);
     BFMemoryRelease(c);
 }

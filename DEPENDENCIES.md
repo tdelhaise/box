@@ -4,6 +4,11 @@ Overview
 - This document lists build-time and optional runtime dependencies for the Box project (box/boxd) across Linux, macOS, and Windows, and provides quick setup guidance.
 - The codebase targets Noise (Ed25519/X25519) + XChaCha20‑Poly1305 via libsodium for encryption in upcoming milestones. DTLS has been removed.
 
+libsodium (Noise transport groundwork)
+- Optional (enabled via `-DBOX_USE_NOISE=ON`, default ON).
+- Discovery: via pkg-config as `libsodium`.
+- Current usage: skeleton only — initializes libsodium when present; no encrypted transport yet.
+
 Core Build Tooling (all platforms)
 - CMake >= 3.16
 - C compiler and linker

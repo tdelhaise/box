@@ -11,6 +11,7 @@ option(BOX_HARDEN    "Enable hardening flags (by platform)"       ON)
 option(BOX_USE_PRESHAREKEY   "Enable PreShareKey"       ON)
 option(BOX_MEMORY_SIGNAL_TRACE "Enable BFMemory SIGUSR1 trace handler (POSIX)" ON)
 option(BOX_USE_QUIC "Enable QUIC backend (requires external library)" OFF)
+option(BOX_USE_NOISE "Enable Noise (libsodium) transport skeleton" ON)
 option(BOX_BUILD_MINIMAL "Build a minimal core library without optional transports (useful for cross targets like Android)" OFF)
 set(BOX_QUIC_IMPL "ngtcp2" CACHE STRING "QUIC implementation: ngtcp2|msquic|picoquic")
 set_property(CACHE BOX_QUIC_IMPL PROPERTY STRINGS ngtcp2 msquic picoquic)
@@ -57,6 +58,7 @@ if(NOT BOX_BUILD_MINIMAL)
           src/lib/BFBoxProtocolV1.c
           src/lib/BFNetwork.c
           src/lib/BFNetworkQuic.c
+          src/lib/BFNetworkNoise.c
           src/lib/BFUdp.c
           src/lib/BFUdpServer.c
           src/lib/BFUdpClient.c
@@ -114,6 +116,24 @@ if(BOX_USE_QUIC)
   else()
     message(WARNING "Unknown BOX_QUIC_IMPL='${BOX_QUIC_IMPL}', defaulting to ngtcp2")
     add_compile_definitions(BOX_QUIC_IMPL_NGTCP2)
+  endif()
+endif()
+
+if(BOX_USE_NOISE)
+  add_compile_definitions(BOX_USE_NOISE)
+  # Try to discover libsodium via pkg-config; tolerate absence (skeleton will warn)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(SODIUM QUIET IMPORTED_TARGET libsodium)
+    if(TARGET PkgConfig::SODIUM)
+      target_link_libraries(BoxFoundation PRIVATE PkgConfig::SODIUM)
+      add_compile_definitions(HAVE_SODIUM)
+      message(STATUS "Noise: using libsodium")
+    else()
+      message(WARNING "libsodium not found via pkg-config; Noise skeleton will build without crypto")
+    endif()
+  else()
+    message(STATUS "pkg-config not found; skipping libsodium autodiscovery (Noise skeleton only)")
   endif()
 endif()
 
