@@ -8,56 +8,56 @@
 #include <string.h>
 
 typedef struct Item {
-    int v;
+    int value;
 } Item;
 
-static Item *make_item(int v) {
-    Item *p = (Item *)BFMemoryAllocate(sizeof(Item));
-    p->v    = v;
-    return p;
+static Item *make_item(int value) {
+    Item *item  = (Item *)BFMemoryAllocate(sizeof(Item));
+    item->value = value;
+    return item;
 }
 
-static void destroy_item(void *p) {
-    BFMemoryRelease(p);
+static void destroy_item(void *pointer) {
+    BFMemoryRelease(pointer);
 }
 
-typedef struct ThreadCtx {
-    BFSharedArray *arr;
+typedef struct ThreadContext {
+    BFSharedArray *array;
     int            base;
     int            count;
-} ThreadCtx;
+} ThreadContext;
 
-static void *worker_push(void *arg) {
-    ThreadCtx *c = (ThreadCtx *)arg;
-    for (int i = 0; i < c->count; ++i) {
-        (void)BFSharedArrayPush(c->arr, make_item(c->base + i));
+static void *worker_push(void *argument) {
+    ThreadContext *context = (ThreadContext *)argument;
+    for (int index = 0; index < context->count; ++index) {
+        (void)BFSharedArrayPush(context->array, make_item(context->base + index));
     }
     return NULL;
 }
 
 int main(void) {
-    const char *stress = getenv("BOX_STRESS_ENABLE");
-    int         per    = (stress && *stress) ? 20000 : 2000; // scale down by default
-    int         thn    = (stress && *stress) ? 8 : 4;
+    const char *stress      = getenv("BOX_STRESS_ENABLE");
+    int         perThread   = (stress && *stress) ? 20000 : 2000; // scale down by default
+    int         threadCount = (stress && *stress) ? 8 : 4;
 
-    BFSharedArray *a = BFSharedArrayCreate(destroy_item);
-    assert(a != NULL);
+    BFSharedArray *array = BFSharedArrayCreate(destroy_item);
+    assert(array != NULL);
 
-    pthread_t th[16];
-    ThreadCtx ctx[16];
-    const int total_expected = per * thn;
-    for (int i = 0; i < thn; ++i) {
-        ctx[i].arr   = a;
-        ctx[i].base  = i * per;
-        ctx[i].count = per;
-        assert(pthread_create(&th[i], NULL, worker_push, &ctx[i]) == 0);
+    pthread_t     threads[16];
+    ThreadContext contexts[16];
+    const int     totalExpected = perThread * threadCount;
+    for (int index = 0; index < threadCount; ++index) {
+        contexts[index].array = array;
+        contexts[index].base  = index * perThread;
+        contexts[index].count = perThread;
+        assert(pthread_create(&threads[index], NULL, worker_push, &contexts[index]) == 0);
     }
-    for (int i = 0; i < thn; ++i) {
-        (void)pthread_join(th[i], NULL);
+    for (int index = 0; index < threadCount; ++index) {
+        (void)pthread_join(threads[index], NULL);
     }
-    size_t count = BFSharedArrayCount(a);
-    assert((int)count == total_expected);
-    BFSharedArrayFree(a);
-    printf("test_BFSharedArrayStress: OK (count=%zu)\n", count);
+    size_t arrayCount = BFSharedArrayCount(array);
+    assert((int)arrayCount == totalExpected);
+    BFSharedArrayFree(array);
+    printf("test_BFSharedArrayStress: OK (count=%zu)\n", arrayCount);
     return 0;
 }
