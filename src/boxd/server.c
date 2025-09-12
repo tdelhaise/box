@@ -115,15 +115,15 @@ static BFRunloop *globalRunloopNetIn  = NULL;
 static BFRunloop *globalRunloopNetOut = NULL;
 
 static volatile int globalRunning = 1;
-static void         on_sigint(int sig) {
-    (void)sig;
+static void         onInteruptSignal(int signalNumber) {
+    (void)signalNumber;
     globalRunning = 0;
     BFLog("boxd: Interupt signal received. Exiting.");
-    exit(-sig);
+    exit(-signalNumber);
 }
 
 void install_signal_handler(void) {
-    signal(SIGINT, on_sigint);
+    signal(SIGINT, onInteruptSignal);
 }
 
 // Runloop handlers (placeholders for now)
