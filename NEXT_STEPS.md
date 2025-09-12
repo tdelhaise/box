@@ -19,7 +19,7 @@ Immediate TODOs (near-term)
    - Next: extend config keys; add Windows named pipe; add more admin actions.
    - Exit: `boxd` exposes status and basic controls via admin channel; config round‑trip in tests.
 
-3) Remove DTLS (legacy) and references (Issue #21) — DONE
+3) Remove DTLS (legacy) and references (Issue #21)
    - DTLS code, headers, OpenSSL wiring, tests and docs removed; builds/tests green.
 
 4) Storage and Queues (filesystem + index) (Issue #15)
