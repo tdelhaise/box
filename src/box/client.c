@@ -36,15 +36,15 @@ static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions
         if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
             ClientPrintUsage(argv[0]);
             exit(0);
-        } else if (strcmp(arg, "--cert") == 0 && i + 1 < argc) {
+        } else if (strcmp(arg, "--cert") == 0 && argumentIndex + 1 < argc) {
             outOptions->certificateFile = argv[++argumentIndex];
-        } else if (strcmp(arg, "--key") == 0 && i + 1 < argc) {
+        } else if (strcmp(arg, "--key") == 0 && argumentIndex + 1 < argc) {
             outOptions->keyFile = argv[++argumentIndex];
-        } else if (strcmp(arg, "--pre-share-key-identity") == 0 && i + 1 < argc) {
+        } else if (strcmp(arg, "--pre-share-key-identity") == 0 && argumentIndex + 1 < argc) {
             outOptions->preShareKeyIdentity = argv[++argumentIndex];
-        } else if (strcmp(arg, "--pre-share-key") == 0 && i + 1 < argc) {
+        } else if (strcmp(arg, "--pre-share-key") == 0 && argumentIndex + 1 < argc) {
             outOptions->preShareKeyAscii = argv[++argumentIndex];
-        } else if (strcmp(arg, "--transport") == 0 && i + 1 < argc) {
+        } else if (strcmp(arg, "--transport") == 0 && argumentIndex + 1 < argc) {
             outOptions->transport = argv[++argumentIndex];
         } else if (arg[0] != '-') {
             // positional
