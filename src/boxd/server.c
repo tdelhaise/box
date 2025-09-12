@@ -173,12 +173,30 @@ int main(int argc, char **argv) {
                 BFV1UnpackHello(payload, payloadLength, &statusCode, versions,
                                 (uint8_t)(sizeof(versions) / sizeof(versions[0])), &versionCount);
             if (ok == 0 && versionCount > 0) {
-                uint16_t supported[1] = {1};
-                int      responseSize = BFV1PackHello(transmitBuffer, sizeof(transmitBuffer),
-                                                      receivedReqId + 1, BFV1_STATUS_OK, supported, 1);
-                if (responseSize > 0) {
-                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
-                                    (struct sockaddr *)&from, fromLength);
+                int hasCompatible = 0;
+                for (uint8_t vi = 0; vi < versionCount; ++vi) {
+                    if (versions[vi] == 1) {
+                        hasCompatible = 1;
+                        break;
+                    }
+                }
+                if (hasCompatible) {
+                    uint16_t supported[1] = {1};
+                    int      responseSize =
+                        BFV1PackHello(transmitBuffer, sizeof(transmitBuffer), receivedReqId + 1,
+                                      BFV1_STATUS_OK, supported, 1);
+                    if (responseSize > 0) {
+                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
+                                        (struct sockaddr *)&from, fromLength);
+                    }
+                } else {
+                    int responseSize = BFV1PackStatus(
+                        transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1,
+                        BFV1_STATUS_BAD_REQUEST, "unsupported-version");
+                    if (responseSize > 0) {
+                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
+                                        (struct sockaddr *)&from, fromLength);
+                    }
                 }
             } else {
                 int responseSize =

@@ -76,12 +76,12 @@ int main(int argc, char **argv) {
         BFFatal("BFUdpClient");
     }
 
-    // 1) Envoyer HELLO (v1) en UDP clair
-    uint8_t     transmitBuffer[BFMaxDatagram];
-    const char *hello     = "hello from box";
-    uint64_t    requestId = 1;
-    int packed = BFV1Pack(transmitBuffer, sizeof(transmitBuffer), BFV1_HELLO, requestId, hello,
-                          (uint32_t)strlen(hello));
+    // 1) Envoyer HELLO (v1) en UDP clair avec versions supportées
+    uint8_t  transmitBuffer[BFMaxDatagram];
+    uint64_t requestId            = 1;
+    uint16_t supportedVersions[1] = {1};
+    int packed = BFV1PackHello(transmitBuffer, sizeof(transmitBuffer), requestId, BFV1_STATUS_OK,
+                               supportedVersions, 1);
     if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed,
                                  (struct sockaddr *)&server, sizeof(server)) < 0) {
         BFFatal("sendto (HELLO)");
@@ -106,8 +106,20 @@ int main(int argc, char **argv) {
             if (BFV1UnpackHello(payload, payloadLength, &statusCode, versions,
                                 (uint8_t)(sizeof(versions) / sizeof(versions[0])),
                                 &versionCount) == 0) {
-                BFLog("box: HELLO serveur: status=%u versions=%u", (unsigned)statusCode,
-                      (unsigned)versionCount);
+                int compatible = 0;
+                for (uint8_t vi = 0; vi < versionCount; ++vi) {
+                    if (versions[vi] == 1) {
+                        compatible = 1;
+                        break;
+                    }
+                }
+                if (!compatible) {
+                    BFLog("box: HELLO serveur sans version compatible (count=%u)",
+                          (unsigned)versionCount);
+                } else {
+                    BFLog("box: HELLO serveur: status=%u versions=%u (compatible)",
+                          (unsigned)statusCode, (unsigned)versionCount);
+                }
             } else {
                 BFLog("box: HELLO serveur avec payload non conforme");
             }
