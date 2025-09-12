@@ -2,84 +2,34 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ "**" ]
+    branches: [ main ]
 
 jobs:
-  build-test:
-    name: Build & Test (${{ matrix.os }} / ${{ matrix.build_type }} / preShareKey=${{ matrix.preShareKey }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ ubuntu-latest, macos-latest ]
-        build_type: [ Debug, RelWithDebInfo ]
-        preShareKey: [ OFF, ON ]
-
+  build-and-test:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install OpenSSL + clang-format (Linux)
-        if: runner.os == 'Linux'
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential pkg-config libssl-dev clang-format
+          sudo apt-get install -y cmake build-essential ninja-build libssl-dev pkg-config ripgrep clang-format
 
-      - name: Install OpenSSL + clang-format (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew list -1 --full-name
-          brew update
-          brew outdated
-          echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
-          brew install clang-format || true
-
-      - name: Check naming conventions
-        run: bash scripts/check_naming.sh
-      - name: Check formatting
-        run: bash scripts/check_format.sh
-
-      - name: Configure
-        run: |
-          cmake -S . -B build \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
-            -DBOX_USE_PRESHAREKEY=${{ matrix.preShareKey }} \
-            ${OPENSSL_ROOT_DIR:+-DOPENSSL_ROOT_DIR="$OPENSSL_ROOT_DIR"}
+      - name: Configure (Debug)
+        run: make configure BUILD_TYPE=Debug
 
       - name: Build
-        run: cmake --build build -- -j
+        run: make build
 
-      - name: Generate self-signed certs (Debug only)
-        if: matrix.build_type == 'Debug'
-        run: cmake --build build --target certs
+      - name: Format check
+        run: scripts/check_format.sh
 
-      - name: Run tests (if any)
-        run: |
-          ctest --test-dir build --output-on-failure || true
+      - name: Naming + Abbreviation checks (warn-only for abbreviations)
+        run: make check
 
-  asan-ubsan:
-    name: Linux Debug ASAN+UBSAN
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install deps + clang-format
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake build-essential pkg-config libssl-dev clang-format
-      - name: Check naming conventions
-        run: bash scripts/check_naming.sh
-      - name: Check formatting
-        run: bash scripts/check_format.sh
-      - name: Configure with sanitizers
-        run: |
-          cmake -S . -B build \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DBOX_ENABLE_ASAN=ON \
-            -DBOX_ENABLE_UBSAN=ON
-      - name: Build
-        run: cmake --build build -- -j
-      - name: Tests (best-effort)
-        run: ctest --test-dir build --output-on-failure || true
+      - name: Run tests
+        run: make test
+

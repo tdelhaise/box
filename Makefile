@@ -35,6 +35,12 @@ bench:
 
 check:
 	@cmake --build build --target check || bash scripts/check_naming.sh
+	@bash scripts/check_abbreviations.sh || true
+
+.PHONY: check-strict
+check-strict:
+	@cmake --build build --target check || bash scripts/check_naming.sh
+	@ENFORCE_ABBREV=1 bash scripts/check_abbreviations.sh
 
 format:
 	@bash scripts/format.sh
