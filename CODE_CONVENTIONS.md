@@ -60,6 +60,7 @@ C Coding Style
   - Macros/constants: `BF_SOMETHING` or `BFMaxDatagram` (follow existing style for constants).
   - Modules: files named `BF<Module>.c` / `BF<Module>.h` (e.g., `BFNetwork.c`, `BFRunloop.c`).
   - App‑specific code can use `box_`/`boxd_` prefixes for non‑library helpers.
+  - Variables and parameters: use fully explicit names; avoid abbreviations. Examples: `buffer` not `buf`, `variable` not `var`, `address` not `addr`, `length` not `len`, `socket` not `sock`.
 - Formatting
   - Indentation: 4 spaces (no tabs). Brace on same line. Keep lines under ~100 columns when practical.
   - Use `scripts/format.sh` and `scripts/check_format.sh` where available; do not reformat unrelated code in functional PRs.
@@ -95,4 +96,3 @@ Platform Notes
 
 Change Management
 - Conventions evolve with the project; propose changes via PRs that update this file alongside the impacted code.
-
