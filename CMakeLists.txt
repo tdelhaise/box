@@ -208,6 +208,10 @@ if(NOT BOX_BUILD_MINIMAL)
   target_include_directories(test_BFBoxProtocol PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   add_test(NAME test_BFBoxProtocol COMMAND test_BFBoxProtocol)
 
+  add_executable(test_BFBoxProtocolV1 test/test_BFBoxProtocolV1.c src/lib/BFBoxProtocolV1.c)
+  target_include_directories(test_BFBoxProtocolV1 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  add_test(NAME test_BFBoxProtocolV1 COMMAND test_BFBoxProtocolV1)
+
   # BFMemory unit test (links against BoxFoundation for implementation)
   add_executable(test_BFMemory test/test_BFMemory.c)
   target_include_directories(test_BFMemory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
