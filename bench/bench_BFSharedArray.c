@@ -10,8 +10,8 @@
 #include <sys/time.h>
 #include <time.h>
 
-static void destroy_string(void *p) {
-    BFMemoryRelease(p);
+static void destroy_string(void *pointer) {
+    BFMemoryRelease(pointer);
 }
 
 static double now_sec(void) {
@@ -27,32 +27,32 @@ static double now_sec(void) {
 }
 
 int main(void) {
-    BFSharedArray *a = BFSharedArrayCreate(destroy_string);
-    if (!a) {
+    BFSharedArray *array = BFSharedArrayCreate(destroy_string);
+    if (!array) {
         fprintf(stderr, "cannot create array\n");
         return 1;
     }
-    const int N  = 100000; // 100k
-    double    t0 = now_sec();
-    for (int i = 0; i < N; ++i) {
-        char  buf[32];
-        int   n = snprintf(buf, sizeof(buf), "v%d", i);
-        char *s = (char *)BFMemoryAllocate((size_t)n + 1U);
-        memcpy(s, buf, (size_t)n + 1U);
-        (void)BFSharedArrayPush(a, s);
+    const int operationCount = 100000; // 100k
+    double    startSeconds   = now_sec();
+    for (int index = 0; index < operationCount; ++index) {
+        char  buffer[32];
+        int   written = snprintf(buffer, sizeof(buffer), "v%d", index);
+        char *string  = (char *)BFMemoryAllocate((size_t)written + 1U);
+        memcpy(string, buffer, (size_t)written + 1U);
+        (void)BFSharedArrayPush(array, string);
     }
-    double t1      = now_sec();
-    double push_ps = (double)N / (t1 - t0);
-    printf("BFSharedArray push: %.0f ops/s (N=%d)\n", push_ps, N);
+    double endSeconds = now_sec();
+    double pushPerSec = (double)operationCount / (endSeconds - startSeconds);
+    printf("BFSharedArray push: %.0f ops/s (N=%d)\n", pushPerSec, operationCount);
 
     // Random-ish reads (every 101st)
-    volatile int sum = 0;
-    for (int i = 0; i < N; i += 101) {
-        char *s = (char *)BFSharedArrayGet(a, (size_t)i);
-        sum += (s && s[0]) ? 1 : 0;
+    volatile int sampledSum = 0;
+    for (int index = 0; index < operationCount; index += 101) {
+        char *string = (char *)BFSharedArrayGet(array, (size_t)index);
+        sampledSum += (string && string[0]) ? 1 : 0;
     }
-    printf("BFSharedArray sampled reads sum=%d\n", sum);
+    printf("BFSharedArray sampled reads sum=%d\n", sampledSum);
 
-    BFSharedArrayFree(a);
+    BFSharedArrayFree(array);
     return 0;
 }
