@@ -36,12 +36,13 @@ static void ClientPrintUsage(const char *program) {
     fprintf(
         stderr,
         "Usage: %s [address] [port] [--port <udp>] [--put <queue>[:type] <data>] [--get <queue>]\n"
-        "          [--version] [--help]\n\n"
+        "          [--version] [--help]\n"
+        "       | %s admin status    # query local daemon status (Unix)\n\n"
         "Examples:\n"
         "  %s 127.0.0.1 9988 --put /message:text/plain \"Hello\"\n"
         "  %s 127.0.0.1 --port 9988 --get /message\n"
         "  %s admin status\n",
-        program, program, program, program);
+        program, program, program, program, program);
 }
 
 static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions,
