@@ -58,13 +58,13 @@ static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions
             fprintf(stdout, "box %s\n", BFVersionString());
             exit(0);
         } else if (strcmp(arg, "--port") == 0 && argumentIndex + 1 < argc) {
-            const char *pv = argv[++argumentIndex];
-            long        v  = strtol(pv, NULL, 10);
-            if (v > 0 && v < 65536) {
-                port       = (uint16_t)v;
+            const char *portValueString = argv[++argumentIndex];
+            long        portValue       = strtol(portValueString, NULL, 10);
+            if (portValue > 0 && portValue < 65536) {
+                port       = (uint16_t)portValue;
                 portOrigin = "cli-flag";
             } else {
-                BFError("Invalid --port: %s", pv);
+                BFError("Invalid --port: %s", portValueString);
                 exit(2);
             }
         } else if (strcmp(arg, "--put") == 0 && argumentIndex + 2 < argc) {
@@ -93,9 +93,9 @@ static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions
             if (address == BFDefaultAddress) {
                 address = arg;
             } else {
-                long v = strtol(arg, NULL, 10);
-                if (v > 0 && v < 65536) {
-                    port       = (uint16_t)v;
+                long portValue = strtol(arg, NULL, 10);
+                if (portValue > 0 && portValue < 65536) {
+                    port       = (uint16_t)portValue;
                     portOrigin = "positional";
                 } else {
                     BFError("Invalid port: %s", arg);
@@ -165,9 +165,9 @@ int main(int argc, char **argv) {
 
     // 3) Lire HELLO serveur (v1)
     uint8_t         buffer[BFMaxDatagram];
-    struct sockaddr from    = {0};
-    socklen_t       fromLen = sizeof(from);
-    int readCount           = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLen);
+    struct sockaddr from       = {0};
+    socklen_t       fromLength = sizeof(from);
+    int readCount = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLength);
     if (readCount > 0) {
         uint32_t       command       = 0;
         uint64_t       requestId     = 0;
@@ -183,8 +183,8 @@ int main(int argc, char **argv) {
                                 (uint8_t)(sizeof(versions) / sizeof(versions[0])),
                                 &versionCount) == 0) {
                 int compatible = 0;
-                for (uint8_t vi = 0; vi < versionCount; ++vi) {
-                    if (versions[vi] == 1) {
+                for (uint8_t versionIndex = 0; versionIndex < versionCount; ++versionIndex) {
+                    if (versions[versionIndex] == 1) {
                         compatible = 1;
                         break;
                     }
@@ -215,8 +215,8 @@ int main(int argc, char **argv) {
     }
 
     // 5) Lire réponse STATUS (pong)
-    fromLen   = sizeof(from);
-    readCount = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLen);
+    fromLength = sizeof(from);
+    readCount  = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLength);
     if (readCount > 0) {
         uint32_t       command       = 0;
         uint64_t       requestId     = 0;
@@ -261,8 +261,8 @@ int main(int argc, char **argv) {
             BFFatal("sendto (GET)");
         }
         // Read one response and print summary
-        fromLen   = sizeof(from);
-        readCount = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLen);
+        fromLength = sizeof(from);
+        readCount  = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLength);
         if (readCount > 0) {
             uint32_t       responseCommand       = 0;
             uint64_t       responseRequestId     = 0;
