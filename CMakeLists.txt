@@ -11,6 +11,7 @@ option(BOX_HARDEN    "Enable hardening flags (by platform)"       ON)
 option(BOX_USE_PRESHAREKEY   "Enable PreShareKey"       ON)
 option(BOX_MEMORY_SIGNAL_TRACE "Enable BFMemory SIGUSR1 trace handler (POSIX)" ON)
 option(BOX_USE_QUIC "Enable QUIC backend (requires external library)" OFF)
+option(BOX_BUILD_MINIMAL "Build a minimal core library without DTLS/QUIC (useful for cross targets like Android)" OFF)
 set(BOX_QUIC_IMPL "ngtcp2" CACHE STRING "QUIC implementation: ngtcp2|msquic|picoquic")
 set_property(CACHE BOX_QUIC_IMPL PROPERTY STRINGS ngtcp2 msquic picoquic)
 
@@ -25,8 +26,10 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON" FORCE)
 
-# OpenSSL requis
-find_package(OpenSSL REQUIRED COMPONENTS SSL Crypto)
+# OpenSSL requis (skip for minimal builds)
+if(NOT BOX_BUILD_MINIMAL)
+  find_package(OpenSSL REQUIRED COMPONENTS SSL Crypto)
+endif()
 
 # Définitions globales
 if(BOX_USE_PRESHAREKEY)
@@ -41,24 +44,35 @@ endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-# Librairie commune libBox
-add_library(BoxFoundation
-        src/lib/BFCommon.c
-        src/lib/BFSocket.c
-        src/lib/BFMemory.c
-        src/lib/BFRunloop.c
-        src/lib/BFSharedArray.c
-        src/lib/BFSharedDictionary.c
-        src/lib/BFNetwork.c
-        src/lib/BFNetworkQuic.c
-        src/lib/BFUdp.c
-        src/lib/BFUdpServer.c
-        src/lib/BFUdpClient.c
-        src/lib/BFDtlsOpenSSL.c
-        src/lib/BFBoxProtocol.c
-)
-
-target_link_libraries(BoxFoundation PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+if(NOT BOX_BUILD_MINIMAL)
+  # Full BoxFoundation library (with DTLS/OpenSSL)
+  add_library(BoxFoundation
+          src/lib/BFCommon.c
+          src/lib/BFSocket.c
+          src/lib/BFMemory.c
+          src/lib/BFRunloop.c
+          src/lib/BFSharedArray.c
+          src/lib/BFSharedDictionary.c
+          src/lib/BFNetwork.c
+          src/lib/BFNetworkQuic.c
+          src/lib/BFUdp.c
+          src/lib/BFUdpServer.c
+          src/lib/BFUdpClient.c
+          src/lib/BFDtlsOpenSSL.c
+          src/lib/BFBoxProtocol.c
+  )
+  target_link_libraries(BoxFoundation PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+else()
+  # Minimal core library (no DTLS/QUIC/OpenSSL), for cross builds like Android
+  add_library(BoxCoreMinimal
+          src/lib/BFCommon.c
+          src/lib/BFMemory.c
+          src/lib/BFSharedArray.c
+          src/lib/BFSharedDictionary.c
+          src/lib/BFBoxProtocol.c
+  )
+  target_include_directories(BoxCoreMinimal PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+endif()
 if(BOX_USE_QUIC)
   add_compile_definitions(BOX_USE_QUIC)
   if(BOX_QUIC_IMPL STREQUAL "ngtcp2")
