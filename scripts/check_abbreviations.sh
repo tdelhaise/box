@@ -3,15 +3,15 @@ set -euo pipefail
 
 # Scan for common abbreviated identifiers and emit warnings.
 # Usage:
-#   scripts/check_abbreviations.sh            # warn-only, exits 0
-#   ENFORCE_ABBREV=1 scripts/check_abbreviations.sh  # fail on findings
+#   scripts/check_abbreviations.sh                  # warn-only, exits 0
+#   ENFORCE_ABBREV=1 scripts/check_abbreviations.sh # fail on findings
 
 ROOT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
 echo "Checking for abbreviated identifiers (warn-only by default)..."
 
-PATTERN='\b(buf|addr|var|len|sock|cfg|env|tmp|ptr|idx|cnt|fn|str|num|sz)\b'
+PATTERN='\b(buf|addr|var|len|sock|cfg|env|tmp|ptr|idx|cnt|fn|str|num|sz|pkt|hdr|req|resp|msg|ctx|src|dst|cb)\b'
 FILES=$(rg -n --no-heading --color never -e "$PATTERN" include src test || true)
 
 if [ -n "$FILES" ]; then
