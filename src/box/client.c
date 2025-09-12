@@ -1,5 +1,6 @@
 #include "box/BFBoxProtocolV1.h"
 #include "box/BFCommon.h"
+#include "box/BFMemory.h"
 #include "box/BFUdp.h"
 #include "box/BFUdpClient.h"
 #include "box/BFVersion.h"
@@ -23,8 +24,9 @@ typedef struct ClientAction {
     int         doPut;
     int         doGet;
     const char *queue;
-    const char *contentType; // optional
-    const char *data;        // for put
+    const char *contentType;    // optional
+    const char *data;           // for put
+    int         queueAllocated; // whether queue was heap-allocated here
 } ClientAction;
 
 static void ClientPrintUsage(const char *program) {
@@ -71,11 +73,12 @@ static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions
             const char *colon = strchr(spec, ':');
             if (colon) {
                 size_t queuePathLength = (size_t)(colon - spec);
-                char  *queuePath       = (char *)malloc(queuePathLength + 1U);
+                char  *queuePath       = (char *)BFMemoryAllocate(queuePathLength + 1U);
                 if (queuePath) {
                     memcpy(queuePath, spec, queuePathLength);
                     queuePath[queuePathLength] = '\0';
-                    outAction->queue           = queuePath; // leak accepted for short-lived process
+                    outAction->queue           = queuePath;
+                    outAction->queueAllocated  = 1;
                 }
                 outAction->contentType = colon + 1;
             } else {
@@ -261,33 +264,42 @@ int main(int argc, char **argv) {
         fromLen   = sizeof(from);
         readCount = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLen);
         if (readCount > 0) {
-            uint32_t       rcmd       = 0;
-            uint64_t       rid        = 0;
-            const uint8_t *rpayload   = NULL;
-            uint32_t       rpayLength = 0;
-            if (BFV1Unpack(buffer, (size_t)readCount, &rcmd, &rid, &rpayload, &rpayLength) > 0) {
-                if (rcmd == BFV1_PUT) {
-                    const uint8_t *qp = NULL;
-                    uint16_t       ql = 0;
-                    const uint8_t *ct = NULL;
-                    uint16_t       cl = 0;
-                    const uint8_t *dd = NULL;
-                    uint32_t       dl = 0;
-                    if (BFV1UnpackPut(rpayload, rpayLength, &qp, &ql, &ct, &cl, &dd, &dl) == 0) {
-                        BFLog("box: GET result queue=%.*s type=%.*s size=%u", (int)ql,
-                              (const char *)qp, (int)cl, (const char *)ct, (unsigned)dl);
+            uint32_t       responseCommand       = 0;
+            uint64_t       responseRequestId     = 0;
+            const uint8_t *responsePayload       = NULL;
+            uint32_t       responsePayloadLength = 0;
+            if (BFV1Unpack(buffer, (size_t)readCount, &responseCommand, &responseRequestId,
+                           &responsePayload, &responsePayloadLength) > 0) {
+                if (responseCommand == BFV1_PUT) {
+                    const uint8_t *queuePathPointer   = NULL;
+                    uint16_t       queuePathLength    = 0;
+                    const uint8_t *contentTypePointer = NULL;
+                    uint16_t       contentTypeLength  = 0;
+                    const uint8_t *dataPointer        = NULL;
+                    uint32_t       dataLength         = 0;
+                    if (BFV1UnpackPut(responsePayload, responsePayloadLength, &queuePathPointer,
+                                      &queuePathLength, &contentTypePointer, &contentTypeLength,
+                                      &dataPointer, &dataLength) == 0) {
+                        BFLog("box: GET result queue=%.*s type=%.*s size=%u", (int)queuePathLength,
+                              (const char *)queuePathPointer, (int)contentTypeLength,
+                              (const char *)contentTypePointer, (unsigned)dataLength);
                     }
-                } else if (rcmd == BFV1_STATUS) {
-                    uint8_t        sc = 0xFF;
-                    const uint8_t *mp = NULL;
-                    uint32_t       ml = 0;
-                    if (BFV1UnpackStatus(rpayload, rpayLength, &sc, &mp, &ml) == 0) {
-                        BFLog("box: GET status=%u message=%.*s", (unsigned)sc, ml,
-                              (const char *)mp);
+                } else if (responseCommand == BFV1_STATUS) {
+                    uint8_t        statusCode     = 0xFF;
+                    const uint8_t *messagePointer = NULL;
+                    uint32_t       messageLength  = 0;
+                    if (BFV1UnpackStatus(responsePayload, responsePayloadLength, &statusCode,
+                                         &messagePointer, &messageLength) == 0) {
+                        BFLog("box: GET status=%u message=%.*s", (unsigned)statusCode,
+                              messageLength, (const char *)messagePointer);
                     }
                 }
             }
         }
+    }
+
+    if (action.queueAllocated && action.queue) {
+        BFMemoryRelease((void *)action.queue);
     }
 
     close(udpSocket);
