@@ -231,6 +231,10 @@ if(NOT BOX_BUILD_MINIMAL)
   # Tests
   enable_testing()
   include(CTest)
+  # Ensure BoxFoundation exposes test hooks (e.g., BF_NOISE_TEST_HOOKS) when building tests
+  if(BUILD_TESTING)
+    target_compile_definitions(BoxFoundation PRIVATE BF_NOISE_TEST_HOOKS)
+  endif()
   add_executable(test_BFBoxProtocol test/test_BFBoxProtocol.c src/lib/BFBoxProtocol.c)
   target_include_directories(test_BFBoxProtocol PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   add_test(NAME test_BFBoxProtocol COMMAND test_BFBoxProtocol)
