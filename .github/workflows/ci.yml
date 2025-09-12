@@ -52,6 +52,6 @@ jobs:
               make configure BUILD_TYPE=Debug && \
               make build && \
               scripts/check_format.sh && \
-              make check && \
+              make check-strict && \
               make test
             '
