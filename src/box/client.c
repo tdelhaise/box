@@ -31,21 +31,21 @@ static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions
     const char *address = BFDefaultAddress;
     uint16_t    port    = BFDefaultPort;
 
-    for (int i = 1; i < argc; ++i) {
-        const char *arg = argv[i];
+    for (int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
+        const char *arg = argv[argumentIndex];
         if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
             ClientPrintUsage(argv[0]);
             exit(0);
         } else if (strcmp(arg, "--cert") == 0 && i + 1 < argc) {
-            outOptions->certificateFile = argv[++i];
+            outOptions->certificateFile = argv[++argumentIndex];
         } else if (strcmp(arg, "--key") == 0 && i + 1 < argc) {
-            outOptions->keyFile = argv[++i];
+            outOptions->keyFile = argv[++argumentIndex];
         } else if (strcmp(arg, "--pre-share-key-identity") == 0 && i + 1 < argc) {
-            outOptions->preShareKeyIdentity = argv[++i];
+            outOptions->preShareKeyIdentity = argv[++argumentIndex];
         } else if (strcmp(arg, "--pre-share-key") == 0 && i + 1 < argc) {
-            outOptions->preShareKeyAscii = argv[++i];
+            outOptions->preShareKeyAscii = argv[++argumentIndex];
         } else if (strcmp(arg, "--transport") == 0 && i + 1 < argc) {
-            outOptions->transport = argv[++i];
+            outOptions->transport = argv[++argumentIndex];
         } else if (arg[0] != '-') {
             // positional
             if (address == BFDefaultAddress) {

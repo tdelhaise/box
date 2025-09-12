@@ -30,21 +30,21 @@ static void ServerPrintUsage(const char *program) {
 
 static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions) {
     memset(outOptions, 0, sizeof(*outOptions));
-    for (int i = 1; i < argc; ++i) {
-        const char *arg = argv[i];
+    for (int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
+        const char *arg = argv[argumentIndex];
         if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
             ServerPrintUsage(argv[0]);
             exit(0);
         } else if (strcmp(arg, "--cert") == 0 && i + 1 < argc) {
-            outOptions->certificateFile = argv[++i];
+            outOptions->certificateFile = argv[++argumentIndex];
         } else if (strcmp(arg, "--key") == 0 && i + 1 < argc) {
-            outOptions->keyFile = argv[++i];
+            outOptions->keyFile = argv[++argumentIndex];
         } else if (strcmp(arg, "--pre-share-key-identity") == 0 && i + 1 < argc) {
-            outOptions->preShareKeyIdentity = argv[++i];
+            outOptions->preShareKeyIdentity = argv[++argumentIndex];
         } else if (strcmp(arg, "--pre-share-key") == 0 && i + 1 < argc) {
-            outOptions->preShareKeyAscii = argv[++i];
+            outOptions->preShareKeyAscii = argv[++argumentIndex];
         } else if (strcmp(arg, "--transport") == 0 && i + 1 < argc) {
-            outOptions->transport = argv[++i];
+            outOptions->transport = argv[++argumentIndex];
         } else {
             BFError("Unknown option: %s", arg);
             ServerPrintUsage(argv[0]);
@@ -166,11 +166,11 @@ int main(int argc, char **argv) {
         switch (command) {
         case BFV1_STATUS: {
             BFLog("boxd: STATUS reçu (%u octets)", (unsigned)payloadLength);
-            int k = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
-                                   receivedReqId + 1, BFV1_STATUS_OK, "pong");
-            if (k > 0)
-                (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)k, (struct sockaddr *)&from,
-                                fromLength);
+            int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
+                                              receivedReqId + 1, BFV1_STATUS_OK, "pong");
+            if (responseSize > 0)
+                (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
+                                (struct sockaddr *)&from, fromLength);
             break;
         }
         case BFV1_PUT: {
