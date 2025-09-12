@@ -7,88 +7,88 @@
 #include <string.h>
 
 typedef struct StrBox {
-    char *s;
+    char *string;
 } StrBox;
 
 static int g_destroyed = 0;
 
-static void destroy_value(void *ptr) {
-    if (ptr) {
-        StrBox *b = (StrBox *)ptr;
-        if (b->s)
-            BFMemoryRelease(b->s);
-        BFMemoryRelease(b);
+static void destroy_value(void *pointer) {
+    if (pointer) {
+        StrBox *box = (StrBox *)pointer;
+        if (box->string)
+            BFMemoryRelease(box->string);
+        BFMemoryRelease(box);
         g_destroyed++;
     }
 }
 
-static StrBox *make_box(const char *txt) {
-    StrBox *b = (StrBox *)BFMemoryAllocate(sizeof(StrBox));
-    assert(b != NULL);
-    size_t n = strlen(txt);
-    b->s     = (char *)BFMemoryAllocate(n + 1U);
-    memcpy(b->s, txt, n);
-    b->s[n] = '\0';
-    return b;
+static StrBox *make_box(const char *text) {
+    StrBox *box = (StrBox *)BFMemoryAllocate(sizeof(StrBox));
+    assert(box != NULL);
+    size_t length = strlen(text);
+    box->string   = (char *)BFMemoryAllocate(length + 1U);
+    memcpy(box->string, text, length);
+    box->string[length] = '\0';
+    return box;
 }
 
-static void *thread_insert(void *arg) {
-    BFSharedDictionary *d = (BFSharedDictionary *)arg;
+static void *thread_insert(void *argument) {
+    BFSharedDictionary *dictionary = (BFSharedDictionary *)argument;
     // Insert 100 keys unique to this thread (prefix tX_)
     char key[32];
-    for (int i = 0; i < 100; ++i) {
-        snprintf(key, sizeof(key), "t%p_%d", (void *)pthread_self(), i);
-        (void)BFSharedDictionarySet(d, key, make_box(key));
+    for (int index = 0; index < 100; ++index) {
+        snprintf(key, sizeof(key), "t%p_%d", (void *)pthread_self(), index);
+        (void)BFSharedDictionarySet(dictionary, key, make_box(key));
     }
     return NULL;
 }
 
 int main(void) {
-    g_destroyed           = 0;
-    BFSharedDictionary *d = BFSharedDictionaryCreate(destroy_value);
-    assert(d != NULL);
-    assert(BFSharedDictionaryCount(d) == 0U);
+    g_destroyed                    = 0;
+    BFSharedDictionary *dictionary = BFSharedDictionaryCreate(destroy_value);
+    assert(dictionary != NULL);
+    assert(BFSharedDictionaryCount(dictionary) == 0U);
 
     // Basic set/get/replace/remove
-    assert(BFSharedDictionarySet(d, "a", make_box("va")) == 0);
-    assert(BFSharedDictionarySet(d, "b", make_box("vb")) == 0);
-    assert(BFSharedDictionaryCount(d) == 2U);
-    StrBox *ba = (StrBox *)BFSharedDictionaryGet(d, "a");
-    assert(ba && strcmp(ba->s, "va") == 0);
+    assert(BFSharedDictionarySet(dictionary, "a", make_box("va")) == 0);
+    assert(BFSharedDictionarySet(dictionary, "b", make_box("vb")) == 0);
+    assert(BFSharedDictionaryCount(dictionary) == 2U);
+    StrBox *boxA = (StrBox *)BFSharedDictionaryGet(dictionary, "a");
+    assert(boxA && strcmp(boxA->string, "va") == 0);
 
     // Replace should destroy old value via destroy_cb
     int before_destroy = g_destroyed;
-    assert(BFSharedDictionarySet(d, "a", make_box("va2")) == 0);
+    assert(BFSharedDictionarySet(dictionary, "a", make_box("va2")) == 0);
     assert(g_destroyed == before_destroy + 1);
-    ba = (StrBox *)BFSharedDictionaryGet(d, "a");
-    assert(ba && strcmp(ba->s, "va2") == 0);
+    boxA = (StrBox *)BFSharedDictionaryGet(dictionary, "a");
+    assert(boxA && strcmp(boxA->string, "va2") == 0);
 
     // Remove returns value and does not call destroy_cb for it (caller must free)
-    StrBox *removed = (StrBox *)BFSharedDictionaryRemove(d, "b");
-    assert(removed && strcmp(removed->s, "vb") == 0);
-    BFMemoryRelease(removed->s);
+    StrBox *removed = (StrBox *)BFSharedDictionaryRemove(dictionary, "b");
+    assert(removed && strcmp(removed->string, "vb") == 0);
+    BFMemoryRelease(removed->string);
     BFMemoryRelease(removed);
-    assert(BFSharedDictionaryGet(d, "b") == NULL);
+    assert(BFSharedDictionaryGet(dictionary, "b") == NULL);
 
     // Concurrency smoke test: 4 threads insert 100 items each
-    pthread_t th[4];
-    for (int i = 0; i < 4; ++i) {
-        assert(pthread_create(&th[i], NULL, thread_insert, d) == 0);
+    pthread_t threads[4];
+    for (int index = 0; index < 4; ++index) {
+        assert(pthread_create(&threads[index], NULL, thread_insert, dictionary) == 0);
     }
-    for (int i = 0; i < 4; ++i) {
-        (void)pthread_join(th[i], NULL);
+    for (int index = 0; index < 4; ++index) {
+        (void)pthread_join(threads[index], NULL);
     }
     // Count should be at least 401 (previous key "a" plus ~400 inserts). Collisions may replace,
     // but keys include thread id so unique.
-    assert(BFSharedDictionaryCount(d) >= 401U);
+    assert(BFSharedDictionaryCount(dictionary) >= 401U);
 
     // Clear destroys all remaining values
-    size_t before_clear = BFSharedDictionaryCount(d);
-    assert(BFSharedDictionaryClear(d) == 0);
-    assert(BFSharedDictionaryCount(d) == 0U);
+    size_t before_clear = BFSharedDictionaryCount(dictionary);
+    assert(BFSharedDictionaryClear(dictionary) == 0);
+    assert(BFSharedDictionaryCount(dictionary) == 0U);
     assert(g_destroyed >= (int)before_clear);
 
-    BFSharedDictionaryFree(d);
+    BFSharedDictionaryFree(dictionary);
     printf("test_BFSharedDictionary: OK\n");
     return 0;
 }
