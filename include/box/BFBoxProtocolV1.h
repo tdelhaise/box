@@ -17,7 +17,7 @@ extern "C" {
 //  - 8 bytes : request_id (uint64)
 //  - N bytes : payload (command-specific, unencrypted in this phase)
 
-#define BFV1_MAGIC   0x42
+#define BFV1_MAGIC 0x42
 #define BFV1_VERSION 0x01
 
 typedef enum BFV1Command {
@@ -46,4 +46,3 @@ int BFV1Unpack(const uint8_t *buffer, size_t bufferLength, uint32_t *outCommand,
 #endif
 
 #endif // BF_BOX_PROTOCOL_V1_H
-

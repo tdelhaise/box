@@ -1,4 +1,4 @@
-#include "box/BFBoxProtocol.h"
+#include "box/BFBoxProtocolV1.h"
 #include "box/BFCommon.h"
 #include "box/BFNetwork.h"
 #include "box/BFUdp.h"
@@ -111,39 +111,46 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // 3) Lire HELLO serveur
-    uint8_t buffet[BFMaxDatagram];
-    int     readCount = BFNetworkRecv(conn, buffet, (int)sizeof(buffet));
+    // 3) Lire HELLO serveur (v1)
+    uint8_t buffer[BFMaxDatagram];
+    int     readCount = BFNetworkRecv(conn, buffer, (int)sizeof(buffer));
     if (readCount > 0) {
-        BFHeader       header;
-        const uint8_t *payload = NULL;
-        if (BFProtocolUnpack(buffet, (size_t)readCount, &header, &payload) > 0 &&
-            header.type == BFMessageHello) {
-            BFLog("box: HELLO serveur: %.*s", header.length, (const char *)payload);
+        uint32_t       command       = 0;
+        uint64_t       requestId     = 0;
+        const uint8_t *payload       = NULL;
+        uint32_t       payloadLength = 0;
+        if (BFV1Unpack(buffer, (size_t)readCount, &command, &requestId, &payload, &payloadLength) >
+                0 &&
+            command == BFV1_HELLO) {
+            BFLog("box: HELLO serveur: %.*s", payloadLength, (const char *)payload);
         } else {
             BFLog("box: premier message non-HELLO ou invalide");
         }
     }
 
-    // 4) Envoyer PING
-    uint8_t     transmitBuffet[BFMaxDatagram];
-    const char *ping   = "ping";
-    int         packed = BFProtocolPack(transmitBuffet, sizeof(transmitBuffet), BFMessagePing, ping,
-                                        (uint16_t)strlen(ping));
+    // 4) Envoyer STATUS (ping)
+    uint8_t     transmitBuffer[BFMaxDatagram];
+    const char *ping      = "ping";
+    uint64_t    requestId = 2;
+    int packed = BFV1Pack(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, requestId, ping,
+                          (uint32_t)strlen(ping));
     if (packed > 0) {
-        (void)BFNetworkSend(conn, transmitBuffet, packed);
+        (void)BFNetworkSend(conn, transmitBuffer, packed);
     }
 
-    // 5) Lire PONG
-    readCount = BFNetworkRecv(conn, buffet, (int)sizeof(buffet));
+    // 5) Lire réponse STATUS (pong)
+    readCount = BFNetworkRecv(conn, buffer, (int)sizeof(buffer));
     if (readCount > 0) {
-        BFHeader       header;
-        const uint8_t *payload = NULL;
-        if (BFProtocolUnpack(buffet, (size_t)readCount, &header, &payload) > 0 &&
-            header.type == BFMessagePong) {
-            BFLog("box: PONG: %.*s", header.length, (const char *)payload);
+        uint32_t       command       = 0;
+        uint64_t       requestId     = 0;
+        const uint8_t *payload       = NULL;
+        uint32_t       payloadLength = 0;
+        if (BFV1Unpack(buffer, (size_t)readCount, &command, &requestId, &payload, &payloadLength) >
+                0 &&
+            command == BFV1_STATUS) {
+            BFLog("box: STATUS (pong): %.*s", payloadLength, (const char *)payload);
         } else {
-            BFLog("box: réponse inattendue (type=%u)", header.type);
+            BFLog("box: réponse inattendue (commande=%u)", command);
         }
     }
 

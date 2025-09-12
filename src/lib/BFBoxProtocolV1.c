@@ -112,4 +112,3 @@ int BFV1Unpack(const uint8_t *buffer, size_t bufferLength, uint32_t *outCommand,
 
     return (int)expectedTotal;
 }
-

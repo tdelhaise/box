@@ -1,4 +1,4 @@
-#include "box/BFBoxProtocol.h"
+#include "box/BFBoxProtocolV1.h"
 #include "box/BFCommon.h"
 #include "box/BFNetwork.h"
 #include "box/BFRunloop.h"
@@ -172,14 +172,15 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // 3) Envoi d'un HELLO applicatif via transport sécurisé
+    // 3) Envoi d'un HELLO applicatif (v1) — trame non chiffrée au niveau applicatif
     uint8_t     transmitBuffer[BFMaxDatagram];
     const char *helloPayload = "hello from boxd";
-
-    int packed = BFProtocolPack(transmitBuffer, sizeof(transmitBuffer), BFMessageHello,
-                                helloPayload, (uint16_t)strlen(helloPayload));
-    if (packed > 0)
+    uint64_t    requestId    = 1;
+    int         packed = BFV1Pack(transmitBuffer, sizeof(transmitBuffer), BFV1_HELLO, requestId,
+                                  helloPayload, (uint32_t)strlen(helloPayload));
+    if (packed > 0) {
         (void)BFNetworkSend(conn, transmitBuffer, packed);
+    }
 
     // 4) Boucle simple: attendre PING et répondre PONG
     int consecutiveErrors = 0;
@@ -196,30 +197,34 @@ int main(int argc, char **argv) {
             }
             continue;
         }
-        consecutiveErrors = 0;
-        BFHeader       header;
-        const uint8_t *payload = NULL;
-        int unpacked = BFProtocolUnpack(receiveBuffer, (size_t)readCount, &header, &payload);
+        consecutiveErrors            = 0;
+        uint32_t       command       = 0;
+        uint64_t       receivedReqId = 0;
+        const uint8_t *payload       = NULL;
+        uint32_t       payloadLength = 0;
+        int unpacked = BFV1Unpack(receiveBuffer, (size_t)readCount, &command, &receivedReqId,
+                                  &payload, &payloadLength);
         if (unpacked < 0) {
-            BFLog("boxd: trame invalide");
+            BFLog("boxd: trame v1 invalide");
             continue;
         }
-        switch (header.type) {
-        case BFMessagePing: {
-            BFLog("boxd: PING reçu (%u octets)", header.length);
+        switch (command) {
+        case BFV1_STATUS: {
+            BFLog("boxd: STATUS reçu (%u octets)", (unsigned)payloadLength);
             const char *pong = "pong";
-            int k = BFProtocolPack(transmitBuffer, sizeof(transmitBuffer), BFMessagePong, pong,
-                                   (uint16_t)strlen(pong));
-            if (k > 0)
+            int k = BFV1Pack(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1,
+                             pong, (uint32_t)strlen(pong));
+            if (k > 0) {
                 (void)BFNetworkSend(conn, transmitBuffer, k);
+            }
             break;
         }
-        case BFMessageData: {
-            BFLog("boxd: DATA %u octets", header.length);
+        case BFV1_PUT: {
+            BFLog("boxd: PUT %u octets", (unsigned)payloadLength);
             break;
         }
         default: {
-            BFLog("boxd: type inconnu: %u", header.type);
+            BFLog("boxd: commande inconnue: %u", command);
             break;
         }
         }
