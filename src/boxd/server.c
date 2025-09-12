@@ -32,7 +32,7 @@ typedef struct StoredObject {
     uint32_t dataLength;
 } StoredObject;
 
-static void destroy_stored_object(void *pointer) {
+static void destroyStoredObject(void *pointer) {
     if (!pointer)
         return;
     StoredObject *object = (StoredObject *)pointer;
@@ -110,14 +110,14 @@ static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions
 }
 
 // --- Simple BFRunloop-based threading skeleton (net-in, net-out, main) ---
-static BFRunloop *staticGlobalRunloopMain   = NULL;
-static BFRunloop *staticGlobalRunloopNetIn  = NULL;
-static BFRunloop *staticGlobalRunloopNetOut = NULL;
+static BFRunloop *globalRunloopMain   = NULL;
+static BFRunloop *globalRunloopNetIn  = NULL;
+static BFRunloop *globalRunloopNetOut = NULL;
 
-static volatile int g_running = 1;
+static volatile int globalRunning = 1;
 static void         on_sigint(int sig) {
     (void)sig;
-    g_running = 0;
+    globalRunning = 0;
     BFLog("boxd: Interupt signal received. Exiting.");
     exit(-sig);
 }
@@ -191,7 +191,7 @@ int main(int argc, char **argv) {
           options.transport ? options.transport : "(default)");
 
     // Create in-memory store for demo
-    BFSharedDictionary *store = BFSharedDictionaryCreate(destroy_stored_object);
+    BFSharedDictionary *store = BFSharedDictionaryCreate(destroyStoredObject);
     if (!store) {
         BFFatal("cannot allocate store");
     }
@@ -231,7 +231,7 @@ int main(int argc, char **argv) {
 
     // 4) Boucle simple: attendre STATUS (ping) et répondre STATUS (pong)
     int consecutiveErrors = 0;
-    while (g_running) {
+    while (globalRunning) {
         struct sockaddr_storage from       = {0};
         socklen_t               fromLength = sizeof(from);
         int readCount = (int)BFUdpRecieve(udpSocket, receiveBuffer, sizeof(receiveBuffer),
@@ -351,7 +351,7 @@ int main(int argc, char **argv) {
                     object->data = (uint8_t *)BFMemoryAllocate(dataLength);
                     if (!object->data) {
                         BFMemoryRelease(queueKey);
-                        destroy_stored_object(object);
+                        destroyStoredObject(object);
                         break;
                     }
                     memcpy(object->data, dataPointer, dataLength);
