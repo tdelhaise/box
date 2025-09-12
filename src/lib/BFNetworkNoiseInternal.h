@@ -16,4 +16,8 @@ int   BFNetworkNoiseSend(void *handle, const void *buffer, int length);
 int   BFNetworkNoiseRecv(void *handle, void *buffer, int length);
 void  BFNetworkNoiseClose(void *handle);
 
+#ifdef BF_NOISE_TEST_HOOKS
+int BFNetworkNoiseDebugResendLastFrame(void *handle);
+#endif
+
 #endif // BF_NETWORK_NOISE_INTERNAL_H

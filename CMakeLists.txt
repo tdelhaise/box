@@ -71,6 +71,10 @@ if(NOT BOX_BUILD_MINIMAL)
   if (WIN32)
     target_link_libraries(BoxFoundation PRIVATE advapi32)
   endif()
+  # Enable internal test hooks for Noise when building tests
+  if(BUILD_TESTING)
+    target_compile_definitions(BoxFoundation PRIVATE BF_NOISE_TEST_HOOKS)
+  endif()
 else()
   # Minimal core library (no DTLS/QUIC/OpenSSL), for cross builds like Android
   add_library(BoxCoreMinimal
@@ -249,6 +253,7 @@ if(NOT BOX_BUILD_MINIMAL)
   add_executable(test_BFNetworkNoise test/test_BFNetworkNoise.c)
   target_include_directories(test_BFNetworkNoise PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(test_BFNetworkNoise PRIVATE BoxFoundation)
+  target_compile_definitions(test_BFNetworkNoise PRIVATE BF_NOISE_TEST_HOOKS)
   add_test(NAME test_BFNetworkNoise COMMAND test_BFNetworkNoise)
 
   # Integration tests placeholder (DTLS removed; Noise to be added later)

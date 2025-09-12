@@ -25,6 +25,7 @@ M1 — Protocol Framing v1 and CLI Skeleton (DTLS removed)
 - Remove DTLS code paths and references from build, code, CLI help, and docs.
 - Scaffold CLI subcommands in `box` for `sendTo`, `getFrom`, `list`, `deleteFrom`, and `check connectivity` (stub behaviors exercising framing only) over UDP (unencrypted, temporary).
 - Exit criteria: round‑trip HELLO over UDP using the new frame; unit tests for pack/unpack and request_id correlation; no DTLS symbols or build flags remain.
+  Progress: UDP v1 framing and tests exist; DTLS removed; CLI skeleton in place.
 
 M2 — Config, Identity, and Non‑Root Enforcement
 - Refuse to run `boxd` as root/admin. Create `~/.box` (or `%USERPROFILE%\.box`) on first run with correct permissions.
@@ -37,6 +38,13 @@ M3 — Crypto Subsystem (Noise + XChaCha20‑Poly1305)
 - Introduce `libsodium` and a new transport path (e.g., BFNetworkTransportNoise) implementing Noise NK/IK over UDP with X25519/Ed25519 and XChaCha20‑Poly1305 AEAD.
 - Replay protection (nonces + timestamp) and session key lifecycle.
 - Exit criteria: `box`/`boxd` complete HELLO + encrypted echo using the Noise path; unit tests for AEAD and transcript signing.
+  Progress:
+  - AEAD helpers implemented and tested; NOISE adapter added with framed packets (NZ v1 + nonce + AEAD) using a temporary preShareKey.
+  - CLI smoke path implemented (`--transport noise`) with encrypted ping/pong.
+  - Basic replay protection present (salt consistency + 64‑entry sliding window); unit tests cover bad header, wrong key, and replay via test hook.
+  Next:
+  - Add handshake scaffold (Noise NK/IK) to derive session keys (replace PSK) and sign transcripts.
+  - Extend tests for out‑of‑order acceptance within the window and replay rejection; add transcript validation stubs per SPECS.
 
 M4 — Storage and Queues (Filesystem + Index)
 - Implement storage root layout `<root>/<user_uuid>/<queue>/<digest>` with metadata sidecar.

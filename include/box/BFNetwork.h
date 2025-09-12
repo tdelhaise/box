@@ -55,6 +55,12 @@ int BFNetworkRecv(BFNetworkConnection *c, void *buffer, int length);
 // Close and free the connection.
 void BFNetworkClose(BFNetworkConnection *c);
 
+#ifdef BF_NOISE_TEST_HOOKS
+// Test hook: resend the last frame sent over the NOISE transport for this connection.
+// Returns bytes resent on success or BF_ERR on failure/unsupported transport.
+int BFNetworkDebugResendLastFrame(BFNetworkConnection *c);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

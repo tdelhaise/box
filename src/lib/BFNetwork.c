@@ -133,3 +133,14 @@ void BFNetworkClose(BFNetworkConnection *c) {
     BFNetworkNoiseClose(c->quic);
     BFMemoryRelease(c);
 }
+
+#ifdef BF_NOISE_TEST_HOOKS
+extern int BFNetworkNoiseDebugResendLastFrame(void *handle);
+int        BFNetworkDebugResendLastFrame(BFNetworkConnection *c) {
+    if (!c)
+        return BF_ERR;
+    if (c->transport == BFNetworkTransportNOISE)
+        return BFNetworkNoiseDebugResendLastFrame(c->quic);
+    return BF_ERR;
+}
+#endif

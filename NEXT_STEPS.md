@@ -29,15 +29,18 @@ Immediate TODOs (near-term)
    - Exit: e2e object transfer locally; tests for store/retrieve by digest.
 
 5) Crypto (Noise + XChaCha) groundwork (Issue #16)
-   - Current: libsodium autodetected; AEAD helpers present; Noise adapter now frames packets as `NZ v1` + 24B nonce + AEAD ciphertext using a temporary preShareKey.
+   - Current:
+     - libsodium autodetected and linked (when available).
+     - AEAD helpers (XChaCha20‑Poly1305) implemented and tested.
+     - Noise adapter frames packets as `NZ v1` + 24B nonce (salt+counter) + AEAD ciphertext using a temporary preShareKey.
+     - Unit tests added for send/recv, bad header, wrong key; debug-only hook to resend last frame for replay testing.
+     - Basic per‑peer replay protection implemented (constant salt + 64‑entry sliding window).
    - Next:
-     - Define and document the framing header and nonces (salt+counter) and enforce buffer bounds in send/recv.
-     - Add unit tests exercising AEAD frame round‑trip (valid/invalid headers, short frames, tampered tag).
-     - Add a CLI/runtime toggle to select the Noise transport for a STATUS ping/pong smoke test.
-     - Implement per‑peer replay protection (sliding window over counters) and reject replays.
-     - Prepare handshake scaffolding (Noise NK/IK) to derive session keys and replace the temporary preShareKey.
-     - Update docs (SPECS.md) to reflect framing, nonce construction, and error codes.
-   - Exit: encrypted echo using Noise; frame and AEAD tests in place; replay protection active.
+     - Document framing header and nonce construction (SPECS.md); enumerate error codes and limits. (in progress)
+     - Extend tests for out‑of‑order acceptance within the sliding window and explicit replay rejection. (todo)
+     - Add an explicit runtime/CLI toggle for clear vs noise per operation (beyond smoke). (todo)
+     - Prepare handshake scaffolding (Noise NK/IK) to derive session keys and replace the temporary preShareKey. (todo)
+   - Exit: encrypted echo using Noise; framing documented; frame/AEAD tests robust (including replays and OOO); handshake ready.
 
 6) Location Service + Presence (Issue #17)
    - Implement embedded LS register/resolve; publish `/uuid` presence and optional `/location`.

@@ -29,6 +29,10 @@ typedef struct BFNetworkNoiseHandle {
     int      hasPeerSalt;
     uint64_t recvWindowMax;
     uint64_t recvWindowBitmap;
+#ifdef BF_NOISE_TEST_HOOKS
+    size_t  lastFrameLength;
+    uint8_t lastFrame[BFMaxDatagram];
+#endif
 } BFNetworkNoiseHandle;
 
 static void derive_key_from_security(const BFNetworkSecurity *security, uint8_t *outKey,
@@ -148,9 +152,13 @@ int BFNetworkNoiseSend(void *handlePointer, const void *buffer, int length) {
                                  &producedLength);
     if (enc != BF_OK)
         return BF_ERR;
-    size_t  frameLength = 4U + (size_t)sizeof(nonce) + (size_t)producedLength;
-    ssize_t sent        = sendto(handle->udpFileDescriptor, frameBuffer, frameLength, 0,
-                                 (struct sockaddr *)&handle->peer.address, handle->peer.length);
+    size_t frameLength = 4U + (size_t)sizeof(nonce) + (size_t)producedLength;
+#ifdef BF_NOISE_TEST_HOOKS
+    memcpy(handle->lastFrame, frameBuffer, frameLength);
+    handle->lastFrameLength = frameLength;
+#endif
+    ssize_t sent = sendto(handle->udpFileDescriptor, frameBuffer, frameLength, 0,
+                          (struct sockaddr *)&handle->peer.address, handle->peer.length);
     if (sent < 0)
         return BF_ERR;
     return (int)length;
@@ -231,3 +239,18 @@ void BFNetworkNoiseClose(void *handlePointer) {
     BFNetworkNoiseHandle *handle = (BFNetworkNoiseHandle *)handlePointer;
     BFNetworkNoiseHandleFree(handle);
 }
+
+#ifdef BF_NOISE_TEST_HOOKS
+int BFNetworkNoiseDebugResendLastFrame(void *handlePointer) {
+    BFNetworkNoiseHandle *handle = (BFNetworkNoiseHandle *)handlePointer;
+    if (!handle)
+        return BF_ERR;
+    if (handle->lastFrameLength == 0)
+        return BF_ERR;
+    ssize_t sent = sendto(handle->udpFileDescriptor, handle->lastFrame, handle->lastFrameLength, 0,
+                          (struct sockaddr *)&handle->peer.address, handle->peer.length);
+    if (sent < 0)
+        return BF_ERR;
+    return (int)sent;
+}
+#endif

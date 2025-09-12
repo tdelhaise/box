@@ -1,10 +1,13 @@
 ## Some usefull comments
 
 
-## Notes
+## Notes / Status
 
-- Chiffrement: en cours d’intégration — transport basé sur libsodium (Noise + XChaCha20‑Poly1305). Un socle AEAD (XChaCha20‑Poly1305) est présent et testé; le transport Noise utilisera ces primitives.
-- Les exemples actuels utilisent des échanges UDP simples pour le prototypage du protocole et de la CLI (pas de DTLS; supprimé).
+- Chiffrement: en cours d’intégration — transport basé sur libsodium (Noise + XChaCha20‑Poly1305).
+  - AEAD (XChaCha20‑Poly1305) présent et testé; le transport Noise encapsule les messages (`NZ v1` + nonce + ciphertext) avec protection de rejeu côté réception.
+  - Chemin de démonstration: `--transport noise` sur box/boxd avec `--pre-share-key` (temporaire en attendant NK/IK).
+- DTLS/OpenSSL: supprimés.
+- Les échanges UDP clairs sont utilisés pour le prototypage du protocole (HELLO/STATUS, PUT/GET) et coexistent avec le chemin Noise de démonstration.
 
 Après Intall
 

@@ -59,6 +59,15 @@ Unlike traditional cloud offerings, Box is designed to run on user-controlled ha
 
 - All request bodies are protected with authenticated encryption (AEAD) using XChaCha20‑Poly1305.
 - Session keys are established using an authenticated key exchange (Noise NK/IK over UDP using X25519 for ECDH and Ed25519 for signatures). An AEAD layer uses XChaCha20‑Poly1305; helpers exist in the codebase and the transport integration is in progress.
+Implementation Status (Crypto/Noise)
+- The current codebase includes AEAD helpers (XChaCha20‑Poly1305) and a preliminary Noise transport framing:
+  - Frame: ASCII `NZ`, version byte `0x01`, reserved byte `0x00`, followed by a 24‑byte nonce and the AEAD ciphertext of the payload with the 4‑byte header as associated data.
+  - Nonce: formed from a 16‑byte salt (per peer, constant) and an 8‑byte big‑endian counter (monotonic per direction).
+  - Replay protection: receivers enforce salt consistency and reject frames that are too old or already seen using a 64‑entry sliding window referenced to the highest accepted counter.
+  - Temporary keying: a pre‑shared key (PSK) is used to derive the AEAD key until the Noise NK/IK handshake is implemented.
+  - A debug‑only hook exists to re‑send the last encrypted frame for replay testing.
+Future work:
+- Replace PSK with proper NK/IK handshake to derive session keys, bind identities, and sign transcripts. Extend the replay window strategy and document error codes and limits.
 - Replay protection is enforced using nonces and monotonic timestamps; servers reject stale or duplicate nonces per peer.
 
 5.4 Authorization
