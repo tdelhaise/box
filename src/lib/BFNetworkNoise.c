@@ -10,7 +10,7 @@
 #include <string.h>
 
 typedef struct BFNetworkNoiseHandle {
-    int         udpFileDescriptor;
+    int udpFileDescriptor;
     struct {
         struct sockaddr_storage address;
         socklen_t               length;
@@ -94,4 +94,3 @@ void BFNetworkNoiseClose(void *h) {
     BFNetworkNoiseHandle *handle = (BFNetworkNoiseHandle *)h;
     BFNetworkNoiseHandleFree(handle);
 }
-

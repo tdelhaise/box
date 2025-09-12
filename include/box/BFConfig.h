@@ -9,12 +9,12 @@ extern "C" {
 #endif
 
 typedef struct BFServerConfig {
-    int         hasPort;
-    uint16_t    port;
-    int         hasLogLevel;
-    BFLogLevel  logLevel;
-    int         hasLogTarget;
-    char        logTarget[128];
+    int        hasPort;
+    uint16_t   port;
+    int        hasLogLevel;
+    BFLogLevel logLevel;
+    int        hasLogTarget;
+    char       logTarget[128];
 } BFServerConfig;
 
 // Loads a minimal TOML-like config for boxd from the given file path.
@@ -23,7 +23,8 @@ typedef struct BFServerConfig {
 //   log_level = "trace|debug|info|warn|error"
 //   log_target = "stderr|syslog|oslog|eventlog|file:/path"
 // Comments starting with '#' are ignored. Whitespace is ignored.
-// Returns 0 on success (even if only some keys present), -1 on error (file not found or parse error).
+// Returns 0 on success (even if only some keys present), -1 on error (file not found or parse
+// error).
 int BFConfigLoadServer(const char *filePath, BFServerConfig *outConfig);
 
 #ifdef __cplusplus
@@ -31,4 +32,3 @@ int BFConfigLoadServer(const char *filePath, BFServerConfig *outConfig);
 #endif
 
 #endif // BF_CONFIG_H
-

@@ -3,8 +3,8 @@
 #ifndef BF_NETWORK_NOISE_INTERNAL_H
 #define BF_NETWORK_NOISE_INTERNAL_H
 
-#include <sys/socket.h>
 #include <netinet/in.h>
+#include <sys/socket.h>
 
 typedef struct BFNetworkSecurity BFNetworkSecurity;
 
@@ -17,4 +17,3 @@ int   BFNetworkNoiseRecv(void *handle, void *buffer, int length);
 void  BFNetworkNoiseClose(void *handle);
 
 #endif // BF_NETWORK_NOISE_INTERNAL_H
-

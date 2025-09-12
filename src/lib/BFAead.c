@@ -5,17 +5,13 @@
 #include <sodium.h>
 #endif
 
-int BFAeadEncrypt(const uint8_t *key,
-                  const uint8_t *nonce,
-                  const uint8_t *associatedData,
-                  uint32_t       associatedDataLength,
-                  const uint8_t *plaintext,
-                  uint32_t       plaintextLength,
-                  uint8_t       *ciphertext,
-                  uint32_t       ciphertextBufferLength,
-                  uint32_t      *outCiphertextLength) {
+int BFAeadEncrypt(const uint8_t *key, const uint8_t *nonce, const uint8_t *associatedData,
+                  uint32_t associatedDataLength, const uint8_t *plaintext, uint32_t plaintextLength,
+                  uint8_t *ciphertext, uint32_t ciphertextBufferLength,
+                  uint32_t *outCiphertextLength) {
 #if defined(HAVE_SODIUM)
-    if (!key || !nonce || (!plaintext && plaintextLength > 0) || !ciphertext || !outCiphertextLength)
+    if (!key || !nonce || (!plaintext && plaintextLength > 0) || !ciphertext ||
+        !outCiphertextLength)
         return BF_ERR;
     unsigned long long producedLength = 0;
     if (ciphertextBufferLength < plaintextLength + (uint32_t)BF_AEAD_ABYTES)
@@ -41,17 +37,13 @@ int BFAeadEncrypt(const uint8_t *key,
 #endif
 }
 
-int BFAeadDecrypt(const uint8_t *key,
-                  const uint8_t *nonce,
-                  const uint8_t *associatedData,
-                  uint32_t       associatedDataLength,
-                  const uint8_t *ciphertext,
-                  uint32_t       ciphertextLength,
-                  uint8_t       *plaintext,
-                  uint32_t       plaintextBufferLength,
-                  uint32_t      *outPlaintextLength) {
+int BFAeadDecrypt(const uint8_t *key, const uint8_t *nonce, const uint8_t *associatedData,
+                  uint32_t associatedDataLength, const uint8_t *ciphertext,
+                  uint32_t ciphertextLength, uint8_t *plaintext, uint32_t plaintextBufferLength,
+                  uint32_t *outPlaintextLength) {
 #if defined(HAVE_SODIUM)
-    if (!key || !nonce || (!ciphertext && ciphertextLength > 0) || !plaintext || !outPlaintextLength)
+    if (!key || !nonce || (!ciphertext && ciphertextLength > 0) || !plaintext ||
+        !outPlaintextLength)
         return BF_ERR;
     if (ciphertextLength < (uint32_t)BF_AEAD_ABYTES)
         return BF_ERR;
@@ -79,4 +71,3 @@ int BFAeadDecrypt(const uint8_t *key,
     return BF_ERR;
 #endif
 }
-

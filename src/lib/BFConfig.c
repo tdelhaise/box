@@ -58,7 +58,7 @@ int BFConfigLoadServer(const char *filePath, BFServerConfig *outConfig) {
         char *eq = strchr(p, '=');
         if (!eq)
             continue; // ignore malformed
-        *eq = '\0';
+        *eq       = '\0';
         char *key = trim(p);
         char *val = trim(eq + 1);
         // Strip quotes for string values
@@ -95,4 +95,3 @@ int BFConfigLoadServer(const char *filePath, BFServerConfig *outConfig) {
     fclose(f);
     return 0;
 }
-

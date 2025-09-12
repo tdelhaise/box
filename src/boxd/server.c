@@ -15,10 +15,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include <sys/stat.h>
 
 typedef struct ServerDtlsOptions {
     const char *certificateFile;
@@ -27,6 +27,10 @@ typedef struct ServerDtlsOptions {
     const char *preShareKeyAscii;
     const char *transport;
     uint16_t    port; // optional CLI override
+    int         hasLogLevel;
+    BFLogLevel  cliLogLevel;
+    int         hasLogTarget;
+    char        cliLogTarget[128];
 } ServerDtlsOptions;
 
 // Simple in-memory object for demo GET/PUT
@@ -75,17 +79,26 @@ static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions
         } else if (strcmp(arg, "--log-level") == 0 && argumentIndex + 1 < argc) {
             const char *lvl = argv[++argumentIndex];
             if (strcmp(lvl, "trace") == 0)
-                BFLoggerSetLevel(BF_LOG_TRACE);
+                BFLoggerSetLevel(BF_LOG_TRACE), outOptions->cliLogLevel = BF_LOG_TRACE,
+                                                outOptions->hasLogLevel = 1;
             else if (strcmp(lvl, "debug") == 0)
-                BFLoggerSetLevel(BF_LOG_DEBUG);
+                BFLoggerSetLevel(BF_LOG_DEBUG), outOptions->cliLogLevel = BF_LOG_DEBUG,
+                                                outOptions->hasLogLevel = 1;
             else if (strcmp(lvl, "info") == 0)
-                BFLoggerSetLevel(BF_LOG_INFO);
+                BFLoggerSetLevel(BF_LOG_INFO), outOptions->cliLogLevel = BF_LOG_INFO,
+                                               outOptions->hasLogLevel = 1;
             else if (strcmp(lvl, "warn") == 0)
-                BFLoggerSetLevel(BF_LOG_WARN);
+                BFLoggerSetLevel(BF_LOG_WARN), outOptions->cliLogLevel = BF_LOG_WARN,
+                                               outOptions->hasLogLevel = 1;
             else if (strcmp(lvl, "error") == 0)
-                BFLoggerSetLevel(BF_LOG_ERROR);
+                BFLoggerSetLevel(BF_LOG_ERROR), outOptions->cliLogLevel = BF_LOG_ERROR,
+                                                outOptions->hasLogLevel = 1;
         } else if (strcmp(arg, "--log-target") == 0 && argumentIndex + 1 < argc) {
-            (void)BFLoggerSetTarget(argv[++argumentIndex]);
+            const char *target = argv[++argumentIndex];
+            (void)BFLoggerSetTarget(target);
+            strncpy(outOptions->cliLogTarget, target, sizeof(outOptions->cliLogTarget) - 1);
+            outOptions->cliLogTarget[sizeof(outOptions->cliLogTarget) - 1] = '\0';
+            outOptions->hasLogTarget                                       = 1;
         } else if (strcmp(arg, "--port") == 0 && argumentIndex + 1 < argc) {
             const char *pv = argv[++argumentIndex];
             long        v  = strtol(pv, NULL, 10);
@@ -205,6 +218,25 @@ int main(int argc, char **argv) {
         }
     }
 
+    // Apply config-based log level/target unless overridden by CLI
+#if defined(__unix__) || defined(__APPLE__)
+    if (
+        // hasConfig is true if HOME set and file parse succeeded
+        (homeDirectory && *homeDirectory)) {
+        BFServerConfig tmp;
+        char           configPath[512];
+        snprintf(configPath, sizeof(configPath), "%s/.box/boxd.toml", homeDirectory);
+        if (BFConfigLoadServer(configPath, &tmp) == 0) {
+            if (!options.hasLogLevel && tmp.hasLogLevel) {
+                BFLoggerSetLevel(tmp.logLevel);
+            }
+            if (!options.hasLogTarget && tmp.hasLogTarget) {
+                (void)BFLoggerSetTarget(tmp.logTarget);
+            }
+        }
+    }
+#endif
+
     // Log startup parameters (avoid printing secrets)
     char targetName[256] = {0};
     BFLoggerGetTarget(targetName, sizeof(targetName));
@@ -214,11 +246,11 @@ int main(int argc, char **argv) {
           (unsigned)serverPort, portOrigin, levelName, targetName,
           (
 #if defined(__unix__) || defined(__APPLE__)
-               (homeDirectory && *homeDirectory) ? "present" : "absent"
+              (homeDirectory && *homeDirectory) ? "present" : "absent"
 #else
-               "absent"
+              "absent"
 #endif
-           ),
+              ),
           options.certificateFile ? options.certificateFile : "(none)",
           options.keyFile ? options.keyFile : "(none)",
           options.preShareKeyIdentity ? options.preShareKeyIdentity : "(none)",
@@ -304,15 +336,14 @@ int main(int argc, char **argv) {
         if (adminListenSocket >= 0) {
             int adminClient = accept(adminListenSocket, NULL, NULL);
             if (adminClient >= 0) {
-                char requestBuffer[128] = {0};
-                ssize_t requestSize     = read(adminClient, requestBuffer, sizeof(requestBuffer));
+                char    requestBuffer[128] = {0};
+                ssize_t requestSize = read(adminClient, requestBuffer, sizeof(requestBuffer));
                 if (requestSize > 0) {
                     // Trim and check for "status"
                     if (strstr(requestBuffer, "status") != NULL) {
                         char response[256];
                         snprintf(response, sizeof(response),
-                                 "{\"status\":\"ok\",\"version\":\"%s\"}\n",
-                                 BFVersionString());
+                                 "{\"status\":\"ok\",\"version\":\"%s\"}\n", BFVersionString());
                         (void)write(adminClient, response, strlen(response));
                     } else {
                         const char *msg = "unknown-command\n";
