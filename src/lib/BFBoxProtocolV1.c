@@ -198,3 +198,106 @@ int BFV1UnpackHello(const uint8_t *payload, uint32_t payloadLength, uint8_t *out
     }
     return 0;
 }
+
+int BFV1PackPut(uint8_t *buffer, size_t bufferLength, uint64_t requestId, const char *queuePath,
+                const char *contentType, const uint8_t *data, uint32_t dataLength) {
+    if (buffer == NULL || queuePath == NULL || contentType == NULL) {
+        return -1;
+    }
+    uint16_t queuePathLength   = (uint16_t)strlen(queuePath);
+    uint16_t contentTypeLength = (uint16_t)strlen(contentType);
+    uint32_t payloadLength     = 2U + queuePathLength + 2U + contentTypeLength + 4U + dataLength;
+    if (bufferLength < 18 + payloadLength) {
+        return -2;
+    }
+    uint8_t *payload = buffer + 18;
+    uint16_t beQP    = htons(queuePathLength);
+    memcpy(payload, &beQP, sizeof(beQP));
+    memcpy(payload + 2, queuePath, queuePathLength);
+    uint16_t beCT = htons(contentTypeLength);
+    memcpy(payload + 2 + queuePathLength, &beCT, sizeof(beCT));
+    memcpy(payload + 4 + queuePathLength, contentType, contentTypeLength);
+    uint32_t beDL = htonl(dataLength);
+    memcpy(payload + 4 + queuePathLength + contentTypeLength, &beDL, sizeof(beDL));
+    if (dataLength && data) {
+        memcpy(payload + 8 + queuePathLength + contentTypeLength, data, dataLength);
+    }
+    return BFV1Pack(buffer, bufferLength, BFV1_PUT, requestId, payload, payloadLength);
+}
+
+int BFV1UnpackPut(const uint8_t *payload, uint32_t payloadLength, const uint8_t **outQueuePath,
+                  uint16_t *outQueuePathLength, const uint8_t **outContentType,
+                  uint16_t *outContentTypeLength, const uint8_t **outData,
+                  uint32_t *outDataLength) {
+    if (payload == NULL || payloadLength < 2U) {
+        return -1;
+    }
+    uint16_t beQP = 0;
+    memcpy(&beQP, payload, sizeof(beQP));
+    uint16_t queuePathLength = ntohs(beQP);
+    if ((uint32_t)(2U + queuePathLength + 2U) > payloadLength) {
+        return -2;
+    }
+    const uint8_t *queuePathPointer = payload + 2;
+    uint16_t       beCT             = 0;
+    memcpy(&beCT, payload + 2 + queuePathLength, sizeof(beCT));
+    uint16_t contentTypeLength = ntohs(beCT);
+    if ((uint32_t)(4U + queuePathLength + contentTypeLength + 4U) > payloadLength) {
+        return -3;
+    }
+    const uint8_t *contentTypePointer = payload + 4 + queuePathLength;
+    uint32_t       beDL               = 0;
+    memcpy(&beDL, payload + 4 + queuePathLength + contentTypeLength, sizeof(beDL));
+    uint32_t dataLength = ntohl(beDL);
+    if ((uint32_t)(8U + queuePathLength + contentTypeLength + dataLength) != payloadLength) {
+        return -4;
+    }
+    const uint8_t *dataPointer = payload + 8 + queuePathLength + contentTypeLength;
+    if (outQueuePath)
+        *outQueuePath = queuePathPointer;
+    if (outQueuePathLength)
+        *outQueuePathLength = queuePathLength;
+    if (outContentType)
+        *outContentType = contentTypePointer;
+    if (outContentTypeLength)
+        *outContentTypeLength = contentTypeLength;
+    if (outData)
+        *outData = dataPointer;
+    if (outDataLength)
+        *outDataLength = dataLength;
+    return 0;
+}
+
+int BFV1PackGet(uint8_t *buffer, size_t bufferLength, uint64_t requestId, const char *queuePath) {
+    if (buffer == NULL || queuePath == NULL) {
+        return -1;
+    }
+    uint16_t queuePathLength = (uint16_t)strlen(queuePath);
+    uint32_t payloadLength   = 2U + queuePathLength;
+    if (bufferLength < 18 + payloadLength) {
+        return -2;
+    }
+    uint8_t *payload = buffer + 18;
+    uint16_t beQP    = htons(queuePathLength);
+    memcpy(payload, &beQP, sizeof(beQP));
+    memcpy(payload + 2, queuePath, queuePathLength);
+    return BFV1Pack(buffer, bufferLength, BFV1_GET, requestId, payload, payloadLength);
+}
+
+int BFV1UnpackGet(const uint8_t *payload, uint32_t payloadLength, const uint8_t **outQueuePath,
+                  uint16_t *outQueuePathLength) {
+    if (payload == NULL || payloadLength < 2U) {
+        return -1;
+    }
+    uint16_t beQP = 0;
+    memcpy(&beQP, payload, sizeof(beQP));
+    uint16_t queuePathLength = ntohs(beQP);
+    if ((uint32_t)(2U + queuePathLength) != payloadLength) {
+        return -2;
+    }
+    if (outQueuePath)
+        *outQueuePath = payload + 2;
+    if (outQueuePathLength)
+        *outQueuePathLength = queuePathLength;
+    return 0;
+}

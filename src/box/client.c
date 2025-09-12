@@ -164,6 +164,18 @@ int main(int argc, char **argv) {
         }
     }
 
+    // 6) Envoyer un PUT minimal (queue=/message, text/plain)
+    const char *queuePath   = "/message";
+    const char *contentType = "text/plain";
+    const char *putText     = "Hello from client";
+    requestId               = 3;
+    packed = BFV1PackPut(transmitBuffer, sizeof(transmitBuffer), requestId, queuePath, contentType,
+                         (const uint8_t *)putText, (uint32_t)strlen(putText));
+    if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed,
+                                 (struct sockaddr *)&server, sizeof(server)) < 0) {
+        BFFatal("sendto (PUT)");
+    }
+
     close(udpSocket);
     return 0;
 }

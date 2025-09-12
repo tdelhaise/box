@@ -73,6 +73,30 @@ int BFV1PackHello(uint8_t *buffer, size_t bufferLength, uint64_t requestId, uint
 int BFV1UnpackHello(const uint8_t *payload, uint32_t payloadLength, uint8_t *outStatusCode,
                     uint16_t *outVersions, uint8_t maxVersions, uint8_t *outVersionCount);
 
+// PUT convenience helpers
+// Request payload layout:
+//   - 2 bytes: queuePathLength (uint16 be)
+//   - Q bytes: queuePath (UTF-8)
+//   - 2 bytes: contentTypeLength (uint16 be)
+//   - C bytes: contentType (UTF-8)
+//   - 4 bytes: dataLength (uint32 be)
+//   - D bytes: data
+int BFV1PackPut(uint8_t *buffer, size_t bufferLength, uint64_t requestId, const char *queuePath,
+                const char *contentType, const uint8_t *data, uint32_t dataLength);
+
+int BFV1UnpackPut(const uint8_t *payload, uint32_t payloadLength, const uint8_t **outQueuePath,
+                  uint16_t *outQueuePathLength, const uint8_t **outContentType,
+                  uint16_t *outContentTypeLength, const uint8_t **outData, uint32_t *outDataLength);
+
+// GET convenience helpers (minimal: only queuePath)
+// Request payload layout:
+//   - 2 bytes: queuePathLength (uint16 be)
+//   - Q bytes: queuePath (UTF-8)
+int BFV1PackGet(uint8_t *buffer, size_t bufferLength, uint64_t requestId, const char *queuePath);
+
+int BFV1UnpackGet(const uint8_t *payload, uint32_t payloadLength, const uint8_t **outQueuePath,
+                  uint16_t *outQueuePathLength);
+
 #ifdef __cplusplus
 }
 #endif

@@ -220,6 +220,54 @@ int main(int argc, char **argv) {
         }
         case BFV1_PUT: {
             BFLog("boxd: PUT %u octets", (unsigned)payloadLength);
+            const uint8_t *queuePathPointer   = NULL;
+            uint16_t       queuePathLength    = 0;
+            const uint8_t *contentTypePointer = NULL;
+            uint16_t       contentTypeLength  = 0;
+            const uint8_t *dataPointer        = NULL;
+            uint32_t       dataLength         = 0;
+            int            ok =
+                BFV1UnpackPut(payload, payloadLength, &queuePathPointer, &queuePathLength,
+                              &contentTypePointer, &contentTypeLength, &dataPointer, &dataLength);
+            if (ok == 0) {
+                BFLog("boxd: PUT path=%.*s contentType=%.*s size=%u", (int)queuePathLength,
+                      (const char *)queuePathPointer, (int)contentTypeLength,
+                      (const char *)contentTypePointer, (unsigned)dataLength);
+                int responseSize =
+                    BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
+                                   receivedReqId + 1, BFV1_STATUS_OK, "stored");
+                if (responseSize > 0)
+                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
+                                    (struct sockaddr *)&from, fromLength);
+            } else {
+                int responseSize =
+                    BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
+                                   receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-put");
+                if (responseSize > 0)
+                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
+                                    (struct sockaddr *)&from, fromLength);
+            }
+            break;
+        }
+        case BFV1_GET: {
+            const uint8_t *queuePathPointer = NULL;
+            uint16_t       queuePathLength  = 0;
+            int ok = BFV1UnpackGet(payload, payloadLength, &queuePathPointer, &queuePathLength);
+            if (ok == 0) {
+                int responseSize =
+                    BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
+                                   receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "not-implemented");
+                if (responseSize > 0)
+                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
+                                    (struct sockaddr *)&from, fromLength);
+            } else {
+                int responseSize =
+                    BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
+                                   receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-get");
+                if (responseSize > 0)
+                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
+                                    (struct sockaddr *)&from, fromLength);
+            }
             break;
         }
         default: {
