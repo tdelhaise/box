@@ -1,5 +1,5 @@
 // BFNetwork — BoxFoundation Network Abstraction (TAPS-inspired)
-// Minimal M1 surface: datagram secure transport (DTLS backend), ready for QUIC later.
+// Minimal surface: datagram secure transport (Noise/QUIC planned). No DTLS.
 
 #ifndef BF_NETWORK_H
 #define BF_NETWORK_H
@@ -15,27 +15,26 @@ extern "C" {
 typedef struct BFNetworkConnection BFNetworkConnection;
 
 typedef enum BFNetworkTransport {
-    BFNetworkTransportDTLS = 1,
-    BFNetworkTransportQUIC = 2, // reserved; not implemented in M1
+    BFNetworkTransportQUIC = 1, // reserved; not implemented yet
 } BFNetworkTransport;
 
-// Security configuration (subset; mirrors BFDtls + room for QUIC)
+// Security configuration (for future Noise/QUIC transports)
 typedef struct BFNetworkSecurity {
     const char *certificateFile; // PEM (optional)
     const char *keyFile;         // PEM (optional)
 
-    const char          *preShareKeyIdentity; // optional (DTLS-PSK)
+    const char          *preShareKeyIdentity; // optional
     const unsigned char *preShareKey;         // optional (binary)
     size_t               preShareKeyLength;
 
-    const char *cipherList;   // OpenSSL cipher list (DTLS)
+    const char *cipherList;   // reserved for TLS/QUIC backends
     const char *expectedHost; // for client verification
     const char *alpn;         // ex: "box/1" (for QUIC/TLS later)
     const char *caFile;       // optional path to CA file (client)
     const char *caPath;       // optional path to CA dir (client)
 } BFNetworkSecurity;
 
-// Create a client-side secure connection over a datagram socket (DTLS backend for now).
+// Create a client-side secure connection over a datagram socket (future transports).
 // The function does not take ownership of udpSocket. Returns NULL on failure.
 BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int udpSocket,
                                               const struct sockaddr *server, socklen_t serverLength,

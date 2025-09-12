@@ -4,14 +4,14 @@ Thanks for your interest in contributing! This project uses a few simple convent
 
 **Naming Conventions**
 - Components use the `BF` prefix with component-based names.
-  - Examples: `BFCommon`, `BFSocket`, `BFUdp`, `BFUdpClient`, `BFUdpServer`, `BFDtls`, `BFBoxProtocol`.
+  - Examples: `BFCommon`, `BFSocket`, `BFUdp`, `BFUdpClient`, `BFUdpServer`, `BFBoxProtocol`.
   - Header ↔ source mapping:
     - `include/box/BFCommon.h` ↔ `src/lib/BFCommon.c`
     - `include/box/BFSocket.h` ↔ `src/lib/BFSocket.c`
     - `include/box/BFUdp.h` ↔ `src/lib/BFUdp.c`
     - `include/box/BFUdpClient.h` ↔ `src/lib/BFUdpClient.c`
     - `include/box/BFUdpServer.h` ↔ `src/lib/BFUdpServer.c`
-    - `include/box/BFDtls.h` ↔ `src/lib/BFDtlsOpenSSL.c`
+    - (DTLS removed)
     - `include/box/BFBoxProtocol.h` ↔ `src/lib/BFBoxProtocol.c`
 - Tests use the `test_` prefix followed by the component name.
   - Example: `test/test_BFBoxProtocol.c` with CMake target `test_BFBoxProtocol`.

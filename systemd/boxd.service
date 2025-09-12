@@ -1,5 +1,5 @@
 [Unit]
-Description=Box Daemon (UDP/DTLS server)
+Description=Box Daemon (UDP server)
 After=network.target
 
 [Service]
@@ -28,4 +28,3 @@ StateDirectory=boxd
 
 [Install]
 WantedBy=multi-user.target
-

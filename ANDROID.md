@@ -7,8 +7,8 @@ Scope and Goals
   2) AOSP native daemon on devices you control (Android-on-Pi): reliable via init and SELinux policies.
 
 What Works Today
-- Minimal cross-build target (BoxCoreMinimal) compiles core data structures and protocol framing without OpenSSL/DTLS dependencies.
-- This is a first step to validate NDK toolchains; full BoxFoundation (with OpenSSL) will be enabled later by providing Android-native OpenSSL/libsodium builds.
+- Minimal cross-build target (BoxCoreMinimal) compiles core data structures and protocol framing without external transport dependencies.
+- This is a first step to validate NDK toolchains; full BoxFoundation will gain libsodium/Noise transport later. QUIC support may require additional third-party builds when enabled.
 
 Build (NDK) — Minimal Core
 Prereqs
@@ -86,7 +86,7 @@ Networking Notes
 - IPv4: NAT typical; PCP/NAT‑PMP/UPnP discovery requires Wi‑Fi multicast permissions and locks.
 
 Planned (Future)
-- Build full `BoxFoundation` on Android by integrating OpenSSL (or BoringSSL) and libsodium builds for ABIs.
+- Build full `BoxFoundation` on Android by integrating libsodium (Noise transport) and, optionally, QUIC libraries for ABIs.
 - JNI for core operations (sendTo/getFrom/etc.) and the connectivity diagnostic.
 - A sample Android client app module.
 

@@ -11,7 +11,7 @@ option(BOX_HARDEN    "Enable hardening flags (by platform)"       ON)
 option(BOX_USE_PRESHAREKEY   "Enable PreShareKey"       ON)
 option(BOX_MEMORY_SIGNAL_TRACE "Enable BFMemory SIGUSR1 trace handler (POSIX)" ON)
 option(BOX_USE_QUIC "Enable QUIC backend (requires external library)" OFF)
-option(BOX_BUILD_MINIMAL "Build a minimal core library without DTLS/QUIC (useful for cross targets like Android)" OFF)
+option(BOX_BUILD_MINIMAL "Build a minimal core library without optional transports (useful for cross targets like Android)" OFF)
 set(BOX_QUIC_IMPL "ngtcp2" CACHE STRING "QUIC implementation: ngtcp2|msquic|picoquic")
 set_property(CACHE BOX_QUIC_IMPL PROPERTY STRINGS ngtcp2 msquic picoquic)
 
@@ -26,10 +26,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "ON" FORCE)
 
-# OpenSSL requis (skip for minimal builds)
-if(NOT BOX_BUILD_MINIMAL)
-  find_package(OpenSSL REQUIRED COMPONENTS SSL Crypto)
-endif()
+# No OpenSSL/DTLS dependency — transports will use libsodium/Noise later
 
 # Définitions globales
 if(BOX_USE_PRESHAREKEY)
@@ -48,7 +45,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_compile_definitions(BOX_VERSION="${PROJECT_VERSION}")
 
 if(NOT BOX_BUILD_MINIMAL)
-  # Full BoxFoundation library (with DTLS/OpenSSL)
+  # Full BoxFoundation library (core; no DTLS)
   add_library(BoxFoundation
           src/lib/BFCommon.c
           src/lib/BFLogger.c
@@ -63,11 +60,10 @@ if(NOT BOX_BUILD_MINIMAL)
           src/lib/BFUdp.c
           src/lib/BFUdpServer.c
           src/lib/BFUdpClient.c
-          src/lib/BFDtlsOpenSSL.c
           src/lib/BFBoxProtocol.c
           src/lib/BFVersion.c
   )
-  target_link_libraries(BoxFoundation PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+  # No OpenSSL link required
   if (WIN32)
     target_link_libraries(BoxFoundation PRIVATE advapi32)
   endif()
@@ -223,8 +219,7 @@ if(NOT BOX_BUILD_MINIMAL)
   target_link_libraries(test_BFMemory PRIVATE BoxFoundation)
   add_test(NAME test_BFMemory COMMAND test_BFMemory)
 
-  # Integration test: DTLS with certificates (client verifies server via CA + hostname)
-  add_test(NAME it_dtls_cert_verify COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/test_dtls_cert_verify.sh)
+  # Integration tests placeholder (DTLS removed; Noise to be added later)
   add_executable(test_BFRunloop test/test_BFRunloop.c)
   target_include_directories(test_BFRunloop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(test_BFRunloop PRIVATE BoxFoundation)
@@ -263,13 +258,7 @@ if(NOT BOX_BUILD_MINIMAL)
   target_link_libraries(example_shared_dictionary PRIVATE BoxFoundation)
 endif()
 
-# Cible utilitaire : génération de certificats autosignés (build dir)
-add_custom_target(certs
-	COMMAND ${CMAKE_COMMAND} -E echo "Generating self-signed certs (server.key/server.pem)"
-	COMMAND openssl req -x509 -newkey rsa:2048 -keyout server.key -out server.pem -days 365 -nodes -subj "/CN=boxd"
-	WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-	BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/server.key ${CMAKE_CURRENT_BINARY_DIR}/server.pem
-VERBATIM)
+# DTLS certificate helper target removed (DTLS deprecated/removed)
 
 if(NOT BOX_BUILD_MINIMAL)
   include(GNUInstallDirs)

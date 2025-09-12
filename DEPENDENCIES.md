@@ -2,7 +2,7 @@ Dependencies
 
 Overview
 - This document lists build-time and optional runtime dependencies for the Box project (box/boxd) across Linux, macOS, and Windows, and provides quick setup guidance.
-- The current codebase uses OpenSSL for DTLS bring‑up; the specification targets Noise (Ed25519/X25519) + XChaCha20‑Poly1305 via libsodium in a later milestone.
+- The codebase targets Noise (Ed25519/X25519) + XChaCha20‑Poly1305 via libsodium for encryption in upcoming milestones. DTLS has been removed.
 
 Core Build Tooling (all platforms)
 - CMake >= 3.16
@@ -13,9 +13,8 @@ Core Build Tooling (all platforms)
 - Utilities: pkg-config (optional, for QUIC autodiscovery), ripgrep (scripts), clang-format (format checks), bash (scripts)
 
 Mandatory Libraries (current)
-- OpenSSL (SSL, Crypto)
-  - Used by the DTLS transport path in BoxFoundation for secure datagram sessions during bring‑up.
-  - CMake target: OpenSSL::SSL OpenSSL::Crypto
+- OpenSSL
+  - May be used by optional QUIC integrations (ngtcp2 crypto backends) when enabled via BOX_USE_QUIC, but not required by default.
 
 Planned/Optional Libraries
 - Crypto (planned default): libsodium (Ed25519, X25519, XChaCha20‑Poly1305)
@@ -105,7 +104,7 @@ vcpkg Toolchain Snippet (cross-platform)
   cmake --build build -j
 
 Scripting and Utilities
-- OpenSSL CLI is used by the `certs` target to generate self‑signed certificates for DTLS tests.
+- DTLS certificate helpers and tests have been removed.
 - Bash is required to run scripts under `scripts/`.
 
 Environment Variables
