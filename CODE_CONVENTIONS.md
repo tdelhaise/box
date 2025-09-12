@@ -96,3 +96,10 @@ Platform Notes
 
 Change Management
 - Conventions evolve with the project; propose changes via PRs that update this file alongside the impacted code.
+
+Lint Suggestions (Abbreviations)
+- Goal: Catch common abbreviated identifiers in variables/parameters early.
+- Suggested forbidden tokens (case‑sensitive, word‑boundary matches): `buf`, `addr`, `var`, `len`, `sock`, `cfg`, `env`, `tmp`, `ptr`, `idx`, `cnt`, `fn`, `str`, `num`, `sz`.
+- Exceptions (temporary until full refactor): occurrences in third‑party code, tests, or system APIs. Existing code may still use a few (e.g., `ptr`, `idx`, `cfg`); treat findings as warnings initially.
+- Script: `scripts/check_abbreviations.sh` scans `include/ src/ test/` and prints matches. By default exits 0 (warn‑only). Set `ENFORCE_ABBREV=1` to fail the build on findings.
+- Remediation: rename to explicit forms (e.g., `pointer`, `index`, `configuration`, `environment`, `temporaryValue`, `count`, `string`, `size`).
