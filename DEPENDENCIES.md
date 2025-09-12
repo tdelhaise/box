@@ -9,6 +9,9 @@ libsodium (Noise transport groundwork)
 - Discovery: via pkg-config as `libsodium`.
 - Current usage: skeleton only — initializes libsodium when present; no encrypted transport yet.
 
+Notes
+- DTLS/OpenSSL have been removed; do not install or link OpenSSL for core builds.
+
 Core Build Tooling (all platforms)
 - CMake >= 3.16
 - C compiler and linker

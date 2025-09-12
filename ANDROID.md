@@ -87,6 +87,9 @@ Networking Notes
 
 Planned (Future)
 - Build full `BoxFoundation` on Android by integrating libsodium (Noise transport) and, optionally, QUIC libraries for ABIs.
+
+Admin channel
+- The Unix admin socket is not applicable on Android; a platform-specific admin interface (binder/local socket) can be added later if needed.
 - JNI for core operations (sendTo/getFrom/etc.) and the connectivity diagnostic.
 - A sample Android client app module.
 

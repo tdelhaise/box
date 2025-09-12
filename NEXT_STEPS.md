@@ -3,7 +3,10 @@ Next Steps and Status
 Status (high level)
 - Spec complete for v0.1 (SPECS.md): protocol framing, LS, queues, ACLs, NAT, connectivity CLI, threat model, examples.
 - Conventions and dependencies documented; CI in place (native, dockerized, Android minimal + JNI build).
-- Baseline C code builds/tests. Legacy DTLS bring‑up path is being removed; crypto will be libsodium‑based per Issue #16. Android minimal core compiles; JNI wrapper and sample app added.
+- Baseline C code builds/tests. DTLS and OpenSSL have been removed (Issue #21 complete).
+- Libsodium groundwork present: AEAD helpers (XChaCha20‑Poly1305) and Noise transport skeleton compiled/linked when available.
+- Non‑root enforcement active on Unix/macOS; admin channel skeleton is live on `~/.box/run/boxd.sock` with a `status` command; `box admin status` CLI added.
+- Minimal config parser loads `~/.box/boxd.toml` (port/log settings) with CLI/env precedence.
 
 Immediate TODOs (near-term)
 1) Protocol framing v1 in C (Issue #13)
@@ -12,15 +15,12 @@ Immediate TODOs (near-term)
    - Exit: round‑trip HELLO over UDP (unencrypted, temporary) using the new frame; tests green.
 
 2) Config + Non‑root enforcement + Admin channel (skeleton) (Issue #14)
-   - Enforce non‑root/Administrator refusal in `boxd` startup.
-   - Parse TOML: `~/.box/boxd.toml` and `~/.box/box.toml` (Unix/macOS; Windows equivalents).
-   - Implement local admin channel socket/pipe and `status` action.
-   - Exit: `boxd` exposes status via admin channel; unit test/smoke check.
+   - Current: non‑root enforcement done (Unix/macOS); parse `~/.box/boxd.toml` (port/log); admin socket implemented with `status` action; `box admin status` added.
+   - Next: extend config keys; add Windows named pipe; add more admin actions.
+   - Exit: `boxd` exposes status and basic controls via admin channel; config round‑trip in tests.
 
-3) Remove DTLS (legacy) and references (Issue #21)
-   - Remove DTLS code paths and dependencies (OpenSSL DTLS): delete legacy files, CMake wiring, flags, and CLI/documentation referring to DTLS.
-   - Update CI and scripts to drop DTLS steps; ensure clean builds without OpenSSL DTLS usage.
-   - Exit: no DTLS symbols, flags, or docs remain; builds/tests green.
+3) Remove DTLS (legacy) and references (Issue #21) — DONE
+   - DTLS code, headers, OpenSSL wiring, tests and docs removed; builds/tests green.
 
 4) Storage and Queues (filesystem + index) (Issue #15)
    - Implement storage root layout and portable B‑tree index.
@@ -29,8 +29,8 @@ Immediate TODOs (near-term)
    - Exit: e2e object transfer locally; tests for store/retrieve by digest.
 
 5) Crypto (Noise + XChaCha) groundwork (Issue #16)
-   - Vendor or depend on libsodium; add a new transport path (kept behind flag).
-   - Implement NK/IK handshake skeleton; payload AEAD with XChaCha20‑Poly1305.
+   - Current: libsodium autodetected; AEAD helpers + Noise adapter skeleton present.
+   - Next: define wire format and implement encrypt/decrypt; add unit tests for framing + AEAD.
    - Exit: encrypted echo using new transport; AEAD unit tests.
 
 6) Location Service + Presence (Issue #17)

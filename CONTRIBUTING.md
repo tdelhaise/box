@@ -11,7 +11,7 @@ Thanks for your interest in contributing! This project uses a few simple convent
     - `include/box/BFUdp.h` ↔ `src/lib/BFUdp.c`
     - `include/box/BFUdpClient.h` ↔ `src/lib/BFUdpClient.c`
     - `include/box/BFUdpServer.h` ↔ `src/lib/BFUdpServer.c`
-    - (DTLS removed)
+    - (DTLS removed; Noise/libsodium transport in progress)
     - `include/box/BFBoxProtocol.h` ↔ `src/lib/BFBoxProtocol.c`
 - Tests use the `test_` prefix followed by the component name.
   - Example: `test/test_BFBoxProtocol.c` with CMake target `test_BFBoxProtocol`.

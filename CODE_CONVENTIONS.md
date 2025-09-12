@@ -44,8 +44,7 @@ Configuration and Paths
 - Permissions: directories `700`, key files `600`.
 
 Dependencies
-- Crypto: `libsodium` (or equivalent) for Ed25519/X25519 and XChaCha20‑Poly1305.
-- DTLS (legacy/bring‑up path): OpenSSL backend is present; used only while Noise path matures.
+- Crypto: `libsodium` for Ed25519/X25519 and XChaCha20‑Poly1305 (Noise transport).
 - Storage: portable B‑tree (in‑tree) with optional BSD libdb or LMDB backends.
 - Build: Make/CMake; scripts for formatting and naming exist under `scripts/`.
 
@@ -94,6 +93,7 @@ Documentation
 Platform Notes
 - Linux/macOS supported first; Windows later. Always run `boxd` under a non‑privileged user.
 - Prefer IPv6; if using IPv4 under CGNAT, expect to rely on mappings or a user‑owned relay.
+- Admin channel (Unix): local socket `~/.box/run/boxd.sock` (0600). A Windows named pipe will be added later.
 
 Change Management
 - Conventions evolve with the project; propose changes via PRs that update this file alongside the impacted code.

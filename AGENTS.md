@@ -5,9 +5,9 @@ Scope
 
 Authoritative Docs
 - Protocol/architecture: SPECS.md
-- Development plan: DEVELOPMENT_STRATEGY.md
-- Coding standards: CODE_CONVENTIONS.md
-- Dependencies and setup: DEPENDENCIES.md
+- Development plan: DEVELOPMENT_STRATEGY.md (updated: DTLS removed; Noise/libsodium path)
+- Coding standards: CODE_CONVENTIONS.md (naming, non‑root policy, admin channel notes)
+- Dependencies and setup: DEPENDENCIES.md (libsodium via pkg‑config; no OpenSSL/DTLS)
 - Android notes: ANDROID.md
 
 Build and Test
@@ -30,8 +30,9 @@ Coding Conventions (highlights)
 - C11 with Clang toolchain preferred. Keep changes minimal and focused.
 - Public APIs live under `include/box/`; library sources under `src/lib/`.
 - Executables: `src/box/` (client), `src/boxd/` (daemon). Do not run `boxd` as root/admin.
-- Naming: `BF` prefix for library symbols; explicit variable/parameter names (avoid abbreviations like `buf`, `addr`, `ptr`, `idx`, etc.). See CODE_CONVENTIONS.md.
-- Security posture: default‑deny ACLs, adhere to spec’d crypto (Noise + XChaCha) roadmap, and follow non‑root policy.
+- Naming: `BF` prefix for library symbols; explicit variable/parameter names (avoid abbreviations like `buffer`, `address`, `pointer`, `index`, etc. are required; abbreviations like `buf`, `addr`, `ptr`, `idx` are forbidden). See CODE_CONVENTIONS.md.
+- Security posture: default‑deny ACLs, adhere to Noise + XChaCha crypto roadmap, and follow non‑root policy.
+- Admin channel (Unix): local socket `~/.box/run/boxd.sock` with a `status` command; client supports `box admin status`.
 
 Platform Notes
 - Linux/macOS/Windows are primary; Android and AOSP supported via NDK; STM32 targeted later (reason to keep core lean C).
@@ -46,4 +47,3 @@ Where to Put Things
 Do/Don’t
 - Do: write small, testable patches; update docs when behavior changes.
 - Don’t: reformat unrelated code; introduce new heavy dependencies without alignment; run `boxd` with elevated privileges.
-

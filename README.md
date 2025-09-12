@@ -3,7 +3,8 @@
 
 ## Notes
 
-Le chiffrement sera assuré par un transport basé sur libsodium (Noise + XChaCha20‑Poly1305) dans une étape ultérieure. Les versions actuelles utilisent des échanges UDP simples pour la mise au point du protocole et de la CLI.
+- Chiffrement: en cours d’intégration — transport basé sur libsodium (Noise + XChaCha20‑Poly1305). Un socle AEAD (XChaCha20‑Poly1305) est présent et testé; le transport Noise utilisera ces primitives.
+- Les exemples actuels utilisent des échanges UDP simples pour le prototypage du protocole et de la CLI (pas de DTLS; supprimé).
 
 Après Intall
 
@@ -21,7 +22,7 @@ export AR=llvm-ar RANLIB=llvm-ranlib
 
 ## Utilisation (box / boxd)
 
-Les binaires `box` (client) et `boxd` (serveur) permettent des échanges de démonstration UDP (HELLO/STATUS, PUT/GET) en local.
+Les binaires `box` (client) et `boxd` (serveur) permettent des échanges de démonstration UDP (HELLO/STATUS, PUT/GET) en local. Un canal d’administration local est disponible sur Unix (socket Unix).
 
 ### Journalisation
 
@@ -46,12 +47,17 @@ Les binaires `box` (client) et `boxd` (serveur) permettent des échanges de dém
 Afficher l’aide:
 ```bash
 ./build/box --help
+
+# Interroger le canal d’admin local (Unix):
+./build/box admin status
 ```
 
 ### Serveur `boxd`
 
 Remarques:
 - L’option `--log-target` permet de diriger la journalisation vers `stderr|syslog|oslog|eventlog|file:<path>`.
+- Le binaire refuse de démarrer en tant que root (Unix/macOS).
+- Canal d’administration (Unix): socket `~/.box/run/boxd.sock` (droits 0600). Commande supportée: `status` (retour JSON).
 
 ### Aide (`--help`)
 
@@ -104,7 +110,24 @@ Terminal 2 — client:
 ```
 
 Remarques:
-- Le chiffrement (Noise + XChaCha) sera introduit dans une prochaine étape, conformément à DEVELOPMENT_STRATEGY.md.
+- Le chiffrement (Noise + XChaCha) est en préparation (AEAD présent). Voir DEVELOPMENT_STRATEGY.md.
+
+### Configuration
+
+Fichier optionnel: `~/.box/boxd.toml` (Unix/macOS). Clés reconnues:
+
+```
+port = 12567
+log_level = "info"    # trace|debug|info|warn|error
+log_target = "syslog"  # stderr|syslog|oslog|eventlog|file:/path
+```
+
+Priorité des sources (port, niveau et cible de log):
+
+- CLI (`--port`, `--log-level`, `--log-target`)
+- Variables d’environnement (ex: `BOXD_PORT` pour le port)
+- Fichier `~/.box/boxd.toml`
+- Valeurs par défaut
 
 ## Conventions
 

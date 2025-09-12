@@ -58,7 +58,7 @@ Unlike traditional cloud offerings, Box is designed to run on user-controlled ha
 5.3 Handshake and Session
 
 - All request bodies are protected with authenticated encryption (AEAD) using XChaCha20‑Poly1305.
-- Session keys are established using an authenticated key exchange (Noise NK/IK over UDP using X25519 for ECDH and Ed25519 for signatures).
+- Session keys are established using an authenticated key exchange (Noise NK/IK over UDP using X25519 for ECDH and Ed25519 for signatures). An AEAD layer uses XChaCha20‑Poly1305; helpers exist in the codebase and the transport integration is in progress.
 - Replay protection is enforced using nonces and monotonic timestamps; servers reject stale or duplicate nonces per peer.
 
 5.4 Authorization
