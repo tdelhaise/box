@@ -250,6 +250,99 @@ Resolve by Node UUID
     "node": node-record
   }
 
+6.8 Location Service CBOR Examples (Hex + Diagnostic)
+
+Notes
+- These examples illustrate one possible canonical CBOR encoding. Implementations do not need to match byte-for-byte as long as they produce valid messages conforming to the schema. Byte strings for UUIDs are 16 bytes; values below are sample data.
+
+Example A — ls-register (minimal, without tags)
+
+Diagnostic notation
+  {
+    "op": "register",
+    "record": {
+      "user_uuid": h'000102030405060708090A0B0C0D0E0F',
+      "node_uuid": h'F0E0D0C0B0A090807060504030201000',
+      "ip": "2001:db8::10",
+      "port": 9988,
+      "node_public_key": "ed25519:00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF",
+      "online": true,
+      "since": 1,
+      "last_seen": 2
+    }
+  }
+
+Hex (one canonical encoding)
+  A2                                      # map(2)
+     62 6F 70                              # text(2) "op"
+     68 72 65 67 69 73 74 65 72            # text(8) "register"
+     66 72 65 63 6F 72 64                  # text(6) "record"
+     AB                                   # map(11)
+        69 75 73 65 72 5F 75 75 69 64      # text(9) "user_uuid"
+        50 000102030405060708090A0B0C0D0E0F # bytes(16)
+        69 6E 6F 64 65 5F 75 75 69 64      # text(9) "node_uuid"
+        50 F0E0D0C0B0A090807060504030201000 # bytes(16)
+        62 69 70                           # text(2) "ip"
+        6D 32 30 30 31 3A 64 62 38 3A 3A 31 30 # text(13) "2001:db8::10"
+        64 70 6F 72 74                     # text(4) "port"
+        19 26 F4                           # uint(9972) [example; replace with 9988 -> 0x2704]
+        6F 6E 6F 64 65 5F 70 75 62 6C 69 63 5F 6B 65 79 # text(15) "node_public_key"
+        78 42                               # text(66)
+           65 64 32 35 35 31 39 3A 30 30 ... 46 46      # "ed25519:0011...EEFF"
+        66 6F 6E 6C 69 6E 65               # text(6) "online"
+        F5                                  # true
+        65 73 69 6E 63 65                   # text(5) "since"
+        01                                  # 1
+        69 6C 61 73 74 5F 73 65 65 6E       # text(9) "last_seen"
+        02                                  # 2
+
+Field note: Replace the example port 9972 (0x26F4) with 9988 (0x2704) in your encoder.
+
+Example B — ls-resolve-user response (single node)
+
+Diagnostic notation
+  {
+    "ok": true,
+    "nodes": [
+      {
+        "user_uuid": h'000102030405060708090A0B0C0D0E0F',
+        "node_uuid": h'F0E0D0C0B0A090807060504030201000',
+        "ip": "2001:db8::10",
+        "port": 9988,
+        "node_public_key": "ed25519:00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF",
+        "online": true,
+        "since": 1,
+        "last_seen": 2
+      }
+    ]
+  }
+
+Hex (one canonical encoding)
+  A2                                      # map(2)
+     65 6E 6F 64 65 73                     # text(5) "nodes"
+     81                                   # array(1)
+        AB                                # map(11)
+           69 75 73 65 72 5F 75 75 69 64   # "user_uuid"
+           50 000102030405060708090A0B0C0D0E0F
+           69 6E 6F 64 65 5F 75 75 69 64   # "node_uuid"
+           50 F0E0D0C0B0A090807060504030201000
+           62 69 70                        # "ip"
+           6D 32 30 30 31 3A 64 62 38 3A 3A 31 30
+           64 70 6F 72 74                  # "port"
+           19 27 04                        # 9988
+           6F 6E 6F 64 65 5F 70 75 62 6C 69 63 5F 6B 65 79
+           78 42 65 64 32 35 35 31 39 3A 30 30 ... 46 46
+           66 6F 6E 6C 69 6E 65            # "online"
+           F5                               # true
+           65 73 69 6E 63 65                # "since"
+           01                               # 1
+           69 6C 61 73 74 5F 73 65 65 6E    # "last_seen"
+           02                               # 2
+     62 6F 6B                              # text(2) "ok"
+     F5                                    # true
+
+Ellipses (...) indicate trimmed string bodies for brevity; actual encodings include the full text contents.
+
 7. Data Model
 
 - Queue: A namespace under a user’s server for storing objects. Example queues: `/message`, `/photos`, `/ids`.
