@@ -128,6 +128,9 @@ int BFConfigLoadServer(const char *filePath, BFServerConfig *outConfig) {
         }
         // ignore unknown keys for now
     }
+    // Keep lineNumber for potential future diagnostics while avoiding unused warnings in
+    // stricter toolchains.
+    (void)lineNumber;
     fclose(f);
     return 0;
 }
