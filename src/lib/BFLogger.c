@@ -18,13 +18,7 @@
 #endif
 
 static BFLogLevel g_level = BF_LOG_INFO;
-typedef enum BFLogTarget {
-    TARGET_STDERR = 0,
-    TARGET_SYSLOG,
-    TARGET_OSLOG,
-    TARGET_EVENTLOG,
-    TARGET_FILE
-} BFLogTarget;
+typedef enum BFLogTarget { TARGET_STDERR = 0, TARGET_SYSLOG, TARGET_OSLOG, TARGET_EVENTLOG, TARGET_FILE } BFLogTarget;
 static BFLogTarget g_target        = TARGET_STDERR;
 static char        g_prog[32]      = {0};
 static FILE       *g_file          = NULL;
@@ -250,8 +244,7 @@ void BFLogWriteV(BFLogLevel level, const char *fmt, va_list ap) {
             source                 = RegisterEventSourceA(NULL, sourceName);
         }
         if (source) {
-            ReportEventA(source, eventType, 0 /*category*/, eventId, NULL /*userSid*/, stringCount,
-                         0 /*dataSize*/, strings, NULL /*rawData*/);
+            ReportEventA(source, eventType, 0 /*category*/, eventId, NULL /*userSid*/, stringCount, 0 /*dataSize*/, strings, NULL /*rawData*/);
             if (source != g_eventSource) {
                 DeregisterEventSource(source);
             }

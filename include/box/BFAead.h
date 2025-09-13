@@ -31,17 +31,11 @@ enum {
 // - nonce: 24 bytes (XChaCha)
 // - associatedData may be NULL when associatedDataLength is 0
 // Returns BF_OK on success and sets *outCiphertextLength; BF_ERR on failure.
-int BFAeadEncrypt(const uint8_t *key, const uint8_t *nonce, const uint8_t *associatedData,
-                  uint32_t associatedDataLength, const uint8_t *plaintext, uint32_t plaintextLength,
-                  uint8_t *ciphertext, uint32_t ciphertextBufferLength,
-                  uint32_t *outCiphertextLength);
+int BFAeadEncrypt(const uint8_t *key, const uint8_t *nonce, const uint8_t *associatedData, uint32_t associatedDataLength, const uint8_t *plaintext, uint32_t plaintextLength, uint8_t *ciphertext, uint32_t ciphertextBufferLength, uint32_t *outCiphertextLength);
 
 // Decrypts ciphertext into plaintext using XChaCha20-Poly1305 (ietf variant).
 // Returns BF_OK on success and sets *outPlaintextLength; BF_ERR on failure (e.g., MAC failure).
-int BFAeadDecrypt(const uint8_t *key, const uint8_t *nonce, const uint8_t *associatedData,
-                  uint32_t associatedDataLength, const uint8_t *ciphertext,
-                  uint32_t ciphertextLength, uint8_t *plaintext, uint32_t plaintextBufferLength,
-                  uint32_t *outPlaintextLength);
+int BFAeadDecrypt(const uint8_t *key, const uint8_t *nonce, const uint8_t *associatedData, uint32_t associatedDataLength, const uint8_t *ciphertext, uint32_t ciphertextLength, uint8_t *plaintext, uint32_t plaintextBufferLength, uint32_t *outPlaintextLength);
 
 #ifdef __cplusplus
 }

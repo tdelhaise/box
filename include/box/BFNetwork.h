@@ -58,16 +58,11 @@ typedef struct BFNetworkSecurity {
 
 // Create a client-side secure connection over a datagram socket (future transports).
 // The function does not take ownership of udpSocket. Returns NULL on failure.
-BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int udpSocket,
-                                              const struct sockaddr *server, socklen_t serverLength,
-                                              const BFNetworkSecurity *security);
+BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int udpSocket, const struct sockaddr *server, socklen_t serverLength, const BFNetworkSecurity *security);
 
 // Create a server-side secure connection over a datagram socket with a known peer
 // (peer discovered by a cleartext datagram). Returns NULL on failure.
-BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int udpSocket,
-                                             const struct sockaddr_storage *peer,
-                                             socklen_t                      peerLength,
-                                             const BFNetworkSecurity       *security);
+BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int udpSocket, const struct sockaddr_storage *peer, socklen_t peerLength, const BFNetworkSecurity *security);
 
 // I/O operations (blocking). Return number of bytes or BF_ERR (<0) on error.
 int BFNetworkSend(BFNetworkConnection *c, const void *buffer, int length);

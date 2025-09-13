@@ -53,23 +53,22 @@ static void destroyStoredObject(void *pointer) {
 }
 
 static void ServerPrintUsage(const char *program) {
-    fprintf(
-        stderr,
-        "Usage: %s [--port <udp>] [--log-level <lvl>] [--log-target <tgt>]\n"
-        "          [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]\n"
-        "          [--pre-share-key <ascii>] [--version] [--help]\n\n"
-        "Options:\n"
-        "  --port <udp>           UDP port to bind (default %u)\n"
-        "  --log-level <lvl>      trace|debug|info|warn|error (default info)\n"
-        "  --log-target <tgt>     override default platform target (Windows=eventlog, "
-        "macOS=oslog, Unix=syslog, else=stderr); also accepts file:<path>\n"
-        "\n"
-        "Notes:\n"
-        "  - Refuses to run as root (Unix/macOS).\n"
-        "  - Admin channel (Unix): ~/.box/run/boxd.socket (mode 0600); try 'box admin status'.\n"
-        "  --version              Print version and exit\n"
-        "  --help                 Show this help and exit\n",
-        program, (unsigned)BFGlobalDefaultPort);
+    fprintf(stderr,
+            "Usage: %s [--port <udp>] [--log-level <lvl>] [--log-target <tgt>]\n"
+            "          [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]\n"
+            "          [--pre-share-key <ascii>] [--version] [--help]\n\n"
+            "Options:\n"
+            "  --port <udp>           UDP port to bind (default %u)\n"
+            "  --log-level <lvl>      trace|debug|info|warn|error (default info)\n"
+            "  --log-target <tgt>     override default platform target (Windows=eventlog, "
+            "macOS=oslog, Unix=syslog, else=stderr); also accepts file:<path>\n"
+            "\n"
+            "Notes:\n"
+            "  - Refuses to run as root (Unix/macOS).\n"
+            "  - Admin channel (Unix): ~/.box/run/boxd.socket (mode 0600); try 'box admin status'.\n"
+            "  --version              Print version and exit\n"
+            "  --help                 Show this help and exit\n",
+            program, (unsigned)BFGlobalDefaultPort);
 }
 
 static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions) {
@@ -85,20 +84,15 @@ static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions
         } else if (strcmp(arg, "--log-level") == 0 && argumentIndex + 1 < argc) {
             const char *lvl = argv[++argumentIndex];
             if (strcmp(lvl, "trace") == 0)
-                BFLoggerSetLevel(BF_LOG_TRACE), outOptions->cliLogLevel = BF_LOG_TRACE,
-                                                outOptions->hasLogLevel = 1;
+                BFLoggerSetLevel(BF_LOG_TRACE), outOptions->cliLogLevel = BF_LOG_TRACE, outOptions->hasLogLevel = 1;
             else if (strcmp(lvl, "debug") == 0)
-                BFLoggerSetLevel(BF_LOG_DEBUG), outOptions->cliLogLevel = BF_LOG_DEBUG,
-                                                outOptions->hasLogLevel = 1;
+                BFLoggerSetLevel(BF_LOG_DEBUG), outOptions->cliLogLevel = BF_LOG_DEBUG, outOptions->hasLogLevel = 1;
             else if (strcmp(lvl, "info") == 0)
-                BFLoggerSetLevel(BF_LOG_INFO), outOptions->cliLogLevel = BF_LOG_INFO,
-                                               outOptions->hasLogLevel = 1;
+                BFLoggerSetLevel(BF_LOG_INFO), outOptions->cliLogLevel = BF_LOG_INFO, outOptions->hasLogLevel = 1;
             else if (strcmp(lvl, "warn") == 0)
-                BFLoggerSetLevel(BF_LOG_WARN), outOptions->cliLogLevel = BF_LOG_WARN,
-                                               outOptions->hasLogLevel = 1;
+                BFLoggerSetLevel(BF_LOG_WARN), outOptions->cliLogLevel = BF_LOG_WARN, outOptions->hasLogLevel = 1;
             else if (strcmp(lvl, "error") == 0)
-                BFLoggerSetLevel(BF_LOG_ERROR), outOptions->cliLogLevel = BF_LOG_ERROR,
-                                                outOptions->hasLogLevel = 1;
+                BFLoggerSetLevel(BF_LOG_ERROR), outOptions->cliLogLevel = BF_LOG_ERROR, outOptions->hasLogLevel = 1;
         } else if (strcmp(arg, "--log-target") == 0 && argumentIndex + 1 < argc) {
             const char *target = argv[++argumentIndex];
             (void)BFLoggerSetTarget(target);
@@ -241,8 +235,7 @@ int main(int argc, char **argv) {
                 (void)BFLoggerSetTarget(serverConfigurationLoaded.logTarget);
             }
             if (serverConfigurationLoaded.hasNoisePattern) {
-                BFLog("boxd: noise pattern set by config: %s",
-                      serverConfigurationLoaded.noisePattern);
+                BFLog("boxd: noise pattern set by config: %s", serverConfigurationLoaded.noisePattern);
             }
             // Adopt transport toggles and pre-shared key from config for smoke path
             if (!options.transport && serverConfigurationLoaded.hasTransportGeneral) {
@@ -269,11 +262,7 @@ int main(int argc, char **argv) {
               "absent"
 #endif
               ),
-          options.certificateFile ? options.certificateFile : "(none)",
-          options.keyFile ? options.keyFile : "(none)",
-          options.preShareKeyIdentity ? options.preShareKeyIdentity : "(none)",
-          options.preShareKeyAscii ? "[set]" : "(unset)",
-          options.transport ? options.transport : "(default)");
+          options.certificateFile ? options.certificateFile : "(none)", options.keyFile ? options.keyFile : "(none)", options.preShareKeyIdentity ? options.preShareKeyIdentity : "(none)", options.preShareKeyAscii ? "[set]" : "(unset)", options.transport ? options.transport : "(default)");
 
     // Create in-memory store for demo
     BFSharedDictionary *store = BFSharedDictionaryCreate(destroyStoredObject);
@@ -291,8 +280,7 @@ int main(int argc, char **argv) {
 #if defined(__unix__) || defined(__APPLE__)
     if (homeDirectory && *homeDirectory) {
         char adminSocketPath[512];
-        snprintf(adminSocketPath, sizeof(adminSocketPath), "%s/.box/run/boxd.socket",
-                 homeDirectory);
+        snprintf(adminSocketPath, sizeof(adminSocketPath), "%s/.box/run/boxd.socket", homeDirectory);
         adminListenSocket = (int)socket(AF_UNIX, SOCK_STREAM, 0);
         if (adminListenSocket >= 0) {
             struct sockaddr_un adminAddress;
@@ -301,8 +289,7 @@ int main(int argc, char **argv) {
             strncpy(adminAddress.sun_path, adminSocketPath, sizeof(adminAddress.sun_path) - 1);
             // Remove any stale socket file, then bind
             unlink(adminSocketPath);
-            if (bind(adminListenSocket, (struct sockaddr *)&adminAddress, sizeof(adminAddress)) ==
-                0) {
+            if (bind(adminListenSocket, (struct sockaddr *)&adminAddress, sizeof(adminAddress)) == 0) {
                 (void)chmod(adminSocketPath, 0600);
                 (void)listen(adminListenSocket, 4);
                 // Non-blocking accept
@@ -326,8 +313,7 @@ int main(int argc, char **argv) {
 
     memset(receiveBuffer, 0, sizeof(receiveBuffer));
 
-    ssize_t received = BFUdpRecieve(udpSocket, receiveBuffer, sizeof(receiveBuffer),
-                                    (struct sockaddr *)&peer, &peerLength);
+    ssize_t received = BFUdpRecieve(udpSocket, receiveBuffer, sizeof(receiveBuffer), (struct sockaddr *)&peer, &peerLength);
     if (received < 0) {
         BFFatal("recvfrom (hello)");
     }
@@ -338,8 +324,7 @@ int main(int argc, char **argv) {
     // Allow per-operation override for status smoke via config
     int useNoiseSmoke = (options.transport && strcmp(options.transport, "noise") == 0)
 #if defined(__unix__) || defined(__APPLE__)
-                        || (serverConfigurationLoaded.hasTransportStatus &&
-                            strcmp(serverConfigurationLoaded.transportStatus, "noise") == 0)
+                        || (serverConfigurationLoaded.hasTransportStatus && strcmp(serverConfigurationLoaded.transportStatus, "noise") == 0)
 #endif
         ;
     if (useNoiseSmoke) {
@@ -361,8 +346,7 @@ int main(int argc, char **argv) {
             }
         }
 #endif
-        BFNetworkConnection *nc = BFNetworkAcceptDatagram(BFNetworkTransportNOISE, udpSocket, &peer,
-                                                          peerLength, &security);
+        BFNetworkConnection *nc = BFNetworkAcceptDatagram(BFNetworkTransportNOISE, udpSocket, &peer, peerLength, &security);
         if (!nc) {
             BFFatal("Noise accept failed");
         }
@@ -391,11 +375,9 @@ int main(int argc, char **argv) {
     uint8_t  transmitBuffer[BF_MACRO_MAX_DATAGRAM_SIZE];
     uint64_t requestId            = 1;
     uint16_t supportedVersions[1] = {1};
-    int packed = BFV1PackHello(transmitBuffer, sizeof(transmitBuffer), requestId, BFV1_STATUS_OK,
-                               supportedVersions, 1);
+    int      packed               = BFV1PackHello(transmitBuffer, sizeof(transmitBuffer), requestId, BFV1_STATUS_OK, supportedVersions, 1);
     if (packed > 0) {
-        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)packed, (struct sockaddr *)&peer,
-                        peerLength);
+        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)packed, (struct sockaddr *)&peer, peerLength);
     }
 
     // 4) Boucle simple: attendre STATUS (ping) et répondre STATUS (pong)
@@ -407,13 +389,12 @@ int main(int argc, char **argv) {
             int adminClient = accept(adminListenSocket, NULL, NULL);
             if (adminClient >= 0) {
                 char    requestBuffer[128] = {0};
-                ssize_t requestSize = read(adminClient, requestBuffer, sizeof(requestBuffer));
+                ssize_t requestSize        = read(adminClient, requestBuffer, sizeof(requestBuffer));
                 if (requestSize > 0) {
                     // Trim and check for "status"
                     if (strstr(requestBuffer, "status") != NULL) {
                         char response[256];
-                        snprintf(response, sizeof(response),
-                                 "{\"status\":\"ok\",\"version\":\"%s\"}\n", BFVersionString());
+                        snprintf(response, sizeof(response), "{\"status\":\"ok\",\"version\":\"%s\"}\n", BFVersionString());
                         (void)write(adminClient, response, strlen(response));
                     } else {
                         const char *messageText = "unknown-command\n";
@@ -426,8 +407,7 @@ int main(int argc, char **argv) {
 #endif
         struct sockaddr_storage from       = {0};
         socklen_t               fromLength = sizeof(from);
-        int readCount = (int)BFUdpRecieve(udpSocket, receiveBuffer, sizeof(receiveBuffer),
-                                          (struct sockaddr *)&from, &fromLength);
+        int                     readCount  = (int)BFUdpRecieve(udpSocket, receiveBuffer, sizeof(receiveBuffer), (struct sockaddr *)&from, &fromLength);
         if (readCount <= 0) {
             consecutiveErrors++;
             BFWarn("boxd: lecture UDP en erreur (compteur=%d)", consecutiveErrors);
@@ -442,8 +422,7 @@ int main(int argc, char **argv) {
         uint64_t       receivedReqId = 0;
         const uint8_t *payload       = NULL;
         uint32_t       payloadLength = 0;
-        int unpacked = BFV1Unpack(receiveBuffer, (size_t)readCount, &command, &receivedReqId,
-                                  &payload, &payloadLength);
+        int            unpacked      = BFV1Unpack(receiveBuffer, (size_t)readCount, &command, &receivedReqId, &payload, &payloadLength);
         if (unpacked < 0) {
             BFLog("boxd: trame v1 invalide");
             continue;
@@ -453,9 +432,7 @@ int main(int argc, char **argv) {
             uint8_t  statusCode   = 0xFF;
             uint16_t versions[4]  = {0};
             uint8_t  versionCount = 0;
-            int      ok =
-                BFV1UnpackHello(payload, payloadLength, &statusCode, versions,
-                                (uint8_t)(sizeof(versions) / sizeof(versions[0])), &versionCount);
+            int      ok           = BFV1UnpackHello(payload, payloadLength, &statusCode, versions, (uint8_t)(sizeof(versions) / sizeof(versions[0])), &versionCount);
             if (ok == 0 && versionCount > 0) {
                 int hasCompatible = 0;
                 for (uint8_t vi = 0; vi < versionCount; ++vi) {
@@ -466,40 +443,29 @@ int main(int argc, char **argv) {
                 }
                 if (hasCompatible) {
                     uint16_t supported[1] = {1};
-                    int      responseSize =
-                        BFV1PackHello(transmitBuffer, sizeof(transmitBuffer), receivedReqId + 1,
-                                      BFV1_STATUS_OK, supported, 1);
+                    int      responseSize = BFV1PackHello(transmitBuffer, sizeof(transmitBuffer), receivedReqId + 1, BFV1_STATUS_OK, supported, 1);
                     if (responseSize > 0) {
-                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
-                                        (struct sockaddr *)&from, fromLength);
+                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
                     }
                 } else {
-                    int responseSize = BFV1PackStatus(
-                        transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1,
-                        BFV1_STATUS_BAD_REQUEST, "unsupported-version");
+                    int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "unsupported-version");
                     if (responseSize > 0) {
-                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
-                                        (struct sockaddr *)&from, fromLength);
+                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
                     }
                 }
             } else {
-                int responseSize =
-                    BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
-                                   receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-hello");
+                int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-hello");
                 if (responseSize > 0) {
-                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
-                                    (struct sockaddr *)&from, fromLength);
+                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
                 }
             }
             break;
         }
         case BFV1_STATUS: {
             BFLog("boxd: STATUS reçu (%u octets)", (unsigned)payloadLength);
-            int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
-                                              receivedReqId + 1, BFV1_STATUS_OK, "pong");
+            int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_OK, "pong");
             if (responseSize > 0)
-                (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
-                                (struct sockaddr *)&from, fromLength);
+                (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
             break;
         }
         case BFV1_PUT: {
@@ -510,27 +476,23 @@ int main(int argc, char **argv) {
             uint16_t       contentTypeLength  = 0;
             const uint8_t *dataPointer        = NULL;
             uint32_t       dataLength         = 0;
-            int            ok =
-                BFV1UnpackPut(payload, payloadLength, &queuePathPointer, &queuePathLength,
-                              &contentTypePointer, &contentTypeLength, &dataPointer, &dataLength);
+            int            ok                 = BFV1UnpackPut(payload, payloadLength, &queuePathPointer, &queuePathLength, &contentTypePointer, &contentTypeLength, &dataPointer, &dataLength);
             if (ok == 0) {
-                BFLog("boxd: PUT path=%.*s contentType=%.*s size=%u", (int)queuePathLength,
-                      (const char *)queuePathPointer, (int)contentTypeLength,
-                      (const char *)contentTypePointer, (unsigned)dataLength);
+                BFLog("boxd: PUT path=%.*s contentType=%.*s size=%u", (int)queuePathLength, (const char *)queuePathPointer, (int)contentTypeLength, (const char *)contentTypePointer, (unsigned)dataLength);
                 // build in-memory object
                 char *queueKey = (char *)BFMemoryAllocate((size_t)queuePathLength + 1U);
                 if (!queueKey)
                     break;
                 memcpy(queueKey, queuePathPointer, queuePathLength);
                 queueKey[queuePathLength] = '\0';
-                char *contentTypeStr = (char *)BFMemoryAllocate((size_t)contentTypeLength + 1U);
+                char *contentTypeStr      = (char *)BFMemoryAllocate((size_t)contentTypeLength + 1U);
                 if (!contentTypeStr) {
                     BFMemoryRelease(queueKey);
                     break;
                 }
                 memcpy(contentTypeStr, contentTypePointer, contentTypeLength);
                 contentTypeStr[contentTypeLength] = '\0';
-                StoredObject *object = (StoredObject *)BFMemoryAllocate(sizeof(StoredObject));
+                StoredObject *object              = (StoredObject *)BFMemoryAllocate(sizeof(StoredObject));
                 if (!object) {
                     BFMemoryRelease(queueKey);
                     BFMemoryRelease(contentTypeStr);
@@ -550,26 +512,20 @@ int main(int argc, char **argv) {
                 }
                 (void)BFSharedDictionarySet(store, queueKey, object);
                 BFMemoryRelease(queueKey);
-                int responseSize =
-                    BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
-                                   receivedReqId + 1, BFV1_STATUS_OK, "stored");
+                int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_OK, "stored");
                 if (responseSize > 0)
-                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
-                                    (struct sockaddr *)&from, fromLength);
+                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
             } else {
-                int responseSize =
-                    BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
-                                   receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-put");
+                int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-put");
                 if (responseSize > 0)
-                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
-                                    (struct sockaddr *)&from, fromLength);
+                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
             }
             break;
         }
         case BFV1_GET: {
             const uint8_t *queuePathPointer = NULL;
             uint16_t       queuePathLength  = 0;
-            int ok = BFV1UnpackGet(payload, payloadLength, &queuePathPointer, &queuePathLength);
+            int            ok               = BFV1UnpackGet(payload, payloadLength, &queuePathPointer, &queuePathLength);
             if (ok == 0) {
                 char *queueKey = (char *)BFMemoryAllocate((size_t)queuePathLength + 1U);
                 if (!queueKey)
@@ -578,39 +534,27 @@ int main(int argc, char **argv) {
                 queueKey[queuePathLength] = '\0';
                 StoredObject *object      = (StoredObject *)BFSharedDictionaryGet(store, queueKey);
                 if (object) {
-                    int responseSize = BFV1PackPut(transmitBuffer, sizeof(transmitBuffer),
-                                                   receivedReqId + 1, queueKey, object->contentType,
-                                                   object->data, object->dataLength);
+                    int responseSize = BFV1PackPut(transmitBuffer, sizeof(transmitBuffer), receivedReqId + 1, queueKey, object->contentType, object->data, object->dataLength);
                     if (responseSize > 0)
-                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
-                                        (struct sockaddr *)&from, fromLength);
+                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
                 } else {
-                    int responseSize =
-                        BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
-                                       receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "not-found");
+                    int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "not-found");
                     if (responseSize > 0)
-                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
-                                        (struct sockaddr *)&from, fromLength);
+                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
                 }
                 BFMemoryRelease(queueKey);
             } else {
-                int responseSize =
-                    BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
-                                   receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-get");
+                int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-get");
                 if (responseSize > 0)
-                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
-                                    (struct sockaddr *)&from, fromLength);
+                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
             }
             break;
         }
         default: {
             BFLog("boxd: commande inconnue: %u", command);
-            int responseSize =
-                BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS,
-                               receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "unknown-command");
+            int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "unknown-command");
             if (responseSize > 0) {
-                (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize,
-                                (struct sockaddr *)&from, fromLength);
+                (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
             }
             break;
         }

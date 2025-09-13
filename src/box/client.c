@@ -34,23 +34,20 @@ typedef struct ClientAction {
 } ClientAction;
 
 static void ClientPrintUsage(const char *program) {
-    fprintf(
-        stderr,
-        "Usage: %s [address] [port] [--port <udp>] [--put <queue>[:type] <data>] [--get <queue>]\n"
-        "          [--transport <clear|noise>] [--pre-share-key <ascii>]\n"
-        "          [--version] [--help]\n"
-        "       | %s admin status    # query local daemon status (Unix)\n\n"
-        "Examples:\n"
-        "  %s 127.0.0.1 9988 --put /message:text/plain \"Hello\"\n"
-        "  %s 127.0.0.1 --port 9988 --get /message\n"
-        "  %s --transport noise --pre-share-key devsecret\n"
-        "  %s admin status\n",
-        program, program, program, program, program, program);
+    fprintf(stderr,
+            "Usage: %s [address] [port] [--port <udp>] [--put <queue>[:type] <data>] [--get <queue>]\n"
+            "          [--transport <clear|noise>] [--pre-share-key <ascii>]\n"
+            "          [--version] [--help]\n"
+            "       | %s admin status    # query local daemon status (Unix)\n\n"
+            "Examples:\n"
+            "  %s 127.0.0.1 9988 --put /message:text/plain \"Hello\"\n"
+            "  %s 127.0.0.1 --port 9988 --get /message\n"
+            "  %s --transport noise --pre-share-key devsecret\n"
+            "  %s admin status\n",
+            program, program, program, program, program, program);
 }
 
-static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions,
-                            const char **outAddress, uint16_t *outPort, const char **outPortOrigin,
-                            ClientAction *outAction) {
+static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions, const char **outAddress, uint16_t *outPort, const char **outPortOrigin, ClientAction *outAction) {
     memset(outOptions, 0, sizeof(*outOptions));
     memset(outAction, 0, sizeof(*outAction));
     const char *address    = BFGlobalDefaultAddress;
@@ -194,23 +191,19 @@ int main(int argc, char **argv) {
     BFLoggerGetTarget(targetName, sizeof(targetName));
     const char *levelName = BFLoggerLevelName(BFLoggerGetLevel());
     if (action.doPut && action.queue && action.data) {
-        const char *contentType =
-            action.contentType ? action.contentType : "application/octet-stream";
-        size_t dataSize = strlen(action.data);
+        const char *contentType = action.contentType ? action.contentType : "application/octet-stream";
+        size_t      dataSize    = strlen(action.data);
         BFLog("box: start address=%s port=%u portOrigin=%s action=put queue=%s type=%s size=%zu "
               "logLevel=%s logTarget=%s",
-              address, (unsigned)port, portOrigin, action.queue, contentType, dataSize, levelName,
-              targetName);
+              address, (unsigned)port, portOrigin, action.queue, contentType, dataSize, levelName, targetName);
     } else if (action.doGet && action.queue) {
         BFLog("box: start address=%s port=%u portOrigin=%s action=get queue=%s logLevel=%s "
               "logTarget=%s",
               address, (unsigned)port, portOrigin, action.queue, levelName, targetName);
     } else {
-        BFLog(
-            "box: start address=%s port=%u portOrigin=%s action=handshake transport=%s logLevel=%s "
-            "logTarget=%s",
-            address, (unsigned)port, portOrigin, (options.transport ? options.transport : "clear"),
-            levelName, targetName);
+        BFLog("box: start address=%s port=%u portOrigin=%s action=handshake transport=%s logLevel=%s "
+              "logTarget=%s",
+              address, (unsigned)port, portOrigin, (options.transport ? options.transport : "clear"), levelName, targetName);
     }
 
     struct sockaddr_in server;
@@ -223,10 +216,8 @@ int main(int argc, char **argv) {
     uint8_t  transmitBuffer[BF_MACRO_MAX_DATAGRAM_SIZE];
     uint64_t requestId            = 1;
     uint16_t supportedVersions[1] = {1};
-    int packed = BFV1PackHello(transmitBuffer, sizeof(transmitBuffer), requestId, BFV1_STATUS_OK,
-                               supportedVersions, 1);
-    if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed,
-                                 (struct sockaddr *)&server, sizeof(server)) < 0) {
+    int      packed               = BFV1PackHello(transmitBuffer, sizeof(transmitBuffer), requestId, BFV1_STATUS_OK, supportedVersions, 1);
+    if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed, (struct sockaddr *)&server, sizeof(server)) < 0) {
         BFFatal("sendto (HELLO)");
     }
 
@@ -234,21 +225,17 @@ int main(int argc, char **argv) {
     uint8_t         buffer[BF_MACRO_MAX_DATAGRAM_SIZE];
     struct sockaddr from       = {0};
     socklen_t       fromLength = sizeof(from);
-    int readCount = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLength);
+    int             readCount  = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLength);
     if (readCount > 0) {
         uint32_t       command       = 0;
         uint64_t       requestId     = 0;
         const uint8_t *payload       = NULL;
         uint32_t       payloadLength = 0;
-        if (BFV1Unpack(buffer, (size_t)readCount, &command, &requestId, &payload, &payloadLength) >
-                0 &&
-            command == BFV1_HELLO) {
+        if (BFV1Unpack(buffer, (size_t)readCount, &command, &requestId, &payload, &payloadLength) > 0 && command == BFV1_HELLO) {
             uint8_t  statusCode   = 0xFF;
             uint16_t versions[4]  = {0};
             uint8_t  versionCount = 0;
-            if (BFV1UnpackHello(payload, payloadLength, &statusCode, versions,
-                                (uint8_t)(sizeof(versions) / sizeof(versions[0])),
-                                &versionCount) == 0) {
+            if (BFV1UnpackHello(payload, payloadLength, &statusCode, versions, (uint8_t)(sizeof(versions) / sizeof(versions[0])), &versionCount) == 0) {
                 int compatible = 0;
                 for (uint8_t versionIndex = 0; versionIndex < versionCount; ++versionIndex) {
                     if (versions[versionIndex] == 1) {
@@ -257,11 +244,9 @@ int main(int argc, char **argv) {
                     }
                 }
                 if (!compatible) {
-                    BFLog("box: HELLO serveur sans version compatible (count=%u)",
-                          (unsigned)versionCount);
+                    BFLog("box: HELLO serveur sans version compatible (count=%u)", (unsigned)versionCount);
                 } else {
-                    BFLog("box: HELLO serveur: status=%u versions=%u (compatible)",
-                          (unsigned)statusCode, (unsigned)versionCount);
+                    BFLog("box: HELLO serveur: status=%u versions=%u (compatible)", (unsigned)statusCode, (unsigned)versionCount);
                 }
             } else {
                 BFLog("box: HELLO serveur avec payload non conforme");
@@ -274,10 +259,8 @@ int main(int argc, char **argv) {
     // 4) Envoyer STATUS (ping)
     const char *ping = "ping";
     requestId        = 2;
-    packed = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, requestId,
-                            BFV1_STATUS_OK, ping);
-    if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed,
-                                 (struct sockaddr *)&server, sizeof(server)) < 0) {
+    packed           = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, requestId, BFV1_STATUS_OK, ping);
+    if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed, (struct sockaddr *)&server, sizeof(server)) < 0) {
         BFFatal("sendto (STATUS)");
     }
 
@@ -289,16 +272,12 @@ int main(int argc, char **argv) {
         uint64_t       requestId     = 0;
         const uint8_t *payload       = NULL;
         uint32_t       payloadLength = 0;
-        if (BFV1Unpack(buffer, (size_t)readCount, &command, &requestId, &payload, &payloadLength) >
-                0 &&
-            command == BFV1_STATUS) {
+        if (BFV1Unpack(buffer, (size_t)readCount, &command, &requestId, &payload, &payloadLength) > 0 && command == BFV1_STATUS) {
             uint8_t        statusCode     = 0xFF;
             const uint8_t *messagePointer = NULL;
             uint32_t       messageLength  = 0;
-            if (BFV1UnpackStatus(payload, payloadLength, &statusCode, &messagePointer,
-                                 &messageLength) == 0) {
-                BFLog("box: STATUS (pong): status=%u message=%.*s", (unsigned)statusCode,
-                      messageLength, (const char *)messagePointer);
+            if (BFV1UnpackStatus(payload, payloadLength, &statusCode, &messagePointer, &messageLength) == 0) {
+                BFLog("box: STATUS (pong): status=%u message=%.*s", (unsigned)statusCode, messageLength, (const char *)messagePointer);
             } else {
                 BFLog("box: STATUS payload non conforme");
             }
@@ -309,22 +288,18 @@ int main(int argc, char **argv) {
 
     // 6) CLI action: PUT/GET if requested
     if (action.doPut && action.queue && action.data) {
-        const char *queuePath = action.queue;
-        const char *contentType =
-            action.contentType ? action.contentType : "application/octet-stream";
-        const char *putText = action.data;
-        requestId           = 3;
-        packed = BFV1PackPut(transmitBuffer, sizeof(transmitBuffer), requestId, queuePath,
-                             contentType, (const uint8_t *)putText, (uint32_t)strlen(putText));
-        if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed,
-                                     (struct sockaddr *)&server, sizeof(server)) < 0) {
+        const char *queuePath   = action.queue;
+        const char *contentType = action.contentType ? action.contentType : "application/octet-stream";
+        const char *putText     = action.data;
+        requestId               = 3;
+        packed                  = BFV1PackPut(transmitBuffer, sizeof(transmitBuffer), requestId, queuePath, contentType, (const uint8_t *)putText, (uint32_t)strlen(putText));
+        if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed, (struct sockaddr *)&server, sizeof(server)) < 0) {
             BFFatal("sendto (PUT)");
         }
     } else if (action.doGet && action.queue) {
         requestId = 4;
         packed    = BFV1PackGet(transmitBuffer, sizeof(transmitBuffer), requestId, action.queue);
-        if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed,
-                                     (struct sockaddr *)&server, sizeof(server)) < 0) {
+        if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed, (struct sockaddr *)&server, sizeof(server)) < 0) {
             BFFatal("sendto (GET)");
         }
         // Read one response and print summary
@@ -335,8 +310,7 @@ int main(int argc, char **argv) {
             uint64_t       responseRequestId     = 0;
             const uint8_t *responsePayload       = NULL;
             uint32_t       responsePayloadLength = 0;
-            if (BFV1Unpack(buffer, (size_t)readCount, &responseCommand, &responseRequestId,
-                           &responsePayload, &responsePayloadLength) > 0) {
+            if (BFV1Unpack(buffer, (size_t)readCount, &responseCommand, &responseRequestId, &responsePayload, &responsePayloadLength) > 0) {
                 if (responseCommand == BFV1_PUT) {
                     const uint8_t *queuePathPointer   = NULL;
                     uint16_t       queuePathLength    = 0;
@@ -344,21 +318,15 @@ int main(int argc, char **argv) {
                     uint16_t       contentTypeLength  = 0;
                     const uint8_t *dataPointer        = NULL;
                     uint32_t       dataLength         = 0;
-                    if (BFV1UnpackPut(responsePayload, responsePayloadLength, &queuePathPointer,
-                                      &queuePathLength, &contentTypePointer, &contentTypeLength,
-                                      &dataPointer, &dataLength) == 0) {
-                        BFLog("box: GET result queue=%.*s type=%.*s size=%u", (int)queuePathLength,
-                              (const char *)queuePathPointer, (int)contentTypeLength,
-                              (const char *)contentTypePointer, (unsigned)dataLength);
+                    if (BFV1UnpackPut(responsePayload, responsePayloadLength, &queuePathPointer, &queuePathLength, &contentTypePointer, &contentTypeLength, &dataPointer, &dataLength) == 0) {
+                        BFLog("box: GET result queue=%.*s type=%.*s size=%u", (int)queuePathLength, (const char *)queuePathPointer, (int)contentTypeLength, (const char *)contentTypePointer, (unsigned)dataLength);
                     }
                 } else if (responseCommand == BFV1_STATUS) {
                     uint8_t        statusCode     = 0xFF;
                     const uint8_t *messagePointer = NULL;
                     uint32_t       messageLength  = 0;
-                    if (BFV1UnpackStatus(responsePayload, responsePayloadLength, &statusCode,
-                                         &messagePointer, &messageLength) == 0) {
-                        BFLog("box: GET status=%u message=%.*s", (unsigned)statusCode,
-                              messageLength, (const char *)messagePointer);
+                    if (BFV1UnpackStatus(responsePayload, responsePayloadLength, &statusCode, &messagePointer, &messageLength) == 0) {
+                        BFLog("box: GET status=%u message=%.*s", (unsigned)statusCode, messageLength, (const char *)messagePointer);
                     }
                 }
             }
@@ -388,9 +356,7 @@ int main(int argc, char **argv) {
                 security.hasNoiseHandshakePattern = 0;
             }
         }
-        BFNetworkConnection *nc =
-            BFNetworkConnectDatagram(BFNetworkTransportNOISE, udpSocket, (struct sockaddr *)&server,
-                                     sizeof(server), &security);
+        BFNetworkConnection *nc = BFNetworkConnectDatagram(BFNetworkTransportNOISE, udpSocket, (struct sockaddr *)&server, sizeof(server), &security);
         if (!nc) {
             BFFatal("BFNetworkConnectDatagram(noise)");
         }

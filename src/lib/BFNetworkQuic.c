@@ -3,8 +3,7 @@
 
 #ifndef BOX_USE_QUIC
 
-void *BFNetworkQuicConnect(int udpFileDescriptor, const struct sockaddr *server,
-                           socklen_t serverLength, const BFNetworkSecurity *security) {
+void *BFNetworkQuicConnect(int udpFileDescriptor, const struct sockaddr *server, socklen_t serverLength, const BFNetworkSecurity *security) {
     (void)udpFileDescriptor;
     (void)server;
     (void)serverLength;
@@ -13,8 +12,7 @@ void *BFNetworkQuicConnect(int udpFileDescriptor, const struct sockaddr *server,
     return NULL;
 }
 
-void *BFNetworkQuicAccept(int udpFileDescriptor, const struct sockaddr_storage *peer,
-                          socklen_t peerLength, const BFNetworkSecurity *security) {
+void *BFNetworkQuicAccept(int udpFileDescriptor, const struct sockaddr_storage *peer, socklen_t peerLength, const BFNetworkSecurity *security) {
     (void)udpFileDescriptor;
     (void)peer;
     (void)peerLength;
@@ -65,9 +63,7 @@ typedef struct BFNetworkQuicHandle {
 // backend. They currently return failure after initializing minimal state.
 // Full handshake, event loop, and DATAGRAM support will be added in follow-ups.
 
-static BFNetworkQuicHandle *BFNetworkQuicHandleNew(int                    udpFileDescriptor,
-                                                   const struct sockaddr *server,
-                                                   socklen_t              serverLength) {
+static BFNetworkQuicHandle *BFNetworkQuicHandleNew(int udpFileDescriptor, const struct sockaddr *server, socklen_t serverLength) {
     BFNetworkQuicHandle *h = (BFNetworkQuicHandle *)BFMemoryAllocate(sizeof(*h));
     if (!h)
         return NULL;
@@ -94,8 +90,7 @@ static void BFNetworkQuicHandleFree(BFNetworkQuicHandle *h) {
     BFMemoryRelease(h);
 }
 
-void *BFNetworkQuicConnect(int udpFileDescriptor, const struct sockaddr *server,
-                           socklen_t serverLength, const BFNetworkSecurity *security) {
+void *BFNetworkQuicConnect(int udpFileDescriptor, const struct sockaddr *server, socklen_t serverLength, const BFNetworkSecurity *security) {
     (void)security;
     BFNetworkQuicHandle *handle = BFNetworkQuicHandleNew(udpFileDescriptor, server, serverLength);
     if (!handle) {
@@ -110,11 +105,9 @@ void *BFNetworkQuicConnect(int udpFileDescriptor, const struct sockaddr *server,
     return NULL;
 }
 
-void *BFNetworkQuicAccept(int udpFileDescriptor, const struct sockaddr_storage *peer,
-                          socklen_t peerLength, const BFNetworkSecurity *security) {
+void *BFNetworkQuicAccept(int udpFileDescriptor, const struct sockaddr_storage *peer, socklen_t peerLength, const BFNetworkSecurity *security) {
     (void)security;
-    BFNetworkQuicHandle *handle =
-        BFNetworkQuicHandleNew(udpFileDescriptor, (const struct sockaddr *)peer, peerLength);
+    BFNetworkQuicHandle *handle = BFNetworkQuicHandleNew(udpFileDescriptor, (const struct sockaddr *)peer, peerLength);
     if (!handle) {
         BFWarn("BFNetwork QUIC(ngtcp2): allocation failed");
         return NULL;
@@ -156,8 +149,7 @@ void BFNetworkQuicClose(void *handle) {
 }
 #else
 // BOX_USE_QUIC=ON but no available implementation was detected
-void *BFNetworkQuicConnect(int udpFileDescriptor, const struct sockaddr *server,
-                           socklen_t serverLength, const BFNetworkSecurity *security) {
+void *BFNetworkQuicConnect(int udpFileDescriptor, const struct sockaddr *server, socklen_t serverLength, const BFNetworkSecurity *security) {
     (void)udpFileDescriptor;
     (void)server;
     (void)serverLength;
@@ -165,8 +157,7 @@ void *BFNetworkQuicConnect(int udpFileDescriptor, const struct sockaddr *server,
     BFWarn("BFNetwork QUIC: no implementation available at build time");
     return NULL;
 }
-void *BFNetworkQuicAccept(int udpFileDescriptor, const struct sockaddr_storage *peer,
-                          socklen_t peerLength, const BFNetworkSecurity *security) {
+void *BFNetworkQuicAccept(int udpFileDescriptor, const struct sockaddr_storage *peer, socklen_t peerLength, const BFNetworkSecurity *security) {
     (void)udpFileDescriptor;
     (void)peer;
     (void)peerLength;

@@ -29,7 +29,7 @@ size_t BFSharedArrayCount(BFSharedArray *array);
 // Default policy is push (append at end).
 // Returns the index of the inserted element, or BF_ERR on failure.
 int BFSharedArrayPush(BFSharedArray *array, void *object);
-int BFSharedArrayUnshift(BFSharedArray *array, void *object); // insert at front (index 0)
+int BFSharedArrayUnshift(BFSharedArray *array, void *object);              // insert at front (index 0)
 int BFSharedArrayInsert(BFSharedArray *array, size_t index, void *object); // insert before index
 
 // Accessors

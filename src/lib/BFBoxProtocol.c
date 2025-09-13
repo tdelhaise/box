@@ -5,8 +5,7 @@
 // -----------------------------------------------------------------------------
 // Sérialisation
 // -----------------------------------------------------------------------------
-int BFProtocolPack(uint8_t *buffet, size_t buffetLength, BFMessageType type, const void *payload,
-                   uint16_t length) {
+int BFProtocolPack(uint8_t *buffet, size_t buffetLength, BFMessageType type, const void *payload, uint16_t length) {
     if (buffetLength < sizeof(BFHeader) + length)
         return -1;
 
@@ -24,8 +23,7 @@ int BFProtocolPack(uint8_t *buffet, size_t buffetLength, BFMessageType type, con
 // -----------------------------------------------------------------------------
 // Désérialisation
 // -----------------------------------------------------------------------------
-int BFProtocolUnpack(const uint8_t *buffet, size_t buffetLength, BFHeader *header,
-                     const uint8_t **payload) {
+int BFProtocolUnpack(const uint8_t *buffet, size_t buffetLength, BFHeader *header, const uint8_t **payload) {
     if (buffetLength < sizeof(BFHeader))
         return -1;
 

@@ -49,8 +49,7 @@ int main(void) {
     int                lastErrorCode = 0;
     int                serverSocket  = create_udp_server(&serverBindAddress, &lastErrorCode);
     if (serverSocket < 0) {
-        fprintf(stderr,
-                "Skipping test_BFNetworkNoise: cannot bind UDP socket in this environment\n");
+        fprintf(stderr, "Skipping test_BFNetworkNoise: cannot bind UDP socket in this environment\n");
         return 0; // skip gracefully in restricted sandboxes (CI will run it normally)
     }
 
@@ -62,8 +61,7 @@ int main(void) {
 
     // 1) Send initial clear datagram so server learns peer address
     const char *initialHello = "hello";
-    if (sendto(clientSocket, initialHello, strlen(initialHello), 0,
-               (struct sockaddr *)&serverBindAddress, sizeof(serverBindAddress)) < 0) {
+    if (sendto(clientSocket, initialHello, strlen(initialHello), 0, (struct sockaddr *)&serverBindAddress, sizeof(serverBindAddress)) < 0) {
         perror("sendto initial");
         close(clientSocket);
         close(serverSocket);
@@ -73,8 +71,7 @@ int main(void) {
     struct sockaddr_storage learnedPeerAddress;
     socklen_t               learnedPeerLength = sizeof(learnedPeerAddress);
     uint8_t                 receiveBuffer[64];
-    (void)recvfrom(serverSocket, receiveBuffer, sizeof(receiveBuffer), 0,
-                   (struct sockaddr *)&learnedPeerAddress, &learnedPeerLength);
+    (void)recvfrom(serverSocket, receiveBuffer, sizeof(receiveBuffer), 0, (struct sockaddr *)&learnedPeerAddress, &learnedPeerLength);
 
     // 2) Build Noise connections with a pre-shared key
     BFNetworkSecurity serverSecurity;
@@ -84,9 +81,7 @@ int main(void) {
 
     BFNetworkSecurity clientSecurity = serverSecurity;
 
-    BFNetworkConnection *serverConn =
-        BFNetworkAcceptDatagram(BFNetworkTransportNOISE, serverSocket, &learnedPeerAddress,
-                                learnedPeerLength, &serverSecurity);
+    BFNetworkConnection *serverConn = BFNetworkAcceptDatagram(BFNetworkTransportNOISE, serverSocket, &learnedPeerAddress, learnedPeerLength, &serverSecurity);
     if (!serverConn) {
         fprintf(stderr, "server noise accept failed\n");
         close(clientSocket);
@@ -94,9 +89,7 @@ int main(void) {
         return 1;
     }
 
-    BFNetworkConnection *clientConn = BFNetworkConnectDatagram(
-        BFNetworkTransportNOISE, clientSocket, (struct sockaddr *)&serverBindAddress,
-        (socklen_t)sizeof(serverBindAddress), &clientSecurity);
+    BFNetworkConnection *clientConn = BFNetworkConnectDatagram(BFNetworkTransportNOISE, clientSocket, (struct sockaddr *)&serverBindAddress, (socklen_t)sizeof(serverBindAddress), &clientSecurity);
     if (!clientConn) {
         fprintf(stderr, "client noise connect failed\n");
         BFNetworkClose(serverConn);
@@ -146,8 +139,7 @@ int main(void) {
     }
 
     // Negative header case: send clear junk directly; expect BF_ERR on server recv
-    (void)sendto(clientSocket, "junk", 4, 0, (struct sockaddr *)&serverBindAddress,
-                 sizeof(serverBindAddress));
+    (void)sendto(clientSocket, "junk", 4, 0, (struct sockaddr *)&serverBindAddress, sizeof(serverBindAddress));
     int negativeRead = BFNetworkRecv(serverConn, serverPlaintext, (int)sizeof(serverPlaintext));
     if (negativeRead >= 0) {
         fprintf(stderr, "expected error on bad header\n");
@@ -162,9 +154,7 @@ int main(void) {
     BFNetworkSecurity wrongServerSecurity = {0};
     wrongServerSecurity.preShareKey       = (const unsigned char *)"wrong";
     wrongServerSecurity.preShareKeyLength = 5U;
-    BFNetworkConnection *serverWrong =
-        BFNetworkAcceptDatagram(BFNetworkTransportNOISE, serverSocket, &learnedPeerAddress,
-                                learnedPeerLength, &wrongServerSecurity);
+    BFNetworkConnection *serverWrong      = BFNetworkAcceptDatagram(BFNetworkTransportNOISE, serverSocket, &learnedPeerAddress, learnedPeerLength, &wrongServerSecurity);
     if (!serverWrong) {
         fprintf(stderr, "server wrong accept failed\n");
         BFNetworkClose(clientConn);

@@ -15,9 +15,7 @@ struct BFNetworkConnection {
     void              *quic; // QUIC backend handle (opaque)
 };
 
-BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int udpSocket,
-                                              const struct sockaddr *server, socklen_t serverLength,
-                                              const BFNetworkSecurity *security) {
+BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int udpSocket, const struct sockaddr *server, socklen_t serverLength, const BFNetworkSecurity *security) {
     if (transport == BFNetworkTransportQUIC) {
 #ifdef BOX_USE_QUIC
         BFNetworkConnection *c = (BFNetworkConnection *)BFMemoryAllocate(sizeof(*c));
@@ -55,10 +53,7 @@ BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int 
     return NULL;
 }
 
-BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int udpSocket,
-                                             const struct sockaddr_storage *peer,
-                                             socklen_t                      peerLength,
-                                             const BFNetworkSecurity       *security) {
+BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int udpSocket, const struct sockaddr_storage *peer, socklen_t peerLength, const BFNetworkSecurity *security) {
     if (transport == BFNetworkTransportQUIC) {
 #ifdef BOX_USE_QUIC
         BFNetworkConnection *c = (BFNetworkConnection *)BFMemoryAllocate(sizeof(*c));

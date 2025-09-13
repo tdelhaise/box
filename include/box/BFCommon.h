@@ -15,8 +15,7 @@ extern "C" {
 static const uint16_t    BFGlobalDefaultPort    = 12567;
 static const char *const BFGlobalDefaultAddress = "127.0.0.1";
 #define BF_MACRO_MAX_DATAGRAM_SIZE 1200
-static const size_t BFGlobalMaxDatagram =
-    BF_MACRO_MAX_DATAGRAM_SIZE; // taille max d'un datagramme UDP
+static const size_t BFGlobalMaxDatagram = BF_MACRO_MAX_DATAGRAM_SIZE; // taille max d'un datagramme UDP
 
 // -----------------------------------------------------------------------------
 // Codes d'erreur génériques

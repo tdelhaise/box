@@ -37,7 +37,7 @@ void BFRunloopJoin(BFRunloop *runloop);  // joins the internal thread if started
 
 // Queue operations
 int  BFRunloopPost(BFRunloop *runloop, const BFRunloopEvent *event); // returns BF_OK or BF_ERR
-void BFRunloopPostStop(BFRunloop *runloop); // posts a stop marker (guaranteed enqueue)
+void BFRunloopPostStop(BFRunloop *runloop);                          // posts a stop marker (guaranteed enqueue)
 
 // Stop the runloop; if drain is non-zero, the loop drains queued events before stopping (default).
 void BFRunloopStop(BFRunloop *runloop, int drain);

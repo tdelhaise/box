@@ -8,10 +8,8 @@
 
 typedef struct BFNetworkSecurity BFNetworkSecurity;
 
-void *BFNetworkNoiseConnect(int udpFileDescriptor, const struct sockaddr *server,
-                            socklen_t serverLength, const BFNetworkSecurity *security);
-void *BFNetworkNoiseAccept(int udpFileDescriptor, const struct sockaddr_storage *peer,
-                           socklen_t peerLength, const BFNetworkSecurity *security);
+void *BFNetworkNoiseConnect(int udpFileDescriptor, const struct sockaddr *server, socklen_t serverLength, const BFNetworkSecurity *security);
+void *BFNetworkNoiseAccept(int udpFileDescriptor, const struct sockaddr_storage *peer, socklen_t peerLength, const BFNetworkSecurity *security);
 int   BFNetworkNoiseSend(void *handle, const void *buffer, int length);
 int   BFNetworkNoiseRecv(void *handle, void *buffer, int length);
 void  BFNetworkNoiseClose(void *handle);

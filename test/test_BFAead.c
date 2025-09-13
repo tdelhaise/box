@@ -16,15 +16,13 @@ int main(void) {
 
     uint8_t  ciphertext[256];
     uint32_t ciphertextLength = 0;
-    if (BFAeadEncrypt(key, nonce, NULL, 0, (const uint8_t *)message, (uint32_t)strlen(message),
-                      ciphertext, sizeof(ciphertext), &ciphertextLength) != 0) {
+    if (BFAeadEncrypt(key, nonce, NULL, 0, (const uint8_t *)message, (uint32_t)strlen(message), ciphertext, sizeof(ciphertext), &ciphertextLength) != 0) {
         fprintf(stderr, "encrypt failed\n");
         return 1;
     }
     uint8_t  plaintext[256];
     uint32_t plaintextLength = 0;
-    if (BFAeadDecrypt(key, nonce, NULL, 0, ciphertext, ciphertextLength, plaintext,
-                      sizeof(plaintext), &plaintextLength) != 0) {
+    if (BFAeadDecrypt(key, nonce, NULL, 0, ciphertext, ciphertextLength, plaintext, sizeof(plaintext), &plaintextLength) != 0) {
         fprintf(stderr, "decrypt failed\n");
         return 1;
     }

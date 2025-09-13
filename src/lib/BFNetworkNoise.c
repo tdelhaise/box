@@ -38,9 +38,7 @@ typedef struct BFNetworkNoiseHandle {
 #endif
 } BFNetworkNoiseHandle;
 
-static void derive_transcript_and_session_key(const BFNetworkSecurity *security, uint8_t *outKey,
-                                              int *outHasKey, uint8_t *outTranscript,
-                                              int *outHasTranscript) {
+static void derive_transcript_and_session_key(const BFNetworkSecurity *security, uint8_t *outKey, int *outHasKey, uint8_t *outTranscript, int *outHasTranscript) {
     *outHasKey        = 0;
     *outHasTranscript = 0;
     if (!security) {
@@ -62,8 +60,7 @@ static void derive_transcript_and_session_key(const BFNetworkSecurity *security,
     }
     (void)crypto_generichash_update(&state, &patternByte, 1U);
     if (security->noisePrologue && *security->noisePrologue) {
-        (void)crypto_generichash_update(&state, (const unsigned char *)security->noisePrologue,
-                                        strlen(security->noisePrologue));
+        (void)crypto_generichash_update(&state, (const unsigned char *)security->noisePrologue, strlen(security->noisePrologue));
     }
     if (security->noiseServerStaticPublicKey && security->noiseServerStaticPublicKeyLength >= 32U) {
         (void)crypto_generichash_update(&state, security->noiseServerStaticPublicKey, 32U);
@@ -83,8 +80,7 @@ static void derive_transcript_and_session_key(const BFNetworkSecurity *security,
     if (security->preShareKey && security->preShareKeyLength > 0) {
         secretKeyMaterial     = security->preShareKey;
         secretKeyMaterialSize = security->preShareKeyLength;
-    } else if (security->noiseClientStaticPrivateKey &&
-               security->noiseClientStaticPrivateKeyLength >= 32U) {
+    } else if (security->noiseClientStaticPrivateKey && security->noiseClientStaticPrivateKeyLength >= 32U) {
         secretKeyMaterial     = security->noiseClientStaticPrivateKey;
         secretKeyMaterialSize = 32U;
     }
@@ -93,8 +89,7 @@ static void derive_transcript_and_session_key(const BFNetworkSecurity *security,
         return;
     }
     unsigned char aeadKey[BF_AEAD_KEY_BYTES];
-    crypto_generichash(aeadKey, sizeof(aeadKey), transcript, sizeof(transcript), secretKeyMaterial,
-                       (unsigned long long)secretKeyMaterialSize);
+    crypto_generichash(aeadKey, sizeof(aeadKey), transcript, sizeof(transcript), secretKeyMaterial, (unsigned long long)secretKeyMaterialSize);
     memcpy(outKey, aeadKey, sizeof(aeadKey));
     *outHasKey = 1;
 #else
@@ -104,18 +99,14 @@ static void derive_transcript_and_session_key(const BFNetworkSecurity *security,
     if (!security->preShareKey || security->preShareKeyLength == 0)
         return;
     memset(outKey, 0, BF_AEAD_KEY_BYTES);
-    size_t copyLength = security->preShareKeyLength < BF_AEAD_KEY_BYTES
-                            ? security->preShareKeyLength
-                            : (size_t)BF_AEAD_KEY_BYTES;
+    size_t copyLength = security->preShareKeyLength < BF_AEAD_KEY_BYTES ? security->preShareKeyLength : (size_t)BF_AEAD_KEY_BYTES;
     memcpy(outKey, security->preShareKey, copyLength);
     *outHasKey = 1;
 #endif
 }
 
-static BFNetworkNoiseHandle *BFNetworkNoiseHandleNew(int                      udpFileDescriptor,
-                                                     const BFNetworkSecurity *security) {
-    BFNetworkNoiseHandle *handle =
-        (BFNetworkNoiseHandle *)BFMemoryAllocate(sizeof(BFNetworkNoiseHandle));
+static BFNetworkNoiseHandle *BFNetworkNoiseHandleNew(int udpFileDescriptor, const BFNetworkSecurity *security) {
+    BFNetworkNoiseHandle *handle = (BFNetworkNoiseHandle *)BFMemoryAllocate(sizeof(BFNetworkNoiseHandle));
     if (!handle)
         return NULL;
     memset(handle, 0, sizeof(*handle));
@@ -128,20 +119,14 @@ static BFNetworkNoiseHandle *BFNetworkNoiseHandleNew(int                      ud
         handle->sodiumInitialized = 0;
     }
 #endif
-    derive_transcript_and_session_key(security, handle->aeadKey, &handle->hasAeadKey,
-                                      handle->transcriptHash, &handle->hasTranscriptHash);
+    derive_transcript_and_session_key(security, handle->aeadKey, &handle->hasAeadKey, handle->transcriptHash, &handle->hasTranscriptHash);
 #if 1
     if (security) {
         const char *patternName = "unknown";
         if (security->hasNoiseHandshakePattern) {
-            patternName = (security->noiseHandshakePattern == BFNoiseHandshakePatternNK) ? "nk"
-                          : (security->noiseHandshakePattern == BFNoiseHandshakePatternIK)
-                              ? "ik"
-                              : "unknown";
+            patternName = (security->noiseHandshakePattern == BFNoiseHandshakePatternNK) ? "nk" : (security->noiseHandshakePattern == BFNoiseHandshakePatternIK) ? "ik" : "unknown";
         }
-        BFLog("BFNetwork Noise: scaffold pattern=%s transcript=%s key=%s%s", patternName,
-              handle->hasTranscriptHash ? "on" : "off", handle->hasAeadKey ? "on" : "off",
-              (security->noisePrologue && *security->noisePrologue) ? " prologue" : "");
+        BFLog("BFNetwork Noise: scaffold pattern=%s transcript=%s key=%s%s", patternName, handle->hasTranscriptHash ? "on" : "off", handle->hasAeadKey ? "on" : "off", (security->noisePrologue && *security->noisePrologue) ? " prologue" : "");
     }
 #endif
 #if defined(HAVE_SODIUM)
@@ -161,8 +146,7 @@ static void BFNetworkNoiseHandleFree(BFNetworkNoiseHandle *handle) {
     BFMemoryRelease(handle);
 }
 
-void *BFNetworkNoiseConnect(int udpFileDescriptor, const struct sockaddr *server,
-                            socklen_t serverLength, const BFNetworkSecurity *security) {
+void *BFNetworkNoiseConnect(int udpFileDescriptor, const struct sockaddr *server, socklen_t serverLength, const BFNetworkSecurity *security) {
     BFNetworkNoiseHandle *handle = BFNetworkNoiseHandleNew(udpFileDescriptor, security);
     if (!handle)
         return NULL;
@@ -177,8 +161,7 @@ void *BFNetworkNoiseConnect(int udpFileDescriptor, const struct sockaddr *server
     return handle;
 }
 
-void *BFNetworkNoiseAccept(int udpFileDescriptor, const struct sockaddr_storage *peer,
-                           socklen_t peerLength, const BFNetworkSecurity *security) {
+void *BFNetworkNoiseAccept(int udpFileDescriptor, const struct sockaddr_storage *peer, socklen_t peerLength, const BFNetworkSecurity *security) {
     BFNetworkNoiseHandle *handle = BFNetworkNoiseHandleNew(udpFileDescriptor, security);
     if (!handle)
         return NULL;
@@ -193,8 +176,7 @@ void *BFNetworkNoiseAccept(int udpFileDescriptor, const struct sockaddr_storage 
     return handle;
 }
 
-static void build_nonce(uint8_t nonce[BF_AEAD_NONCE_BYTES], const uint8_t salt[16],
-                        uint64_t counter) {
+static void build_nonce(uint8_t nonce[BF_AEAD_NONCE_BYTES], const uint8_t salt[16], uint64_t counter) {
     memcpy(nonce, salt, 16);
     nonce[16] = (uint8_t)((counter >> 56) & 0xFFU);
     nonce[17] = (uint8_t)((counter >> 48) & 0xFFU);
@@ -225,10 +207,7 @@ int BFNetworkNoiseSend(void *handlePointer, const void *buffer, int length) {
     memcpy(frameBuffer, associatedHeader, sizeof(associatedHeader));
     memcpy(frameBuffer + 4, nonce, sizeof(nonce));
     uint32_t producedLength = 0;
-    int      enc = BFAeadEncrypt(handle->aeadKey, nonce, associatedHeader, sizeof(associatedHeader),
-                                 plaintext, (uint32_t)length, frameBuffer + 4 + sizeof(nonce),
-                                 (uint32_t)(sizeof(frameBuffer) - 4U - (uint32_t)sizeof(nonce)),
-                                 &producedLength);
+    int      enc            = BFAeadEncrypt(handle->aeadKey, nonce, associatedHeader, sizeof(associatedHeader), plaintext, (uint32_t)length, frameBuffer + 4 + sizeof(nonce), (uint32_t)(sizeof(frameBuffer) - 4U - (uint32_t)sizeof(nonce)), &producedLength);
     if (enc != BF_OK)
         return BF_ERR;
     size_t frameLength = 4U + (size_t)sizeof(nonce) + (size_t)producedLength;
@@ -236,8 +215,7 @@ int BFNetworkNoiseSend(void *handlePointer, const void *buffer, int length) {
     memcpy(handle->lastFrame, frameBuffer, frameLength);
     handle->lastFrameLength = frameLength;
 #endif
-    ssize_t sent = sendto(handle->udpFileDescriptor, frameBuffer, frameLength, 0,
-                          (struct sockaddr *)&handle->peer.address, handle->peer.length);
+    ssize_t sent = sendto(handle->udpFileDescriptor, frameBuffer, frameLength, 0, (struct sockaddr *)&handle->peer.address, handle->peer.length);
     if (sent < 0)
         return BF_ERR;
     return (int)length;
@@ -252,8 +230,7 @@ int BFNetworkNoiseRecv(void *handlePointer, void *buffer, int length) {
     uint8_t                 datagram[BF_MACRO_MAX_DATAGRAM_SIZE];
     struct sockaddr_storage fromAddress;
     socklen_t               fromLength = sizeof(fromAddress);
-    ssize_t received = recvfrom(handle->udpFileDescriptor, datagram, sizeof(datagram), 0,
-                                (struct sockaddr *)&fromAddress, &fromLength);
+    ssize_t                 received   = recvfrom(handle->udpFileDescriptor, datagram, sizeof(datagram), 0, (struct sockaddr *)&fromAddress, &fromLength);
     if (received <= 0)
         return BF_ERR;
     if (received < (ssize_t)(4 + BF_AEAD_NONCE_BYTES + BF_AEAD_ABYTES))
@@ -267,10 +244,7 @@ int BFNetworkNoiseRecv(void *handlePointer, void *buffer, int length) {
     if (ciphertextLength > (uint32_t)(length + BF_AEAD_ABYTES))
         return BF_ERR;
     // Replay checks: salt consistency and sliding window over counters
-    uint64_t counter = ((uint64_t)nonce[16] << 56) | ((uint64_t)nonce[17] << 48) |
-                       ((uint64_t)nonce[18] << 40) | ((uint64_t)nonce[19] << 32) |
-                       ((uint64_t)nonce[20] << 24) | ((uint64_t)nonce[21] << 16) |
-                       ((uint64_t)nonce[22] << 8) | ((uint64_t)nonce[23]);
+    uint64_t counter = ((uint64_t)nonce[16] << 56) | ((uint64_t)nonce[17] << 48) | ((uint64_t)nonce[18] << 40) | ((uint64_t)nonce[19] << 32) | ((uint64_t)nonce[20] << 24) | ((uint64_t)nonce[21] << 16) | ((uint64_t)nonce[22] << 8) | ((uint64_t)nonce[23]);
     if (!handle->hasPeerSalt) {
         memcpy(handle->peerSalt, nonce, 16);
         handle->hasPeerSalt      = 1;
@@ -288,9 +262,7 @@ int BFNetworkNoiseRecv(void *handlePointer, void *buffer, int length) {
             return BF_ERR; // replayed
     }
     uint32_t plaintextLength = 0;
-    int      dec =
-        BFAeadDecrypt(handle->aeadKey, nonce, associatedHeader, 4, ciphertext, ciphertextLength,
-                      (uint8_t *)buffer, (uint32_t)length, &plaintextLength);
+    int      dec             = BFAeadDecrypt(handle->aeadKey, nonce, associatedHeader, 4, ciphertext, ciphertextLength, (uint8_t *)buffer, (uint32_t)length, &plaintextLength);
     if (dec != BF_OK)
         return BF_ERR;
     // Update window after successful decrypt
@@ -326,8 +298,7 @@ int BFNetworkNoiseDebugResendLastFrame(void *handlePointer) {
         return BF_ERR;
     if (handle->lastFrameLength == 0)
         return BF_ERR;
-    ssize_t sent = sendto(handle->udpFileDescriptor, handle->lastFrame, handle->lastFrameLength, 0,
-                          (struct sockaddr *)&handle->peer.address, handle->peer.length);
+    ssize_t sent = sendto(handle->udpFileDescriptor, handle->lastFrame, handle->lastFrameLength, 0, (struct sockaddr *)&handle->peer.address, handle->peer.length);
     if (sent < 0)
         return BF_ERR;
     return (int)sent;

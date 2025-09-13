@@ -107,6 +107,5 @@ void BFMemoryGetStats(BFMemoryStats *outStats) {
 void BFMemoryDumpStats(void) {
     BFMemoryStats stats = {0};
     BFMemoryGetStats(&stats);
-    BFLog("BFMemory: currentBytes=%zu peakBytes=%zu currentBlocks=%zu peakBlocks=%zu",
-          stats.currentBytes, stats.peakBytes, stats.currentBlocks, stats.peakBlocks);
+    BFLog("BFMemory: currentBytes=%zu peakBytes=%zu currentBlocks=%zu peakBlocks=%zu", stats.currentBytes, stats.peakBytes, stats.currentBlocks, stats.peakBlocks);
 }

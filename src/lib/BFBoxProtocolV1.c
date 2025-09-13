@@ -27,8 +27,7 @@ static uint64_t bf_ntohll(uint64_t value) {
 #endif
 }
 
-int BFV1Pack(uint8_t *buffer, size_t bufferLength, uint32_t command, uint64_t requestId,
-             const void *payload, uint32_t payloadLength) {
+int BFV1Pack(uint8_t *buffer, size_t bufferLength, uint32_t command, uint64_t requestId, const void *payload, uint32_t payloadLength) {
     // Compute total frame size: header(1+1+4+4+8) + payload
     const size_t headerSize = 1 + 1 + 4 + 4 + 8;
     const size_t totalSize  = headerSize + (size_t)payloadLength;
@@ -63,8 +62,7 @@ int BFV1Pack(uint8_t *buffer, size_t bufferLength, uint32_t command, uint64_t re
     return (int)totalSize;
 }
 
-int BFV1Unpack(const uint8_t *buffer, size_t bufferLength, uint32_t *outCommand,
-               uint64_t *outRequestId, const uint8_t **outPayload, uint32_t *outPayloadLength) {
+int BFV1Unpack(const uint8_t *buffer, size_t bufferLength, uint32_t *outCommand, uint64_t *outRequestId, const uint8_t **outPayload, uint32_t *outPayloadLength) {
     if (buffer == NULL) {
         return -1;
     }
@@ -113,8 +111,7 @@ int BFV1Unpack(const uint8_t *buffer, size_t bufferLength, uint32_t *outCommand,
     return (int)expectedTotal;
 }
 
-int BFV1PackStatus(uint8_t *buffer, size_t bufferLength, uint32_t command, uint64_t requestId,
-                   uint8_t statusCode, const char *message) {
+int BFV1PackStatus(uint8_t *buffer, size_t bufferLength, uint32_t command, uint64_t requestId, uint8_t statusCode, const char *message) {
     const uint8_t *msgBytes = (const uint8_t *)message;
     uint32_t       msgLen   = 0;
     if (message != NULL) {
@@ -135,8 +132,7 @@ int BFV1PackStatus(uint8_t *buffer, size_t bufferLength, uint32_t command, uint6
     return BFV1Pack(buffer, bufferLength, command, requestId, payload, payloadLength);
 }
 
-int BFV1UnpackStatus(const uint8_t *payload, uint32_t payloadLength, uint8_t *outStatusCode,
-                     const uint8_t **outMessage, uint32_t *outMessageLength) {
+int BFV1UnpackStatus(const uint8_t *payload, uint32_t payloadLength, uint8_t *outStatusCode, const uint8_t **outMessage, uint32_t *outMessageLength) {
     if (payload == NULL || payloadLength == 0) {
         return -1;
     }
@@ -152,8 +148,7 @@ int BFV1UnpackStatus(const uint8_t *payload, uint32_t payloadLength, uint8_t *ou
     return 0;
 }
 
-int BFV1PackHello(uint8_t *buffer, size_t bufferLength, uint64_t requestId, uint8_t statusCode,
-                  const uint16_t *versions, uint8_t versionCount) {
+int BFV1PackHello(uint8_t *buffer, size_t bufferLength, uint64_t requestId, uint8_t statusCode, const uint16_t *versions, uint8_t versionCount) {
     if (buffer == NULL) {
         return -1;
     }
@@ -172,8 +167,7 @@ int BFV1PackHello(uint8_t *buffer, size_t bufferLength, uint64_t requestId, uint
     return BFV1Pack(buffer, bufferLength, BFV1_HELLO, requestId, payload, payloadLength);
 }
 
-int BFV1UnpackHello(const uint8_t *payload, uint32_t payloadLength, uint8_t *outStatusCode,
-                    uint16_t *outVersions, uint8_t maxVersions, uint8_t *outVersionCount) {
+int BFV1UnpackHello(const uint8_t *payload, uint32_t payloadLength, uint8_t *outStatusCode, uint16_t *outVersions, uint8_t maxVersions, uint8_t *outVersionCount) {
     if (payload == NULL || payloadLength < 2U) {
         return -1;
     }
@@ -199,8 +193,7 @@ int BFV1UnpackHello(const uint8_t *payload, uint32_t payloadLength, uint8_t *out
     return 0;
 }
 
-int BFV1PackPut(uint8_t *buffer, size_t bufferLength, uint64_t requestId, const char *queuePath,
-                const char *contentType, const uint8_t *data, uint32_t dataLength) {
+int BFV1PackPut(uint8_t *buffer, size_t bufferLength, uint64_t requestId, const char *queuePath, const char *contentType, const uint8_t *data, uint32_t dataLength) {
     if (buffer == NULL || queuePath == NULL || contentType == NULL) {
         return -1;
     }
@@ -225,10 +218,7 @@ int BFV1PackPut(uint8_t *buffer, size_t bufferLength, uint64_t requestId, const 
     return BFV1Pack(buffer, bufferLength, BFV1_PUT, requestId, payload, payloadLength);
 }
 
-int BFV1UnpackPut(const uint8_t *payload, uint32_t payloadLength, const uint8_t **outQueuePath,
-                  uint16_t *outQueuePathLength, const uint8_t **outContentType,
-                  uint16_t *outContentTypeLength, const uint8_t **outData,
-                  uint32_t *outDataLength) {
+int BFV1UnpackPut(const uint8_t *payload, uint32_t payloadLength, const uint8_t **outQueuePath, uint16_t *outQueuePathLength, const uint8_t **outContentType, uint16_t *outContentTypeLength, const uint8_t **outData, uint32_t *outDataLength) {
     if (payload == NULL || payloadLength < 2U) {
         return -1;
     }
@@ -284,8 +274,7 @@ int BFV1PackGet(uint8_t *buffer, size_t bufferLength, uint64_t requestId, const 
     return BFV1Pack(buffer, bufferLength, BFV1_GET, requestId, payload, payloadLength);
 }
 
-int BFV1UnpackGet(const uint8_t *payload, uint32_t payloadLength, const uint8_t **outQueuePath,
-                  uint16_t *outQueuePathLength) {
+int BFV1UnpackGet(const uint8_t *payload, uint32_t payloadLength, const uint8_t **outQueuePath, uint16_t *outQueuePathLength) {
     if (payload == NULL || payloadLength < 2U) {
         return -1;
     }
