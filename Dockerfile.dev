@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       build-essential cmake ninja-build pkg-config \
-      libssl-dev ripgrep clang-format git ca-certificates openssl && \
+      libssl-dev libsodium-dev ripgrep clang-format git ca-certificates openssl && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /work
@@ -17,4 +17,3 @@ RUN useradd -ms /bin/bash dev && \
 USER dev
 
 CMD ["bash"]
-
