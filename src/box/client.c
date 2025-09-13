@@ -37,13 +37,15 @@ static void ClientPrintUsage(const char *program) {
     fprintf(
         stderr,
         "Usage: %s [address] [port] [--port <udp>] [--put <queue>[:type] <data>] [--get <queue>]\n"
+        "          [--transport <clear|noise>] [--pre-share-key <ascii>]\n"
         "          [--version] [--help]\n"
         "       | %s admin status    # query local daemon status (Unix)\n\n"
         "Examples:\n"
         "  %s 127.0.0.1 9988 --put /message:text/plain \"Hello\"\n"
         "  %s 127.0.0.1 --port 9988 --get /message\n"
+        "  %s --transport noise --pre-share-key devsecret\n"
         "  %s admin status\n",
-        program, program, program, program, program);
+        program, program, program, program, program, program);
 }
 
 static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions,
@@ -94,6 +96,10 @@ static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions
         } else if (strcmp(arg, "--get") == 0 && argumentIndex + 1 < argc) {
             outAction->doGet = 1;
             outAction->queue = argv[++argumentIndex];
+        } else if (strcmp(arg, "--transport") == 0 && argumentIndex + 1 < argc) {
+            outOptions->transport = argv[++argumentIndex];
+        } else if (strcmp(arg, "--pre-share-key") == 0 && argumentIndex + 1 < argc) {
+            outOptions->preShareKeyAscii = argv[++argumentIndex];
         } else if (arg[0] != '-') {
             // positional
             if (address == BFDefaultAddress) {
@@ -201,8 +207,10 @@ int main(int argc, char **argv) {
               address, (unsigned)port, portOrigin, action.queue, levelName, targetName);
     } else {
         BFLog(
-            "box: start address=%s port=%u portOrigin=%s action=handshake logLevel=%s logTarget=%s",
-            address, (unsigned)port, portOrigin, levelName, targetName);
+            "box: start address=%s port=%u portOrigin=%s action=handshake transport=%s logLevel=%s "
+            "logTarget=%s",
+            address, (unsigned)port, portOrigin, (options.transport ? options.transport : "clear"),
+            levelName, targetName);
     }
 
     struct sockaddr_in server;
@@ -367,6 +375,18 @@ int main(int argc, char **argv) {
         if (options.preShareKeyAscii) {
             security.preShareKey       = (const unsigned char *)options.preShareKeyAscii;
             security.preShareKeyLength = (size_t)strlen(options.preShareKeyAscii);
+        }
+        // Accept environment override for pattern (scaffold)
+        const char *patternEnvironment = getenv("BOX_NOISE_PATTERN");
+        if (patternEnvironment && *patternEnvironment) {
+            security.hasNoiseHandshakePattern = 1;
+            if (strcmp(patternEnvironment, "nk") == 0) {
+                security.noiseHandshakePattern = BFNoiseHandshakePatternNK;
+            } else if (strcmp(patternEnvironment, "ik") == 0) {
+                security.noiseHandshakePattern = BFNoiseHandshakePatternIK;
+            } else {
+                security.hasNoiseHandshakePattern = 0;
+            }
         }
         BFNetworkConnection *nc =
             BFNetworkConnectDatagram(BFNetworkTransportNOISE, udpSocket, (struct sockaddr *)&server,

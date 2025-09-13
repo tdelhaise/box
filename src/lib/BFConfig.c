@@ -90,6 +90,42 @@ int BFConfigLoadServer(const char *filePath, BFServerConfig *outConfig) {
             outConfig->hasLogTarget                                = 1;
             continue;
         }
+        if (strcmp(key, "transport") == 0) {
+            strncpy(outConfig->transportGeneral, val, sizeof(outConfig->transportGeneral) - 1);
+            outConfig->transportGeneral[sizeof(outConfig->transportGeneral) - 1] = '\0';
+            outConfig->hasTransportGeneral                                       = 1;
+            continue;
+        }
+        if (strcmp(key, "transport_put") == 0) {
+            strncpy(outConfig->transportPut, val, sizeof(outConfig->transportPut) - 1);
+            outConfig->transportPut[sizeof(outConfig->transportPut) - 1] = '\0';
+            outConfig->hasTransportPut                                   = 1;
+            continue;
+        }
+        if (strcmp(key, "transport_get") == 0) {
+            strncpy(outConfig->transportGet, val, sizeof(outConfig->transportGet) - 1);
+            outConfig->transportGet[sizeof(outConfig->transportGet) - 1] = '\0';
+            outConfig->hasTransportGet                                   = 1;
+            continue;
+        }
+        if (strcmp(key, "transport_status") == 0) {
+            strncpy(outConfig->transportStatus, val, sizeof(outConfig->transportStatus) - 1);
+            outConfig->transportStatus[sizeof(outConfig->transportStatus) - 1] = '\0';
+            outConfig->hasTransportStatus                                      = 1;
+            continue;
+        }
+        if (strcmp(key, "pre_share_key") == 0) {
+            strncpy(outConfig->preShareKeyAscii, val, sizeof(outConfig->preShareKeyAscii) - 1);
+            outConfig->preShareKeyAscii[sizeof(outConfig->preShareKeyAscii) - 1] = '\0';
+            outConfig->hasPreShareKeyAscii                                       = 1;
+            continue;
+        }
+        if (strcmp(key, "noise_pattern") == 0) {
+            strncpy(outConfig->noisePattern, val, sizeof(outConfig->noisePattern) - 1);
+            outConfig->noisePattern[sizeof(outConfig->noisePattern) - 1] = '\0';
+            outConfig->hasNoisePattern                                   = 1;
+            continue;
+        }
         // ignore unknown keys for now
     }
     fclose(f);

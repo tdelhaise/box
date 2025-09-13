@@ -66,9 +66,34 @@ Implementation Status (Crypto/Noise)
   - Replay protection: receivers enforce salt consistency and reject frames that are too old or already seen using a 64‑entry sliding window referenced to the highest accepted counter.
   - Temporary keying: a pre‑shared key (PSK) is used to derive the AEAD key until the Noise NK/IK handshake is implemented.
   - A debug‑only hook exists to re‑send the last encrypted frame for replay testing.
+Scaffold NK/IK (current):
+- Pattern selection: `NK` (initiator knows responder static) and `IK` (both know statics) are
+  recognized as scaffolding modes. Full message patterns are not implemented yet.
+- Transcript binding: a BLAKE2b transcript hash commits to a label `box/noise/scaffold/v1`, the
+  selected pattern, an optional prologue, and any configured static public keys (server and/or
+  client). This transcript hash is stored per connection for future binding and logging.
+- Session key derivation: the AEAD session key is derived as a BLAKE2b keyed hash over the
+  transcript hash. The key for the hash must be secret: either a pre‑shared key (PSK) or, in
+  development mode, the client static private key (IK only). If no secret is configured, the
+  Noise transport remains disabled.
+- Identity binding: when present, the server static public key (NK/IK) and client static public
+  key (IK) are mixed into the transcript and therefore bound to the derived session key. This lays
+  the groundwork for authenticating identities once message patterns and signatures are added.
 Future work:
 - Replace PSK with proper NK/IK handshake to derive session keys, bind identities, and sign transcripts. Extend the replay window strategy and document error codes and limits.
-- Replay protection is enforced using nonces and monotonic timestamps; servers reject stale or duplicate nonces per peer.
+- Replay protection is enforced using nonces and a sliding window; servers reject stale or duplicate counters per peer (see 5.3.1).
+
+5.3.1 Replay Protection Details
+
+- Nonce construction: 24 bytes where the first 16 bytes are a per‑direction salt (randomly chosen
+  by the sender for the lifetime of the connection), and the last 8 bytes are a big‑endian
+  monotonic counter starting at 1.
+- Salt consistency: The receiver records the first observed salt from a peer and rejects any frame
+  with a different salt for that peer.
+- Sliding window: The receiver tracks the highest accepted counter and a 64‑bit bitmap of the last
+  64 counters. On successful decryption, counters higher than the current maximum advance the
+  window; older counters within the window set the corresponding bit. Frames older than the 64‑slot
+  window or those with already set bits are rejected as stale or replayed.
 
 5.4 Authorization
 
@@ -258,6 +283,26 @@ Resolve by Node UUID
     "ok": ls-ok,
     "node": node-record
   }
+
+7. CLI Smoke Path (Noise Transport)
+
+- Purpose: Exercise the Noise transport framing over UDP with a simple ping/pong exchange using the
+  scaffolded key derivation and replay protection.
+- Server (`boxd`):
+  - Enable via CLI: `boxd --transport noise [--pre-share-key <ascii>]`
+  - Or via config `~/.box/boxd.toml`:
+    - `transport = "noise"` (global) or `transport_status = "noise"` (status only)
+    - Optional: `pre_share_key = "devsecret"`
+    - Optional: `noise_pattern = "nk" | "ik"`
+- Client (`box`):
+  - `box <address> [port] --transport noise [--pre-share-key <ascii>]`
+  - Optional environment: `BOX_NOISE_PATTERN=nk|ik`
+- Flow:
+  1) Client sends an initial clear UDP datagram so the server learns the client address.
+  2) Both sides derive the session key from the configured secret and bound identities.
+  3) Client sends an encrypted `ping`; server replies with encrypted `pong`.
+  4) Optional replay test: in test builds, the client can retransmit the last frame; the server
+     rejects it based on the sliding window.
 
 6.8 Location Service CBOR Examples (Hex + Diagnostic)
 

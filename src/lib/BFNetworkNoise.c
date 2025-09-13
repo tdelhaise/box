@@ -20,9 +20,12 @@ typedef struct BFNetworkNoiseHandle {
         struct sockaddr_storage address;
         socklen_t               length;
     } peer;
-    int      sodiumInitialized;
-    uint8_t  aeadKey[BF_AEAD_KEY_BYTES];
-    int      hasAeadKey;
+    int     sodiumInitialized;
+    uint8_t aeadKey[BF_AEAD_KEY_BYTES];
+    int     hasAeadKey;
+    // Transcript hash (scaffold) binding pattern, prologue, identities
+    uint8_t  transcriptHash[32];
+    int      hasTranscriptHash;
     uint8_t  nonceSalt[16];
     uint64_t nextNonceCounter;
     uint8_t  peerSalt[16];
@@ -35,10 +38,70 @@ typedef struct BFNetworkNoiseHandle {
 #endif
 } BFNetworkNoiseHandle;
 
-static void derive_key_from_security(const BFNetworkSecurity *security, uint8_t *outKey,
-                                     int *outHasKey) {
-    *outHasKey = 0;
-    if (!security || !security->preShareKey || security->preShareKeyLength == 0)
+static void derive_transcript_and_session_key(const BFNetworkSecurity *security, uint8_t *outKey,
+                                              int *outHasKey, uint8_t *outTranscript,
+                                              int *outHasTranscript) {
+    *outHasKey        = 0;
+    *outHasTranscript = 0;
+    if (!security) {
+        return;
+    }
+#if defined(HAVE_SODIUM)
+    // Build a simple transcript hash that binds pattern + identities + prologue.
+    crypto_generichash_state state;
+    (void)crypto_generichash_init(&state, NULL, 0U, sizeof(outTranscript[0]) * 32U);
+    const char *label = "box/noise/scaffold/v1";
+    (void)crypto_generichash_update(&state, (const unsigned char *)label, strlen(label));
+    unsigned char patternByte = 0x00U;
+    if (security->hasNoiseHandshakePattern) {
+        if (security->noiseHandshakePattern == BFNoiseHandshakePatternNK) {
+            patternByte = 0x01U;
+        } else if (security->noiseHandshakePattern == BFNoiseHandshakePatternIK) {
+            patternByte = 0x02U;
+        }
+    }
+    (void)crypto_generichash_update(&state, &patternByte, 1U);
+    if (security->noisePrologue && *security->noisePrologue) {
+        (void)crypto_generichash_update(&state, (const unsigned char *)security->noisePrologue,
+                                        strlen(security->noisePrologue));
+    }
+    if (security->noiseServerStaticPublicKey && security->noiseServerStaticPublicKeyLength >= 32U) {
+        (void)crypto_generichash_update(&state, security->noiseServerStaticPublicKey, 32U);
+    }
+    if (security->noiseClientStaticPublicKey && security->noiseClientStaticPublicKeyLength >= 32U) {
+        (void)crypto_generichash_update(&state, security->noiseClientStaticPublicKey, 32U);
+    }
+    unsigned char transcript[32];
+    (void)crypto_generichash_final(&state, transcript, sizeof(transcript));
+    memcpy(outTranscript, transcript, sizeof(transcript));
+    *outHasTranscript = 1;
+
+    // Derive a session key from the transcript, keyed with a secret if provided.
+    // Require a secret: either pre-shared key or client static private key (for IK).
+    const unsigned char *secretKeyMaterial     = NULL;
+    size_t               secretKeyMaterialSize = 0U;
+    if (security->preShareKey && security->preShareKeyLength > 0) {
+        secretKeyMaterial     = security->preShareKey;
+        secretKeyMaterialSize = security->preShareKeyLength;
+    } else if (security->noiseClientStaticPrivateKey &&
+               security->noiseClientStaticPrivateKeyLength >= 32U) {
+        secretKeyMaterial     = security->noiseClientStaticPrivateKey;
+        secretKeyMaterialSize = 32U;
+    }
+    if (!secretKeyMaterial || secretKeyMaterialSize == 0U) {
+        // No secret -> do not enable encryption in scaffold
+        return;
+    }
+    unsigned char aeadKey[BF_AEAD_KEY_BYTES];
+    crypto_generichash(aeadKey, sizeof(aeadKey), transcript, sizeof(transcript), secretKeyMaterial,
+                       (unsigned long long)secretKeyMaterialSize);
+    memcpy(outKey, aeadKey, sizeof(aeadKey));
+    *outHasKey = 1;
+#else
+    // Without libsodium, keep existing PSK behavior as a gate and fill a deterministic key.
+    *outHasKey        = 0;
+    *outHasTranscript = 0;
+    if (!security->preShareKey || security->preShareKeyLength == 0)
         return;
     memset(outKey, 0, BF_AEAD_KEY_BYTES);
     size_t copyLength = security->preShareKeyLength < BF_AEAD_KEY_BYTES
@@ -46,6 +109,7 @@ static void derive_key_from_security(const BFNetworkSecurity *security, uint8_t 
                             : (size_t)BF_AEAD_KEY_BYTES;
     memcpy(outKey, security->preShareKey, copyLength);
     *outHasKey = 1;
+#endif
 }
 
 static BFNetworkNoiseHandle *BFNetworkNoiseHandleNew(int                      udpFileDescriptor,
@@ -64,7 +128,22 @@ static BFNetworkNoiseHandle *BFNetworkNoiseHandleNew(int                      ud
         handle->sodiumInitialized = 0;
     }
 #endif
-    derive_key_from_security(security, handle->aeadKey, &handle->hasAeadKey);
+    derive_transcript_and_session_key(security, handle->aeadKey, &handle->hasAeadKey,
+                                      handle->transcriptHash, &handle->hasTranscriptHash);
+#if 1
+    if (security) {
+        const char *patternName = "unknown";
+        if (security->hasNoiseHandshakePattern) {
+            patternName = (security->noiseHandshakePattern == BFNoiseHandshakePatternNK) ? "nk"
+                          : (security->noiseHandshakePattern == BFNoiseHandshakePatternIK)
+                              ? "ik"
+                              : "unknown";
+        }
+        BFLog("BFNetwork Noise: scaffold pattern=%s transcript=%s key=%s%s", patternName,
+              handle->hasTranscriptHash ? "on" : "off", handle->hasAeadKey ? "on" : "off",
+              (security->noisePrologue && *security->noisePrologue) ? " prologue" : "");
+    }
+#endif
 #if defined(HAVE_SODIUM)
     randombytes_buf(handle->nonceSalt, sizeof(handle->nonceSalt));
 #else
@@ -93,7 +172,7 @@ void *BFNetworkNoiseConnect(int udpFileDescriptor, const struct sockaddr *server
         handle->peer.length = serverLength;
     }
     if (!handle->hasAeadKey) {
-        BFWarn("BFNetwork Noise: no pre-shared key; encryption disabled for skeleton");
+        BFWarn("BFNetwork Noise: no session key; transport disabled (scaffold)");
     }
     return handle;
 }
@@ -109,7 +188,7 @@ void *BFNetworkNoiseAccept(int udpFileDescriptor, const struct sockaddr_storage 
         handle->peer.length = peerLength;
     }
     if (!handle->hasAeadKey) {
-        BFWarn("BFNetwork Noise: no pre-shared key; encryption disabled for skeleton");
+        BFWarn("BFNetwork Noise: no session key; transport disabled (scaffold)");
     }
     return handle;
 }

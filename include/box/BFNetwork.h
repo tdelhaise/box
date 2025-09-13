@@ -19,6 +19,13 @@ typedef enum BFNetworkTransport {
     BFNetworkTransportNOISE = 2, // libsodium/Noise (groundwork)
 } BFNetworkTransport;
 
+// Noise handshake pattern (scaffold)
+typedef enum BFNoiseHandshakePattern {
+    BFNoiseHandshakePatternUnknown = 0,
+    BFNoiseHandshakePatternNK      = 1, // initiator knows responder static
+    BFNoiseHandshakePatternIK      = 2, // both sides know each other's static
+} BFNoiseHandshakePattern;
+
 // Security configuration (for future Noise/QUIC transports)
 typedef struct BFNetworkSecurity {
     const char *certificateFile; // PEM (optional)
@@ -33,6 +40,20 @@ typedef struct BFNetworkSecurity {
     const char *alpn;         // ex: "box/1" (for QUIC/TLS later)
     const char *caFile;       // optional path to CA file (client)
     const char *caPath;       // optional path to CA dir (client)
+
+    // Noise scaffold options (all optional). If provided, identities are bound into
+    // the session key derivation and transcript hash. This does not yet implement
+    // full message patterns; it only derives a transport key that both sides can
+    // compute from shared configuration for smoke testing.
+    int                     hasNoiseHandshakePattern;
+    BFNoiseHandshakePattern noiseHandshakePattern;
+    const unsigned char    *noiseClientStaticPublicKey; // 32 bytes (optional)
+    size_t                  noiseClientStaticPublicKeyLength;
+    const unsigned char    *noiseClientStaticPrivateKey; // 32 bytes (optional)
+    size_t                  noiseClientStaticPrivateKeyLength;
+    const unsigned char    *noiseServerStaticPublicKey; // 32 bytes (recommended for NK/IK)
+    size_t                  noiseServerStaticPublicKeyLength;
+    const char             *noisePrologue; // optional prologue/context binding
 } BFNetworkSecurity;
 
 // Create a client-side secure connection over a datagram socket (future transports).

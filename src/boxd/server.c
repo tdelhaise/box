@@ -224,11 +224,14 @@ int main(int argc, char **argv) {
         }
     }
 
-    // Apply config-based log level/target unless overridden by CLI
+    // Apply config-based settings unless overridden by CLI
+#if defined(__unix__) || defined(__APPLE__)
+    BFServerConfig serverConfigurationLoaded;
+    memset(&serverConfigurationLoaded, 0, sizeof(serverConfigurationLoaded));
+#endif
 #if defined(__unix__) || defined(__APPLE__)
     if ((homeDirectory && *homeDirectory)) {
-        BFServerConfig serverConfigurationLoaded;
-        char           configPath[512];
+        char configPath[512];
         snprintf(configPath, sizeof(configPath), "%s/.box/boxd.toml", homeDirectory);
         if (BFConfigLoadServer(configPath, &serverConfigurationLoaded) == 0) {
             if (!options.hasLogLevel && serverConfigurationLoaded.hasLogLevel) {
@@ -236,6 +239,17 @@ int main(int argc, char **argv) {
             }
             if (!options.hasLogTarget && serverConfigurationLoaded.hasLogTarget) {
                 (void)BFLoggerSetTarget(serverConfigurationLoaded.logTarget);
+            }
+            if (serverConfigurationLoaded.hasNoisePattern) {
+                BFLog("boxd: noise pattern set by config: %s",
+                      serverConfigurationLoaded.noisePattern);
+            }
+            // Adopt transport toggles and pre-shared key from config for smoke path
+            if (!options.transport && serverConfigurationLoaded.hasTransportGeneral) {
+                options.transport = serverConfigurationLoaded.transportGeneral;
+            }
+            if (!options.preShareKeyAscii && serverConfigurationLoaded.hasPreShareKeyAscii) {
+                options.preShareKeyAscii = serverConfigurationLoaded.preShareKeyAscii;
             }
         }
     }
@@ -321,12 +335,32 @@ int main(int argc, char **argv) {
     BFLog("boxd: datagram initial %zd octets reçu", received);
 
     // 2) Noise transport (optional smoke mode): enter encrypted echo loop if requested
-    if (options.transport && strcmp(options.transport, "noise") == 0) {
+    // Allow per-operation override for status smoke via config
+    int useNoiseSmoke = (options.transport && strcmp(options.transport, "noise") == 0)
+#if defined(__unix__) || defined(__APPLE__)
+                        || (serverConfigurationLoaded.hasTransportStatus &&
+                            strcmp(serverConfigurationLoaded.transportStatus, "noise") == 0)
+#endif
+        ;
+    if (useNoiseSmoke) {
         BFNetworkSecurity security = {0};
         if (options.preShareKeyAscii) {
             security.preShareKey       = (const unsigned char *)options.preShareKeyAscii;
             security.preShareKeyLength = (size_t)strlen(options.preShareKeyAscii);
         }
+        // Map noise pattern from config when present (scaffold)
+#if defined(__unix__) || defined(__APPLE__)
+        if (serverConfigurationLoaded.hasNoisePattern) {
+            security.hasNoiseHandshakePattern = 1;
+            if (strcmp(serverConfigurationLoaded.noisePattern, "nk") == 0) {
+                security.noiseHandshakePattern = BFNoiseHandshakePatternNK;
+            } else if (strcmp(serverConfigurationLoaded.noisePattern, "ik") == 0) {
+                security.noiseHandshakePattern = BFNoiseHandshakePatternIK;
+            } else {
+                security.hasNoiseHandshakePattern = 0;
+            }
+        }
+#endif
         BFNetworkConnection *nc = BFNetworkAcceptDatagram(BFNetworkTransportNOISE, udpSocket, &peer,
                                                           peerLength, &security);
         if (!nc) {
