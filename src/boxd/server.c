@@ -69,7 +69,7 @@ static void ServerPrintUsage(const char *program) {
         "  - Admin channel (Unix): ~/.box/run/boxd.socket (mode 0600); try 'box admin status'.\n"
         "  --version              Print version and exit\n"
         "  --help                 Show this help and exit\n",
-        program, (unsigned)BFDefaultPort);
+        program, (unsigned)BFGlobalDefaultPort);
 }
 
 static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions) {
@@ -210,7 +210,7 @@ int main(int argc, char **argv) {
 #endif
 
     // Parse optional port from environment or default (CLI --port reserved for future)
-    uint16_t    serverPort   = BFDefaultPort;
+    uint16_t    serverPort   = BFGlobalDefaultPort;
     const char *portOrigin   = "default";
     const char *portEnvValue = getenv("BOXD_PORT");
     if (options.port > 0) {
@@ -322,7 +322,7 @@ int main(int argc, char **argv) {
     // 1) Attente d'un datagram clair pour connaître l'adresse du client
     struct sockaddr_storage peer       = {0};
     socklen_t               peerLength = sizeof(peer);
-    uint8_t                 receiveBuffer[BFMaxDatagram];
+    uint8_t                 receiveBuffer[BF_MACRO_MAX_DATAGRAM_SIZE];
 
     memset(receiveBuffer, 0, sizeof(receiveBuffer));
 
@@ -388,7 +388,7 @@ int main(int argc, char **argv) {
     // 3) Pas de DTLS: échanges v1 en UDP clair
 
     // Envoyer un HELLO applicatif (v1) en UDP clair avec statut OK et versions supportées
-    uint8_t  transmitBuffer[BFMaxDatagram];
+    uint8_t  transmitBuffer[BF_MACRO_MAX_DATAGRAM_SIZE];
     uint64_t requestId            = 1;
     uint16_t supportedVersions[1] = {1};
     int packed = BFV1PackHello(transmitBuffer, sizeof(transmitBuffer), requestId, BFV1_STATUS_OK,

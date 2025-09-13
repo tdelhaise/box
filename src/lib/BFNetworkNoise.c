@@ -34,7 +34,7 @@ typedef struct BFNetworkNoiseHandle {
     uint64_t recvWindowBitmap;
 #ifdef BF_NOISE_TEST_HOOKS
     size_t  lastFrameLength;
-    uint8_t lastFrame[BFMaxDatagram];
+    uint8_t lastFrame[BF_MACRO_MAX_DATAGRAM_SIZE];
 #endif
 } BFNetworkNoiseHandle;
 
@@ -219,9 +219,9 @@ int BFNetworkNoiseSend(void *handlePointer, const void *buffer, int length) {
     build_nonce(nonce, handle->nonceSalt, handle->nextNonceCounter++);
     uint32_t ciphertextLengthExpected = (uint32_t)length + (uint32_t)BF_AEAD_ABYTES;
     uint32_t frameOverhead            = 4U + (uint32_t)BF_AEAD_NONCE_BYTES;
-    if ((size_t)(ciphertextLengthExpected + frameOverhead) > BFMaxDatagram)
+    if ((size_t)(ciphertextLengthExpected + frameOverhead) > BFGlobalMaxDatagram)
         return BF_ERR;
-    uint8_t frameBuffer[BFMaxDatagram];
+    uint8_t frameBuffer[BF_MACRO_MAX_DATAGRAM_SIZE];
     memcpy(frameBuffer, associatedHeader, sizeof(associatedHeader));
     memcpy(frameBuffer + 4, nonce, sizeof(nonce));
     uint32_t producedLength = 0;
@@ -249,7 +249,7 @@ int BFNetworkNoiseRecv(void *handlePointer, void *buffer, int length) {
         return BF_ERR;
     if (!handle->hasAeadKey)
         return BF_ERR;
-    uint8_t                 datagram[BFMaxDatagram];
+    uint8_t                 datagram[BF_MACRO_MAX_DATAGRAM_SIZE];
     struct sockaddr_storage fromAddress;
     socklen_t               fromLength = sizeof(fromAddress);
     ssize_t received = recvfrom(handle->udpFileDescriptor, datagram, sizeof(datagram), 0,

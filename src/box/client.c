@@ -53,8 +53,8 @@ static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions
                             ClientAction *outAction) {
     memset(outOptions, 0, sizeof(*outOptions));
     memset(outAction, 0, sizeof(*outAction));
-    const char *address    = BFDefaultAddress;
-    uint16_t    port       = BFDefaultPort;
+    const char *address    = BFGlobalDefaultAddress;
+    uint16_t    port       = BFGlobalDefaultPort;
     const char *portOrigin = "default";
 
     for (int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
@@ -102,7 +102,7 @@ static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions
             outOptions->preShareKeyAscii = argv[++argumentIndex];
         } else if (arg[0] != '-') {
             // positional
-            if (address == BFDefaultAddress) {
+            if (address == BFGlobalDefaultAddress) {
                 address = arg;
             } else {
                 long portValue = strtol(arg, NULL, 10);
@@ -220,7 +220,7 @@ int main(int argc, char **argv) {
     }
 
     // 1) Envoyer HELLO (v1) en UDP clair avec versions supportées
-    uint8_t  transmitBuffer[BFMaxDatagram];
+    uint8_t  transmitBuffer[BF_MACRO_MAX_DATAGRAM_SIZE];
     uint64_t requestId            = 1;
     uint16_t supportedVersions[1] = {1};
     int packed = BFV1PackHello(transmitBuffer, sizeof(transmitBuffer), requestId, BFV1_STATUS_OK,
@@ -231,7 +231,7 @@ int main(int argc, char **argv) {
     }
 
     // 3) Lire HELLO serveur (v1)
-    uint8_t         buffer[BFMaxDatagram];
+    uint8_t         buffer[BF_MACRO_MAX_DATAGRAM_SIZE];
     struct sockaddr from       = {0};
     socklen_t       fromLength = sizeof(from);
     int readCount = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLength);
