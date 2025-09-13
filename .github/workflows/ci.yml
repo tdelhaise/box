@@ -16,7 +16,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential ninja-build libssl-dev pkg-config ripgrep clang-format
+          sudo apt-get install -y cmake build-essential ninja-build libssl-dev libsodium-dev pkg-config ripgrep clang-format
 
       - name: Configure (Debug)
         run: make configure BUILD_TYPE=Debug
