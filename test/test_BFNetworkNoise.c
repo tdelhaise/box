@@ -181,7 +181,7 @@ int main(void) {
     // Replay case: resend the last client frame and expect server to reject it
 #ifdef BF_NOISE_TEST_HOOKS
     if (BFNetworkDebugResendLastFrame(clientConn) > 0) {
-        int replayRead = BFNetworkRecv(serverConn, serverPlaintext, (int)sizeof(serverPlaintext));
+        int replayRead = BFNetworkReceive(serverConn, serverPlaintext, (int)sizeof(serverPlaintext));
         if (replayRead >= 0) {
             fprintf(stderr, "expected replay rejection\n");
             BFNetworkClose(clientConn);

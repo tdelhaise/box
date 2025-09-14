@@ -225,7 +225,7 @@ int main(int argc, char **argv) {
     uint8_t         buffer[BF_MACRO_MAX_DATAGRAM_SIZE];
     struct sockaddr from       = {0};
     socklen_t       fromLength = sizeof(from);
-    int             readCount  = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLength);
+    int             readCount  = (int)BFUdpReceive(udpSocket, buffer, sizeof(buffer), &from, &fromLength);
     if (readCount > 0) {
         uint32_t       command       = 0;
         uint64_t       requestId     = 0;
@@ -266,7 +266,7 @@ int main(int argc, char **argv) {
 
     // 5) Lire réponse STATUS (pong)
     fromLength = sizeof(from);
-    readCount  = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLength);
+    readCount  = (int)BFUdpReceive(udpSocket, buffer, sizeof(buffer), &from, &fromLength);
     if (readCount > 0) {
         uint32_t       command       = 0;
         uint64_t       requestId     = 0;
@@ -304,7 +304,7 @@ int main(int argc, char **argv) {
         }
         // Read one response and print summary
         fromLength = sizeof(from);
-        readCount  = (int)BFUdpRecieve(udpSocket, buffer, sizeof(buffer), &from, &fromLength);
+        readCount  = (int)BFUdpReceive(udpSocket, buffer, sizeof(buffer), &from, &fromLength);
         if (readCount > 0) {
             uint32_t       responseCommand       = 0;
             uint64_t       responseRequestId     = 0;
@@ -365,7 +365,7 @@ int main(int argc, char **argv) {
             BFFatal("noise send");
         }
         char reply[256];
-        int  rr = BFNetworkRecv(nc, reply, (int)sizeof(reply));
+        int  rr = BFNetworkReceive(nc, reply, (int)sizeof(reply));
         if (rr > 0) {
             BFLog("box(noise): reply %.*s", rr, reply);
         }
