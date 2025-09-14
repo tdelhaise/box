@@ -30,9 +30,9 @@ typedef struct ServerDtlsOptions {
     const char *transport;
     uint16_t    port; // optional CLI override
     int         hasLogLevel;
-    BFLogLevel  cliLogLevel;
+    BFLogLevel  commandLineLogLevel;
     int         hasLogTarget;
-    char        cliLogTarget[128];
+    char        commandLineLogTarget[128];
 } ServerDtlsOptions;
 
 // Simple in-memory object for demo GET/PUT
@@ -84,22 +84,33 @@ static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions
             exit(0);
         } else if (strcmp(arg, "--log-level") == 0 && argumentIndex + 1 < argc) {
             const char *lvl = argv[++argumentIndex];
-            if (strcmp(lvl, "trace") == 0)
-                BFLoggerSetLevel(BF_LOG_TRACE), outOptions->cliLogLevel = BF_LOG_TRACE, outOptions->hasLogLevel = 1;
-            else if (strcmp(lvl, "debug") == 0)
-                BFLoggerSetLevel(BF_LOG_DEBUG), outOptions->cliLogLevel = BF_LOG_DEBUG, outOptions->hasLogLevel = 1;
-            else if (strcmp(lvl, "info") == 0)
-                BFLoggerSetLevel(BF_LOG_INFO), outOptions->cliLogLevel = BF_LOG_INFO, outOptions->hasLogLevel = 1;
-            else if (strcmp(lvl, "warn") == 0)
-                BFLoggerSetLevel(BF_LOG_WARN), outOptions->cliLogLevel = BF_LOG_WARN, outOptions->hasLogLevel = 1;
-            else if (strcmp(lvl, "error") == 0)
-                BFLoggerSetLevel(BF_LOG_ERROR), outOptions->cliLogLevel = BF_LOG_ERROR, outOptions->hasLogLevel = 1;
+            if (strcmp(lvl, "trace") == 0) {
+                BFLoggerSetLevel(BF_LOG_TRACE);
+                outOptions->commandLineLogLevel = BF_LOG_TRACE;
+                outOptions->hasLogLevel         = 1;
+            } else if (strcmp(lvl, "debug") == 0) {
+                BFLoggerSetLevel(BF_LOG_DEBUG);
+                outOptions->commandLineLogLevel = BF_LOG_DEBUG;
+                outOptions->hasLogLevel         = 1;
+            } else if (strcmp(lvl, "info") == 0) {
+                BFLoggerSetLevel(BF_LOG_INFO);
+                outOptions->commandLineLogLevel = BF_LOG_INFO;
+                outOptions->hasLogLevel         = 1;
+            } else if (strcmp(lvl, "warn") == 0) {
+                BFLoggerSetLevel(BF_LOG_WARN);
+                outOptions->commandLineLogLevel = BF_LOG_WARN;
+                outOptions->hasLogLevel         = 1;
+            } else if (strcmp(lvl, "error") == 0) {
+                BFLoggerSetLevel(BF_LOG_ERROR);
+                outOptions->commandLineLogLevel = BF_LOG_ERROR;
+                outOptions->hasLogLevel         = 1;
+            }
         } else if (strcmp(arg, "--log-target") == 0 && argumentIndex + 1 < argc) {
             const char *target = argv[++argumentIndex];
             (void)BFLoggerSetTarget(target);
-            strncpy(outOptions->cliLogTarget, target, sizeof(outOptions->cliLogTarget) - 1);
-            outOptions->cliLogTarget[sizeof(outOptions->cliLogTarget) - 1] = '\0';
-            outOptions->hasLogTarget                                       = 1;
+            strncpy(outOptions->commandLineLogTarget, target, sizeof(outOptions->commandLineLogTarget) - 1);
+            outOptions->commandLineLogTarget[sizeof(outOptions->commandLineLogTarget) - 1] = '\0';
+            outOptions->hasLogTarget                                                       = 1;
         } else if (strcmp(arg, "--port") == 0 && argumentIndex + 1 < argc) {
             const char *pv = argv[++argumentIndex];
             long        v  = strtol(pv, NULL, 10);
