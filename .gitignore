@@ -8,3 +8,4 @@ Debug
 server.key
 server.pem
 Testing/
+.DS_Store
