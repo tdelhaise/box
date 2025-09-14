@@ -65,16 +65,16 @@ BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int 
 BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int udpSocket, const struct sockaddr_storage *peer, socklen_t peerLength, const BFNetworkSecurity *security);
 
 // I/O operations (blocking). Return number of bytes or BF_ERR (<0) on error.
-int BFNetworkSend(BFNetworkConnection *c, const void *buffer, int length);
-int BFNetworkRecv(BFNetworkConnection *c, void *buffer, int length);
+int BFNetworkSend(BFNetworkConnection *networkConnection, const void *buffer, int length);
+int BFNetworkReceive(BFNetworkConnection *networkConnection, void *buffer, int length);
 
 // Close and free the connection.
-void BFNetworkClose(BFNetworkConnection *c);
+void BFNetworkClose(BFNetworkConnection *networkConnection);
 
 #ifdef BF_NOISE_TEST_HOOKS
 // Test hook: resend the last frame sent over the NOISE transport for this connection.
 // Returns bytes resent on success or BF_ERR on failure/unsupported transport.
-int BFNetworkDebugResendLastFrame(BFNetworkConnection *c);
+int BFNetworkDebugResendLastFrame(BFNetworkConnection *networkConnection);
 #endif
 
 #ifdef __cplusplus

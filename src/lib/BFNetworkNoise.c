@@ -221,7 +221,7 @@ int BFNetworkNoiseSend(void *handlePointer, const void *buffer, int length) {
     return (int)length;
 }
 
-int BFNetworkNoiseRecv(void *handlePointer, void *buffer, int length) {
+int BFNetworkNoiseReceive(void *handlePointer, void *buffer, int length) {
     BFNetworkNoiseHandle *handle = (BFNetworkNoiseHandle *)handlePointer;
     if (!handle || !buffer || length <= 0)
         return BF_ERR;

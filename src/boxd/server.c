@@ -144,7 +144,7 @@ static BFRunloop *globalRunloopNetIn  = NULL;
 static BFRunloop *globalRunloopNetOut = NULL;
 
 static volatile int globalRunning = 1;
-static void         onInteruptSignal(int signalNumber) {
+static void onInteruptSignal(int signalNumber) {
     (void)signalNumber;
     globalRunning = 0;
     BFLog("boxd: Interupt signal received. Exiting.");
@@ -348,7 +348,7 @@ int main(int argc, char **argv) {
 
     memset(receiveBuffer, 0, sizeof(receiveBuffer));
 
-    ssize_t received = BFUdpRecieve(udpSocket, receiveBuffer, sizeof(receiveBuffer), (struct sockaddr *)&peer, &peerLength);
+    ssize_t received = BFUdpReceive(udpSocket, receiveBuffer, sizeof(receiveBuffer), (struct sockaddr *)&peer, &peerLength);
     if (received < 0) {
         BFFatal("recvfrom (hello)");
     }
@@ -381,25 +381,25 @@ int main(int argc, char **argv) {
             }
         }
 #endif
-        BFNetworkConnection *nc = BFNetworkAcceptDatagram(BFNetworkTransportNOISE, udpSocket, &peer, peerLength, &security);
-        if (!nc) {
+        BFNetworkConnection *networkConnection = BFNetworkAcceptDatagram(BFNetworkTransportNOISE, udpSocket, &peer, peerLength, &security);
+        if (!networkConnection) {
             BFFatal("Noise accept failed");
         }
         for (;;) {
             char plaintext[256];
-            int  r = BFNetworkRecv(nc, plaintext, (int)sizeof(plaintext));
-            if (r <= 0) {
+            int  receivedBytes = BFNetworkReceive(networkConnection, plaintext, (int)sizeof(plaintext));
+            if (receivedBytes <= 0) {
                 BFWarn("boxd(noise): recv error");
                 break;
             }
-            BFLog("boxd(noise): received %d bytes", r);
+            BFLog("boxd(noise): received %d bytes", receivedBytes);
             const char *pong = "pong";
-            if (BFNetworkSend(nc, pong, (int)strlen(pong)) <= 0) {
+            if (BFNetworkSend(networkConnection, pong, (int)strlen(pong)) <= 0) {
                 BFWarn("boxd(noise): send error");
                 break;
             }
         }
-        BFNetworkClose(nc);
+        BFNetworkClose(networkConnection);
         close(udpSocket);
         return 0;
     }
@@ -442,7 +442,7 @@ int main(int argc, char **argv) {
 #endif
         struct sockaddr_storage from       = {0};
         socklen_t               fromLength = sizeof(from);
-        int                     readCount  = (int)BFUdpRecieve(udpSocket, receiveBuffer, sizeof(receiveBuffer), (struct sockaddr *)&from, &fromLength);
+        int                     readCount  = (int)BFUdpReceive(udpSocket, receiveBuffer, sizeof(receiveBuffer), (struct sockaddr *)&from, &fromLength);
         if (readCount <= 0) {
             consecutiveErrors++;
             BFWarn("boxd: lecture UDP en erreur (compteur=%d)", consecutiveErrors);

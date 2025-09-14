@@ -2,7 +2,7 @@
 
 #include <errno.h>
 
-ssize_t BFUdpRecieve(int fileDescriptor, void *buffer, size_t length, struct sockaddr *source, socklen_t *sourceLength) {
+ssize_t BFUdpReceive(int fileDescriptor, void *buffer, size_t length, struct sockaddr *source, socklen_t *sourceLength) {
     for (;;) {
         ssize_t received = recvfrom(fileDescriptor, buffer, length, 0, source, sourceLength);
         if (received >= 0) {

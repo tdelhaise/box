@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-ssize_t BFUdpRecieve(int fileDescriptor, void *buffer, size_t length, struct sockaddr *source, socklen_t *sourceLength);
+ssize_t BFUdpReceive(int fileDescriptor, void *buffer, size_t length, struct sockaddr *source, socklen_t *sourceLength);
 ssize_t BFUdpSend(int fileDescriptor, const void *buffer, size_t length, const struct sockaddr *destination, socklen_t destinationLength);
 
 #ifdef __cplusplus
