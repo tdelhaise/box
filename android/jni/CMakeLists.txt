@@ -8,7 +8,7 @@ set(ROOT_DIR ${CMAKE_CURRENT_LIST_DIR}/../..)
 add_subdirectory(${ROOT_DIR} ${CMAKE_CURRENT_BINARY_DIR}/boxcore)
 
 add_library(boxjni SHARED box_jni.c)
-target_include_directories(boxjni PRIVATE ${ROOT_DIR}/include)
+target_include_directories(boxjni PRIVATE ${ROOT_DIR}/src/include)
 
 # Link against minimal core to expose version and future APIs
 target_link_libraries(boxjni PRIVATE BoxCoreMinimal)

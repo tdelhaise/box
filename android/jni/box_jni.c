@@ -1,4 +1,4 @@
-#include "box/BFVersion.h"
+#include "BFVersion.h"
 #include <jni.h>
 
 JNIEXPORT jstring JNICALL Java_org_box_Native_boxVersion(JNIEnv *environment, jclass classRef) {

@@ -161,6 +161,19 @@
 		E43B08502E7722AD00F4A321 /* fast_build.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = fast_build.sh; sourceTree = "<group>"; };
 		E43B08512E7722AD00F4A321 /* format.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = format.sh; sourceTree = "<group>"; };
 		E43B08522E7722AD00F4A321 /* test_dtls_cert_verify.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = test_dtls_cert_verify.sh; sourceTree = "<group>"; };
+		E43B08542E77246700F4A321 /* box_jni.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = box_jni.c; sourceTree = "<group>"; };
+		E43B08552E77246700F4A321 /* CMakeLists.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = CMakeLists.txt; sourceTree = "<group>"; };
+		E43B08572E77246700F4A321 /* MainActivity.java */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.java; path = MainActivity.java; sourceTree = "<group>"; };
+		E43B08592E77246700F4A321 /* Native.java */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.java; path = Native.java; sourceTree = "<group>"; };
+		E43B085D2E77246700F4A321 /* activity_main.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = activity_main.xml; sourceTree = "<group>"; };
+		E43B085F2E77246700F4A321 /* strings.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = strings.xml; sourceTree = "<group>"; };
+		E43B08602E77246700F4A321 /* themes.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = themes.xml; sourceTree = "<group>"; };
+		E43B08632E77246700F4A321 /* AndroidManifest.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = AndroidManifest.xml; sourceTree = "<group>"; };
+		E43B08662E77246700F4A321 /* build.gradle */ = {isa = PBXFileReference; lastKnownFileType = text; path = build.gradle; sourceTree = "<group>"; };
+		E43B08682E77246700F4A321 /* build.gradle */ = {isa = PBXFileReference; lastKnownFileType = text; path = build.gradle; sourceTree = "<group>"; };
+		E43B08692E77246700F4A321 /* gradle.properties */ = {isa = PBXFileReference; lastKnownFileType = text; path = gradle.properties; sourceTree = "<group>"; };
+		E43B086A2E77246700F4A321 /* settings.gradle */ = {isa = PBXFileReference; lastKnownFileType = text; path = settings.gradle; sourceTree = "<group>"; };
+		E43B086C2E77246700F4A321 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		E4F1E25E2E76BEE90087D297 /* box */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = box; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -325,9 +338,126 @@
 			path = scripts;
 			sourceTree = "<group>";
 		};
+		E43B08562E77246700F4A321 /* jni */ = {
+			isa = PBXGroup;
+			children = (
+				E43B08542E77246700F4A321 /* box_jni.c */,
+				E43B08552E77246700F4A321 /* CMakeLists.txt */,
+			);
+			path = jni;
+			sourceTree = "<group>";
+		};
+		E43B08582E77246700F4A321 /* sample */ = {
+			isa = PBXGroup;
+			children = (
+				E43B08572E77246700F4A321 /* MainActivity.java */,
+			);
+			path = sample;
+			sourceTree = "<group>";
+		};
+		E43B085A2E77246700F4A321 /* box */ = {
+			isa = PBXGroup;
+			children = (
+				E43B08582E77246700F4A321 /* sample */,
+				E43B08592E77246700F4A321 /* Native.java */,
+			);
+			path = box;
+			sourceTree = "<group>";
+		};
+		E43B085B2E77246700F4A321 /* org */ = {
+			isa = PBXGroup;
+			children = (
+				E43B085A2E77246700F4A321 /* box */,
+			);
+			path = org;
+			sourceTree = "<group>";
+		};
+		E43B085C2E77246700F4A321 /* java */ = {
+			isa = PBXGroup;
+			children = (
+				E43B085B2E77246700F4A321 /* org */,
+			);
+			path = java;
+			sourceTree = "<group>";
+		};
+		E43B085E2E77246700F4A321 /* layout */ = {
+			isa = PBXGroup;
+			children = (
+				E43B085D2E77246700F4A321 /* activity_main.xml */,
+			);
+			path = layout;
+			sourceTree = "<group>";
+		};
+		E43B08612E77246700F4A321 /* values */ = {
+			isa = PBXGroup;
+			children = (
+				E43B085F2E77246700F4A321 /* strings.xml */,
+				E43B08602E77246700F4A321 /* themes.xml */,
+			);
+			path = values;
+			sourceTree = "<group>";
+		};
+		E43B08622E77246700F4A321 /* res */ = {
+			isa = PBXGroup;
+			children = (
+				E43B085E2E77246700F4A321 /* layout */,
+				E43B08612E77246700F4A321 /* values */,
+			);
+			path = res;
+			sourceTree = "<group>";
+		};
+		E43B08642E77246700F4A321 /* main */ = {
+			isa = PBXGroup;
+			children = (
+				E43B085C2E77246700F4A321 /* java */,
+				E43B08622E77246700F4A321 /* res */,
+				E43B08632E77246700F4A321 /* AndroidManifest.xml */,
+			);
+			path = main;
+			sourceTree = "<group>";
+		};
+		E43B08652E77246700F4A321 /* src */ = {
+			isa = PBXGroup;
+			children = (
+				E43B08642E77246700F4A321 /* main */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
+		E43B08672E77246700F4A321 /* app */ = {
+			isa = PBXGroup;
+			children = (
+				E43B08652E77246700F4A321 /* src */,
+				E43B08662E77246700F4A321 /* build.gradle */,
+			);
+			path = app;
+			sourceTree = "<group>";
+		};
+		E43B086B2E77246700F4A321 /* sample */ = {
+			isa = PBXGroup;
+			children = (
+				E43B08672E77246700F4A321 /* app */,
+				E43B08682E77246700F4A321 /* build.gradle */,
+				E43B08692E77246700F4A321 /* gradle.properties */,
+				E43B086A2E77246700F4A321 /* settings.gradle */,
+			);
+			path = sample;
+			sourceTree = "<group>";
+		};
+		E43B086D2E77246700F4A321 /* android */ = {
+			isa = PBXGroup;
+			children = (
+				E43B08562E77246700F4A321 /* jni */,
+				E43B086B2E77246700F4A321 /* sample */,
+				E43B086C2E77246700F4A321 /* README.md */,
+			);
+			path = android;
+			sourceTree = "<group>";
+		};
 		E4F1E2552E76BEE90087D297 = {
 			isa = PBXGroup;
 			children = (
+				E43B086D2E77246700F4A321 /* android */,
 				E43B08532E7722AD00F4A321 /* scripts */,
 				E43B084C2E7721F300F4A321 /* bench */,
 				E43B08492E77212E00F4A321 /* test */,
