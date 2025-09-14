@@ -22,9 +22,9 @@ BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int 
         if (!networkConnection)
             return NULL;
         memset(networkConnection, 0, sizeof(*networkConnection));
-		networkConnection->udp_fd    = udpSocket;
-		networkConnection->transport = transport;
-		networkConnection->quic      = BFNetworkQuicConnect(udpSocket, server, serverLength, security);
+        networkConnection->udp_fd    = udpSocket;
+        networkConnection->transport = transport;
+        networkConnection->quic      = BFNetworkQuicConnect(udpSocket, server, serverLength, security);
         if (!networkConnection->quic) {
             BFMemoryRelease(networkConnection);
             return NULL;
@@ -40,9 +40,9 @@ BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int 
         if (!networkConnection)
             return NULL;
         memset(networkConnection, 0, sizeof(*networkConnection));
-		networkConnection->udp_fd    = udpSocket;
-		networkConnection->transport = transport;
-		networkConnection->quic      = BFNetworkNoiseConnect(udpSocket, server, serverLength, security);
+        networkConnection->udp_fd    = udpSocket;
+        networkConnection->transport = transport;
+        networkConnection->quic      = BFNetworkNoiseConnect(udpSocket, server, serverLength, security);
         if (!networkConnection->quic) {
             BFMemoryRelease(networkConnection);
             return NULL;
@@ -60,9 +60,9 @@ BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int u
         if (!networkConnection)
             return NULL;
         memset(networkConnection, 0, sizeof(*networkConnection));
-		networkConnection->udp_fd    = udpSocket;
-		networkConnection->transport = transport;
-		networkConnection->quic      = BFNetworkQuicAccept(udpSocket, peer, peerLength, security);
+        networkConnection->udp_fd    = udpSocket;
+        networkConnection->transport = transport;
+        networkConnection->quic      = BFNetworkQuicAccept(udpSocket, peer, peerLength, security);
         if (!networkConnection->quic) {
             BFMemoryRelease(networkConnection);
             return NULL;
@@ -78,9 +78,9 @@ BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int u
         if (!networkConnection)
             return NULL;
         memset(networkConnection, 0, sizeof(*networkConnection));
-		networkConnection->udp_fd    = udpSocket;
-		networkConnection->transport = transport;
-		networkConnection->quic      = BFNetworkNoiseAccept(udpSocket, peer, peerLength, security);
+        networkConnection->udp_fd    = udpSocket;
+        networkConnection->transport = transport;
+        networkConnection->quic      = BFNetworkNoiseAccept(udpSocket, peer, peerLength, security);
         if (!networkConnection->quic) {
             BFMemoryRelease(networkConnection);
             return NULL;

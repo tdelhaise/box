@@ -30,11 +30,11 @@ int main(void) {
         fprintf(stderr, "mismatch\n");
         return 1;
     }
-	fprintf(stderr, "libsodium linked; Test OK\n");
+    fprintf(stderr, "libsodium linked; Test OK\n");
     return 0;
 #else
     // libsodium not linked; skip
-	fprintf(stderr, "libsodium not linked; skip\n");
+    fprintf(stderr, "libsodium not linked; skip\n");
     return 0;
 #endif
 }

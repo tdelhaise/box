@@ -144,7 +144,7 @@ static BFRunloop *globalRunloopNetIn  = NULL;
 static BFRunloop *globalRunloopNetOut = NULL;
 
 static volatile int globalRunning = 1;
-static void onInteruptSignal(int signalNumber) {
+static void         onInteruptSignal(int signalNumber) {
     (void)signalNumber;
     globalRunning = 0;
     BFLog("boxd: Interupt signal received. Exiting.");
