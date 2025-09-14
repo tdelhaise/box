@@ -48,6 +48,12 @@
 		E43B08312E77048100F4A321 /* BFSharedDictionary.h in Headers */ = {isa = PBXBuildFile; fileRef = E43B081D2E77048100F4A321 /* BFSharedDictionary.h */; };
 		E43B08322E77048100F4A321 /* BFSharedArray.h in Headers */ = {isa = PBXBuildFile; fileRef = E43B081C2E77048100F4A321 /* BFSharedArray.h */; };
 		E43B08332E77048100F4A321 /* BFUdp.h in Headers */ = {isa = PBXBuildFile; fileRef = E43B081F2E77048100F4A321 /* BFUdp.h */; };
+		E4818B802E7775B3003ADC3E /* libBoxFoundation.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E43B07AD2E76C3C600F4A321 /* libBoxFoundation.a */; };
+		E4818B812E7776BA003ADC3E /* test_BFNetworkNoise.c in Sources */ = {isa = PBXBuildFile; fileRef = E43B08432E77212E00F4A321 /* test_BFNetworkNoise.c */; };
+		E4818B8D2E7777F6003ADC3E /* test_BFBoxProtocolV1.c in Sources */ = {isa = PBXBuildFile; fileRef = E43B08412E77212E00F4A321 /* test_BFBoxProtocolV1.c */; };
+		E4818B8E2E7777FC003ADC3E /* libBoxFoundation.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E43B07AD2E76C3C600F4A321 /* libBoxFoundation.a */; };
+		E4818B9A2E777879003ADC3E /* test_BFAead.c in Sources */ = {isa = PBXBuildFile; fileRef = E43B083F2E77212E00F4A321 /* test_BFAead.c */; };
+		E4818B9B2E77787E003ADC3E /* libBoxFoundation.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E43B07AD2E76C3C600F4A321 /* libBoxFoundation.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,6 +75,33 @@
 
 /* Begin PBXCopyFilesBuildPhase section */
 		E43B07FB2E76C4EF00F4A321 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		E4818B772E77759C003ADC3E /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		E4818B842E7777DB003ADC3E /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		E4818B912E777865003ADC3E /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = /usr/share/man/man1/;
@@ -174,6 +207,9 @@
 		E43B08692E77246700F4A321 /* gradle.properties */ = {isa = PBXFileReference; lastKnownFileType = text; path = gradle.properties; sourceTree = "<group>"; };
 		E43B086A2E77246700F4A321 /* settings.gradle */ = {isa = PBXFileReference; lastKnownFileType = text; path = settings.gradle; sourceTree = "<group>"; };
 		E43B086C2E77246700F4A321 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		E4818B792E77759C003ADC3E /* test_BFNetworkNoise */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test_BFNetworkNoise; sourceTree = BUILT_PRODUCTS_DIR; };
+		E4818B862E7777DB003ADC3E /* test_BFBoxProtocolV1 */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test_BFBoxProtocolV1; sourceTree = BUILT_PRODUCTS_DIR; };
+		E4818B932E777865003ADC3E /* test_BFAead */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test_BFAead; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4F1E25E2E76BEE90087D297 /* box */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = box; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -191,6 +227,30 @@
 			buildActionMask = 2147483647;
 			files = (
 				E43B07FA2E76C4EF00F4A321 /* libBoxFoundation.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4818B762E77759C003ADC3E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4818B802E7775B3003ADC3E /* libBoxFoundation.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4818B832E7777DB003ADC3E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4818B8E2E7777FC003ADC3E /* libBoxFoundation.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4818B902E777865003ADC3E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4818B9B2E77787E003ADC3E /* libBoxFoundation.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -485,6 +545,9 @@
 				E4F1E25E2E76BEE90087D297 /* box */,
 				E43B07AD2E76C3C600F4A321 /* libBoxFoundation.a */,
 				E43B07FF2E76C4EF00F4A321 /* boxd */,
+				E4818B792E77759C003ADC3E /* test_BFNetworkNoise */,
+				E4818B862E7777DB003ADC3E /* test_BFBoxProtocolV1 */,
+				E4818B932E777865003ADC3E /* test_BFAead */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -557,6 +620,63 @@
 			productReference = E43B07FF2E76C4EF00F4A321 /* boxd */;
 			productType = "com.apple.product-type.tool";
 		};
+		E4818B782E77759C003ADC3E /* test_BFNetworkNoise */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E4818B7F2E77759C003ADC3E /* Build configuration list for PBXNativeTarget "test_BFNetworkNoise" */;
+			buildPhases = (
+				E4818B752E77759C003ADC3E /* Sources */,
+				E4818B762E77759C003ADC3E /* Frameworks */,
+				E4818B772E77759C003ADC3E /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = test_BFNetworkNoise;
+			packageProductDependencies = (
+			);
+			productName = test_BFNetworkNoise;
+			productReference = E4818B792E77759C003ADC3E /* test_BFNetworkNoise */;
+			productType = "com.apple.product-type.tool";
+		};
+		E4818B852E7777DB003ADC3E /* test_BFBoxProtocolV1 */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E4818B8A2E7777DB003ADC3E /* Build configuration list for PBXNativeTarget "test_BFBoxProtocolV1" */;
+			buildPhases = (
+				E4818B822E7777DB003ADC3E /* Sources */,
+				E4818B832E7777DB003ADC3E /* Frameworks */,
+				E4818B842E7777DB003ADC3E /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = test_BFBoxProtocolV1;
+			packageProductDependencies = (
+			);
+			productName = test_BFBoxProtocolV1;
+			productReference = E4818B862E7777DB003ADC3E /* test_BFBoxProtocolV1 */;
+			productType = "com.apple.product-type.tool";
+		};
+		E4818B922E777865003ADC3E /* test_BFAead */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E4818B972E777865003ADC3E /* Build configuration list for PBXNativeTarget "test_BFAead" */;
+			buildPhases = (
+				E4818B8F2E777865003ADC3E /* Sources */,
+				E4818B902E777865003ADC3E /* Frameworks */,
+				E4818B912E777865003ADC3E /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = test_BFAead;
+			packageProductDependencies = (
+			);
+			productName = test_BFAead;
+			productReference = E4818B932E777865003ADC3E /* test_BFAead */;
+			productType = "com.apple.product-type.tool";
+		};
 		E4F1E25D2E76BEE90087D297 /* box */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = E4F1E2652E76BEE90087D297 /* Build configuration list for PBXNativeTarget "box" */;
@@ -589,6 +709,15 @@
 					E43B07AC2E76C3C600F4A321 = {
 						CreatedOnToolsVersion = 16.4;
 					};
+					E4818B782E77759C003ADC3E = {
+						CreatedOnToolsVersion = 16.4;
+					};
+					E4818B852E7777DB003ADC3E = {
+						CreatedOnToolsVersion = 16.4;
+					};
+					E4818B922E777865003ADC3E = {
+						CreatedOnToolsVersion = 16.4;
+					};
 					E4F1E25D2E76BEE90087D297 = {
 						CreatedOnToolsVersion = 16.4;
 					};
@@ -611,6 +740,9 @@
 				E4F1E25D2E76BEE90087D297 /* box */,
 				E43B07AC2E76C3C600F4A321 /* BoxFoundation */,
 				E43B07F42E76C4EF00F4A321 /* boxd */,
+				E4818B782E77759C003ADC3E /* test_BFNetworkNoise */,
+				E4818B852E7777DB003ADC3E /* test_BFBoxProtocolV1 */,
+				E4818B922E777865003ADC3E /* test_BFAead */,
 			);
 		};
 /* End PBXProject section */
@@ -648,6 +780,30 @@
 			buildActionMask = 2147483647;
 			files = (
 				E43B08002E76C50200F4A321 /* server.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4818B752E77759C003ADC3E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4818B812E7776BA003ADC3E /* test_BFNetworkNoise.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4818B822E7777DB003ADC3E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4818B8D2E7777F6003ADC3E /* test_BFBoxProtocolV1.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4818B8F2E777865003ADC3E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4818B9A2E777879003ADC3E /* test_BFAead.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -731,6 +887,66 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = SB7H9B6TY8;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		E4818B7D2E77759C003ADC3E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = SB7H9B6TY8;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		E4818B7E2E77759C003ADC3E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = SB7H9B6TY8;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		E4818B8B2E7777DB003ADC3E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = SB7H9B6TY8;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		E4818B8C2E7777DB003ADC3E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = SB7H9B6TY8;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		E4818B982E777865003ADC3E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = SB7H9B6TY8;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		E4818B992E777865003ADC3E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = SB7H9B6TY8;
 				ENABLE_HARDENED_RUNTIME = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -895,6 +1111,33 @@
 			buildConfigurations = (
 				E43B07FD2E76C4EF00F4A321 /* Debug */,
 				E43B07FE2E76C4EF00F4A321 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E4818B7F2E77759C003ADC3E /* Build configuration list for PBXNativeTarget "test_BFNetworkNoise" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E4818B7D2E77759C003ADC3E /* Debug */,
+				E4818B7E2E77759C003ADC3E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E4818B8A2E7777DB003ADC3E /* Build configuration list for PBXNativeTarget "test_BFBoxProtocolV1" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E4818B8B2E7777DB003ADC3E /* Debug */,
+				E4818B8C2E7777DB003ADC3E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E4818B972E777865003ADC3E /* Build configuration list for PBXNativeTarget "test_BFAead" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E4818B982E777865003ADC3E /* Debug */,
+				E4818B992E777865003ADC3E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

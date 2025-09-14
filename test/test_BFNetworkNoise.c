@@ -8,7 +8,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-static int create_udp_server(struct sockaddr_in *outAddress, int *outErrorCode) {
+static int createUdpServer(struct sockaddr_in *outAddress, int *outErrorCode) {
     int                fileDescriptor = (int)socket(AF_INET, SOCK_DGRAM, 0);
     struct sockaddr_in address;
     memset(&address, 0, sizeof(address));
@@ -34,7 +34,7 @@ static int create_udp_server(struct sockaddr_in *outAddress, int *outErrorCode) 
     return fileDescriptor;
 }
 
-static int create_udp_client(const struct sockaddr_in *serverAddress) {
+static int createUdpClient(const struct sockaddr_in *serverAddress) {
     (void)serverAddress;
     int fd = (int)socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0) {
@@ -47,13 +47,13 @@ static int create_udp_client(const struct sockaddr_in *serverAddress) {
 int main(void) {
     struct sockaddr_in serverBindAddress;
     int                lastErrorCode = 0;
-    int                serverSocket  = create_udp_server(&serverBindAddress, &lastErrorCode);
+    int                serverSocket  = createUdpServer(&serverBindAddress, &lastErrorCode);
     if (serverSocket < 0) {
         fprintf(stderr, "Skipping test_BFNetworkNoise: cannot bind UDP socket in this environment\n");
         return 0; // skip gracefully in restricted sandboxes (CI will run it normally)
     }
 
-    int clientSocket = create_udp_client(&serverBindAddress);
+    int clientSocket = createUdpClient(&serverBindAddress);
     if (clientSocket < 0) {
         close(serverSocket);
         return 1;
@@ -109,7 +109,7 @@ int main(void) {
         return 1;
     }
     char serverPlaintext[64];
-    int  serverRead = BFNetworkRecv(serverConn, serverPlaintext, (int)sizeof(serverPlaintext));
+    int  serverRead = BFNetworkReceive(serverConn, serverPlaintext, (int)sizeof(serverPlaintext));
     if (serverRead != 4 || memcmp(serverPlaintext, "ping", 4) != 0) {
         fprintf(stderr, "server expected ping, got %d\n", serverRead);
         BFNetworkClose(clientConn);
@@ -128,7 +128,7 @@ int main(void) {
         return 1;
     }
     char clientPlaintext[64];
-    int  clientRead = BFNetworkRecv(clientConn, clientPlaintext, (int)sizeof(clientPlaintext));
+    int  clientRead = BFNetworkReceive(clientConn, clientPlaintext, (int)sizeof(clientPlaintext));
     if (clientRead != 4 || memcmp(clientPlaintext, "pong", 4) != 0) {
         fprintf(stderr, "client expected pong, got %d\n", clientRead);
         BFNetworkClose(clientConn);
@@ -140,7 +140,7 @@ int main(void) {
 
     // Negative header case: send clear junk directly; expect BF_ERR on server recv
     (void)sendto(clientSocket, "junk", 4, 0, (struct sockaddr *)&serverBindAddress, sizeof(serverBindAddress));
-    int negativeRead = BFNetworkRecv(serverConn, serverPlaintext, (int)sizeof(serverPlaintext));
+    int negativeRead = BFNetworkReceive(serverConn, serverPlaintext, (int)sizeof(serverPlaintext));
     if (negativeRead >= 0) {
         fprintf(stderr, "expected error on bad header\n");
         BFNetworkClose(clientConn);
@@ -165,7 +165,7 @@ int main(void) {
     }
     const char *textHello = "hello";
     (void)BFNetworkSend(clientConn, textHello, (int)strlen(textHello));
-    int wrongRead = BFNetworkRecv(serverWrong, serverPlaintext, (int)sizeof(serverPlaintext));
+    int wrongRead = BFNetworkReceive(serverWrong, serverPlaintext, (int)sizeof(serverPlaintext));
     // With wrong key, decryption must fail
     if (wrongRead >= 0) {
         fprintf(stderr, "expected decrypt failure with wrong key\n");
