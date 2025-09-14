@@ -1,11 +1,11 @@
-#include "box/BFNetwork.h"
+#include "BFNetwork.h"
 #ifdef BOX_USE_QUIC
 #include "BFNetworkQuicInternal.h"
 #endif
 #include "BFNetworkNoiseInternal.h"
 
-#include "box/BFCommon.h"
-#include "box/BFMemory.h"
+#include "BFCommon.h"
+#include "BFMemory.h"
 
 #include <string.h>
 

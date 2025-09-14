@@ -1,4 +1,4 @@
-#include "box/BFMemory.h"
+#include "BFMemory.h"
 
 // Use pthread mutex for thread-safety on POSIX systems
 #include <pthread.h>
@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "box/BFCommon.h"
+#include "BFCommon.h"
 
 static pthread_mutex_t staticGlobalMemoryLock    = PTHREAD_MUTEX_INITIALIZER;
 static size_t          staticGlobalCurrentBytes  = 0;

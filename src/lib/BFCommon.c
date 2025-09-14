@@ -1,4 +1,4 @@
-#include "box/BFCommon.h"
+#include "BFCommon.h"
 
 #include <stdio.h>
 #include <stdlib.h>

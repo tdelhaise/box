@@ -1,7 +1,7 @@
-#include "box/BFSharedArray.h"
+#include "BFSharedArray.h"
 
-#include "box/BFCommon.h"
-#include "box/BFMemory.h"
+#include "BFCommon.h"
+#include "BFMemory.h"
 
 #include <limits.h>
 #include <pthread.h>

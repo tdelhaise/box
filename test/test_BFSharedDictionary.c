@@ -1,5 +1,5 @@
-#include "box/BFMemory.h"
-#include "box/BFSharedDictionary.h"
+#include "BFMemory.h"
+#include "BFSharedDictionary.h"
 
 #include <assert.h>
 #include <pthread.h>

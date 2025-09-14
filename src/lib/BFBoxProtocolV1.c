@@ -1,4 +1,4 @@
-#include "box/BFBoxProtocolV1.h"
+#include "BFBoxProtocolV1.h"
 
 #include <arpa/inet.h>
 #include <string.h>

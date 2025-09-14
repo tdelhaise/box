@@ -1,10 +1,10 @@
-#include "box/BFBoxProtocolV1.h"
-#include "box/BFCommon.h"
-#include "box/BFMemory.h"
-#include "box/BFNetwork.h"
-#include "box/BFUdp.h"
-#include "box/BFUdpClient.h"
-#include "box/BFVersion.h"
+#include "BFBoxProtocolV1.h"
+#include "BFCommon.h"
+#include "BFMemory.h"
+#include "BFNetwork.h"
+#include "BFUdp.h"
+#include "BFUdpClient.h"
+#include "BFVersion.h"
 
 #include <arpa/inet.h>
 #include <stdio.h>

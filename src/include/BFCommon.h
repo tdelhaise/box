@@ -1,7 +1,7 @@
 #ifndef BF_COMMON_H
 #define BF_COMMON_H
 
-#include "box/BFLogger.h"
+#include "BFLogger.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>

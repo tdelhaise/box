@@ -40,7 +40,7 @@ endif()
 
 
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/include)
 
 # Expose project version to C as BOX_VERSION
 add_compile_definitions(BOX_VERSION="${PROJECT_VERSION}")

@@ -1,4 +1,4 @@
-#include "box/BFBoxProtocol.h"
+#include "BFBoxProtocol.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>

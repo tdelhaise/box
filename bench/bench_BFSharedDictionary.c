@@ -1,8 +1,8 @@
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
-#include "box/BFMemory.h"
-#include "box/BFSharedDictionary.h"
+#include "BFMemory.h"
+#include "BFSharedDictionary.h"
 
 #include <stdio.h>
 #include <string.h>

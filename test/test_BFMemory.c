@@ -1,4 +1,4 @@
-#include "box/BFMemory.h"
+#include "BFMemory.h"
 
 #include <assert.h>
 #include <stdio.h>

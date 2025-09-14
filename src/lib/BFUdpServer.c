@@ -1,5 +1,5 @@
-#include "box/BFUdpServer.h"
-#include "box/BFSocket.h"
+#include "BFUdpServer.h"
+#include "BFSocket.h"
 
 #include <arpa/inet.h>
 #include <errno.h>

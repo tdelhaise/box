@@ -1,5 +1,5 @@
-#include "box/BFCommon.h"
-#include "box/BFNetwork.h"
+#include "BFCommon.h"
+#include "BFNetwork.h"
 
 #include <arpa/inet.h>
 #include <errno.h>

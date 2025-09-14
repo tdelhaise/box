@@ -1,7 +1,7 @@
 #ifndef BF_CONFIG_H
 #define BF_CONFIG_H
 
-#include "box/BFLogger.h"
+#include "BFLogger.h"
 #include <stdint.h>
 
 #ifdef __cplusplus

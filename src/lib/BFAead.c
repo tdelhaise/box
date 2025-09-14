@@ -1,5 +1,5 @@
-#include "box/BFAead.h"
-#include "box/BFCommon.h"
+#include "BFAead.h"
+#include "BFCommon.h"
 
 #if defined(HAVE_SODIUM)
 #include <sodium.h>

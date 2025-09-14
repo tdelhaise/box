@@ -1,5 +1,5 @@
-#include "box/BFMemory.h"
-#include "box/BFSharedArray.h"
+#include "BFMemory.h"
+#include "BFSharedArray.h"
 
 #include <stdio.h>
 #include <string.h>

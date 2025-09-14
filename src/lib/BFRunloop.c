@@ -1,6 +1,6 @@
-#include "box/BFRunloop.h"
-#include "box/BFCommon.h"
-#include "box/BFMemory.h"
+#include "BFRunloop.h"
+#include "BFCommon.h"
+#include "BFMemory.h"
 
 #include <pthread.h>
 #include <string.h>

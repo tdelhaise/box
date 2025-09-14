@@ -1,4 +1,4 @@
-#include "box/BFLogger.h"
+#include "BFLogger.h"
 
 #include <stdio.h>
 #include <string.h>

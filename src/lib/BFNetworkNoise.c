@@ -1,9 +1,9 @@
 #include "BFNetworkNoiseInternal.h"
 
-#include "box/BFAead.h"
-#include "box/BFCommon.h"
-#include "box/BFMemory.h"
-#include "box/BFNetwork.h"
+#include "BFAead.h"
+#include "BFCommon.h"
+#include "BFMemory.h"
+#include "BFNetwork.h"
 
 #if defined(HAVE_SODIUM)
 #include <sodium.h>

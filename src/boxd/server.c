@@ -1,16 +1,17 @@
-#include "box/BFBoxProtocolV1.h"
-#include "box/BFCommon.h"
-#include "box/BFConfig.h"
-#include "box/BFMemory.h"
-#include "box/BFNetwork.h"
-#include "box/BFRunloop.h"
-#include "box/BFSharedDictionary.h"
-#include "box/BFUdp.h"
-#include "box/BFUdpServer.h"
-#include "box/BFVersion.h"
+#include "BFBoxProtocolV1.h"
+#include "BFCommon.h"
+#include "BFConfig.h"
+#include "BFMemory.h"
+#include "BFNetwork.h"
+#include "BFRunloop.h"
+#include "BFSharedDictionary.h"
+#include "BFUdp.h"
+#include "BFUdpServer.h"
+#include "BFVersion.h"
 
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -139,7 +140,7 @@ static void         onInteruptSignal(int signalNumber) {
     exit(-signalNumber);
 }
 
-void install_signal_handler(void) {
+void installSignalHandler(void) {
     signal(SIGINT, onInteruptSignal);
 }
 
@@ -172,24 +173,26 @@ static void ServerNetOutHandler(BFRunloop *runloop, BFRunloopEvent *event, void 
         return;
 }
 
-int main(int argc, char **argv) {
-    ServerDtlsOptions options;
-    ServerParseArgs(argc, argv, &options);
-    BFLoggerInit("boxd");
-    BFLoggerSetLevel(BF_LOG_INFO);
-    install_signal_handler();
-
-    // Non-root policy enforcement (Unix-like)
-#if defined(__unix__) || defined(__APPLE__)
-    if (geteuid() == 0) {
-        BFError("boxd: must not run as root; refusing to start");
-        return 77; // EX_NOPERM-like
-    }
-#endif
-
-    // Create ~/.box and ~/.box/run with strict permissions (Unix-like)
+static const char *getHomeDirectory(void) {
 #if defined(__unix__) || defined(__APPLE__)
     const char *homeDirectory = getenv("HOME");
+    if (!homeDirectory || !*homeDirectory) {
+        struct passwd *pw = getpwuid(getuid());
+        return pw->pw_dir;
+    } else {
+        return homeDirectory;
+    }
+    return NULL;
+#else
+    // Windows case
+    return NULL;
+#endif
+}
+
+static void createBoxDirectories(void) {
+    // Create ~/.box and ~/.box/run with strict permissions (Unix-like)
+#if defined(__unix__) || defined(__APPLE__)
+    const char *homeDirectory = getHomeDirectory();
     char        pathBuffer[512];
     if (homeDirectory && *homeDirectory) {
         // ~/.box
@@ -202,6 +205,28 @@ int main(int argc, char **argv) {
         chmod(pathBuffer, 0700);
     }
 #endif
+}
+
+static void dontAllowRunningAsRoot(void) {
+    // Non-root policy enforcement (Unix-like)
+#if defined(__unix__) || defined(__APPLE__)
+    if (geteuid() == 0) {
+        BFError("boxd: must not run as root; refusing to start");
+        exit(-77); // EX_NOPERM-like
+    }
+#endif
+}
+
+int main(int argc, char **argv) {
+    ServerDtlsOptions options;
+    ServerParseArgs(argc, argv, &options);
+    BFLoggerInit("boxd");
+    BFLoggerSetLevel(BF_LOG_INFO);
+    installSignalHandler();
+
+    dontAllowRunningAsRoot();
+
+    createBoxDirectories();
 
     // Parse optional port from environment or default (CLI --port reserved for future)
     uint16_t    serverPort   = BFGlobalDefaultPort;
@@ -222,8 +247,7 @@ int main(int argc, char **argv) {
 #if defined(__unix__) || defined(__APPLE__)
     BFServerConfig serverConfigurationLoaded;
     memset(&serverConfigurationLoaded, 0, sizeof(serverConfigurationLoaded));
-#endif
-#if defined(__unix__) || defined(__APPLE__)
+    const char *homeDirectory = getHomeDirectory();
     if ((homeDirectory && *homeDirectory)) {
         char configPath[512];
         snprintf(configPath, sizeof(configPath), "%s/.box/boxd.toml", homeDirectory);

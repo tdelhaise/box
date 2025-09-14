@@ -1,4 +1,4 @@
-#include "box/BFSocket.h"
+#include "BFSocket.h"
 
 #include <netinet/in.h>
 #include <sys/socket.h>
