@@ -54,6 +54,7 @@
 		E4818B8E2E7777FC003ADC3E /* libBoxFoundation.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E43B07AD2E76C3C600F4A321 /* libBoxFoundation.a */; };
 		E4818B9A2E777879003ADC3E /* test_BFAead.c in Sources */ = {isa = PBXBuildFile; fileRef = E43B083F2E77212E00F4A321 /* test_BFAead.c */; };
 		E4818B9B2E77787E003ADC3E /* libBoxFoundation.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E43B07AD2E76C3C600F4A321 /* libBoxFoundation.a */; };
+		E4818B9C2E777C7B003ADC3E /* libsodium.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E43B08012E76F9F800F4A321 /* libsodium.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -250,6 +251,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E4818B9C2E777C7B003ADC3E /* libsodium.a in Frameworks */,
 				E4818B9B2E77787E003ADC3E /* libBoxFoundation.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -843,6 +845,7 @@
 					"$(inherited)",
 					/usr/local/Cellar/libsodium/1.0.20/lib,
 				);
+				OTHER_CFLAGS = "-DHAVE_SODIUM";
 				PRIVATE_HEADERS_FOLDER_PATH = "";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PUBLIC_HEADERS_FOLDER_PATH = "";
@@ -863,6 +866,7 @@
 					"$(inherited)",
 					/usr/local/Cellar/libsodium/1.0.20/lib,
 				);
+				OTHER_CFLAGS = "-DHAVE_SODIUM";
 				PRIVATE_HEADERS_FOLDER_PATH = "";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PUBLIC_HEADERS_FOLDER_PATH = "";
@@ -939,6 +943,12 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = SB7H9B6TY8;
 				ENABLE_HARDENED_RUNTIME = YES;
+				HEADER_SEARCH_PATHS = /usr/local/Cellar/libsodium/1.0.20/include;
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					/usr/local/Cellar/libsodium/1.0.20/lib,
+				);
+				OTHER_CFLAGS = "-DHAVE_SODIUM=1";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
@@ -949,6 +959,12 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = SB7H9B6TY8;
 				ENABLE_HARDENED_RUNTIME = YES;
+				HEADER_SEARCH_PATHS = /usr/local/Cellar/libsodium/1.0.20/include;
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					/usr/local/Cellar/libsodium/1.0.20/lib,
+				);
+				OTHER_CFLAGS = "-DHAVE_SODIUM=1";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
