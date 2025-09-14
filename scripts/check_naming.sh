@@ -5,18 +5,18 @@ fail=0
 
 echo "Checking naming conventions..."
 
-# 1) include/box: only BF*.h headers
-bad_headers=$(find include/box -maxdepth 1 -type f -name '*.h' ! -name 'BF*.h' -print || true)
+# 1) src/include: only BF*.h headers
+bad_headers=$(find src/include -maxdepth 1 -type f -name '*.h' ! -name 'BF*.h' -print || true)
 if [ -n "${bad_headers}" ]; then
-  echo "[ERROR] Non-BF headers in include/box/:"
+  echo "[ERROR] Non-BF headers in src/include/:"
   echo "${bad_headers}"
   fail=1
 fi
 
 # 2) include/box should not contain .c files
-bad_impls=$(find include/box -maxdepth 1 -type f -name '*.c' -print || true)
+bad_impls=$(find src/include -maxdepth 1 -type f -name '*.c' -print || true)
 if [ -n "${bad_impls}" ]; then
-  echo "[ERROR] Implementation files (.c) found under include/box/:"
+  echo "[ERROR] Implementation files (.c) found under src/include:"
   echo "${bad_impls}"
   fail=1
 fi
@@ -30,7 +30,7 @@ if [ -n "${bad_sources}" ]; then
 fi
 
 # 4) includes to box/<header> should use BF* headers
-headers=$(grep -R -n --include='*.c' --include='*.h' '#include \"box/' include src test | sed -E 's/.*#include "box\/([^\"]+)".*/\1/' || true)
+headers=$(grep -R -n --include='*.c' --include='*.h' '#include \"box/' src test | sed -E 's/.*#include "box\/([^\"]+)".*/\1/' || true)
 bad_includes=$(printf "%s\n" ${headers:-} | grep -v '^BF' || true)
 if [ -n "${bad_includes}" ]; then
   echo "[ERROR] Non-BF includes detected (use box/BF*.h):"
