@@ -356,20 +356,20 @@ int main(int argc, char **argv) {
                 security.hasNoiseHandshakePattern = 0;
             }
         }
-        BFNetworkConnection *nc = BFNetworkConnectDatagram(BFNetworkTransportNOISE, udpSocket, (struct sockaddr *)&server, sizeof(server), &security);
-        if (!nc) {
+        BFNetworkConnection *networkConnection = BFNetworkConnectDatagram(BFNetworkTransportNOISE, udpSocket, (struct sockaddr *)&server, sizeof(server), &security);
+        if (!networkConnection) {
             BFFatal("BFNetworkConnectDatagram(noise)");
         }
         const char *pingText = "ping";
-        if (BFNetworkSend(nc, pingText, (int)strlen(pingText)) <= 0) {
+        if (BFNetworkSend(networkConnection, pingText, (int)strlen(pingText)) <= 0) {
             BFFatal("noise send");
         }
         char reply[256];
-        int  rr = BFNetworkReceive(nc, reply, (int)sizeof(reply));
-        if (rr > 0) {
-            BFLog("box(noise): reply %.*s", rr, reply);
+        int  receivedBytes = BFNetworkReceive(networkConnection, reply, (int)sizeof(reply));
+        if (receivedBytes > 0) {
+            BFLog("box(noise): reply %.*s", receivedBytes, reply);
         }
-        BFNetworkClose(nc);
+        BFNetworkClose(networkConnection);
         close(udpSocket);
         return 0;
     }
