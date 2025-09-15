@@ -42,7 +42,7 @@ check:
 
 check-strict:
 	@cmake --build build --target check || bash scripts/check_naming.sh
-	@ENFORCE_ABBREV=1 bash scripts/check_abbreviations.sh include/box src/box src/boxd android/jni
+	@ENFORCE_ABBREV=1 bash scripts/check_abbreviations.sh sources/include sources/box sources/boxd android/jni
 
 format:
 	@bash scripts/format.sh

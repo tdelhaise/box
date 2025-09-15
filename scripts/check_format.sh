@@ -26,7 +26,7 @@ else
       echo "[FORMAT] $f needs formatting" >&2
       rc=1
     fi
-  done < <(find include src test -type f \( -name '*.c' -o -name '*.h' \) -print0)
+  done < <(find sources test -type f \( -name '*.c' -o -name '*.h' \) -print0)
 fi
 
 exit $rc

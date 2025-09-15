@@ -40,7 +40,7 @@ endif()
 
 
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/sources/include)
 
 # Expose project version to C as BOX_VERSION
 add_compile_definitions(BOX_VERSION="${PROJECT_VERSION}")
@@ -48,24 +48,24 @@ add_compile_definitions(BOX_VERSION="${PROJECT_VERSION}")
 if(NOT BOX_BUILD_MINIMAL)
   # Full BoxFoundation library (core; no DTLS)
   add_library(BoxFoundation
-          src/lib/BFCommon.c
-          src/lib/BFLogger.c
-          src/lib/BFSocket.c
-          src/lib/BFConfig.c
-          src/lib/BFMemory.c
-          src/lib/BFRunloop.c
-          src/lib/BFSharedArray.c
-          src/lib/BFSharedDictionary.c
-          src/lib/BFBoxProtocolV1.c
-          src/lib/BFNetwork.c
-          src/lib/BFNetworkQuic.c
-          src/lib/BFNetworkNoise.c
-          src/lib/BFAead.c
-          src/lib/BFUdp.c
-          src/lib/BFUdpServer.c
-          src/lib/BFUdpClient.c
-          src/lib/BFBoxProtocol.c
-          src/lib/BFVersion.c
+          sources/lib/BFCommon.c
+          sources/lib/BFLogger.c
+          sources/lib/BFSocket.c
+          sources/lib/BFConfig.c
+          sources/lib/BFMemory.c
+          sources/lib/BFRunloop.c
+          sources/lib/BFSharedArray.c
+          sources/lib/BFSharedDictionary.c
+          sources/lib/BFBoxProtocolV1.c
+          sources/lib/BFNetwork.c
+          sources/lib/BFNetworkQuic.c
+          sources/lib/BFNetworkNoise.c
+          sources/lib/BFAead.c
+          sources/lib/BFUdp.c
+          sources/lib/BFUdpServer.c
+          sources/lib/BFUdpClient.c
+          sources/lib/BFBoxProtocol.c
+          sources/lib/BFVersion.c
   )
   # No OpenSSL link required
   if (WIN32)
@@ -78,12 +78,12 @@ if(NOT BOX_BUILD_MINIMAL)
 else()
   # Minimal core library (no DTLS/QUIC/OpenSSL), for cross builds like Android
   add_library(BoxCoreMinimal
-          src/lib/BFCommon.c
-          src/lib/BFMemory.c
-          src/lib/BFSharedArray.c
-          src/lib/BFSharedDictionary.c
-          src/lib/BFBoxProtocol.c
-          src/lib/BFVersion.c
+          sources/lib/BFCommon.c
+          sources/lib/BFMemory.c
+          sources/lib/BFSharedArray.c
+          sources/lib/BFSharedDictionary.c
+          sources/lib/BFBoxProtocol.c
+          sources/lib/BFVersion.c
   )
   target_include_directories(BoxCoreMinimal PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 endif()
@@ -182,10 +182,10 @@ endif()
 
 if(NOT BOX_BUILD_MINIMAL)
   # Executables
-  add_executable(boxd src/boxd/server.c)
+  add_executable(boxd sources/boxd/server.c)
   target_link_libraries(boxd PRIVATE BoxFoundation)
 
-  add_executable(box src/box/client.c)
+  add_executable(box sources/box/client.c)
   target_link_libraries(box PRIVATE BoxFoundation)
 endif()
 
@@ -235,11 +235,11 @@ if(NOT BOX_BUILD_MINIMAL)
   if(BUILD_TESTING)
     target_compile_definitions(BoxFoundation PRIVATE BF_NOISE_TEST_HOOKS)
   endif()
-  add_executable(test_BFBoxProtocol test/test_BFBoxProtocol.c src/lib/BFBoxProtocol.c)
+  add_executable(test_BFBoxProtocol test/test_BFBoxProtocol.c sources/lib/BFBoxProtocol.c)
   target_include_directories(test_BFBoxProtocol PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   add_test(NAME test_BFBoxProtocol COMMAND test_BFBoxProtocol)
 
-  add_executable(test_BFBoxProtocolV1 test/test_BFBoxProtocolV1.c src/lib/BFBoxProtocolV1.c)
+  add_executable(test_BFBoxProtocolV1 test/test_BFBoxProtocolV1.c sources/lib/BFBoxProtocolV1.c)
   target_include_directories(test_BFBoxProtocolV1 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   add_test(NAME test_BFBoxProtocolV1 COMMAND test_BFBoxProtocolV1)
 
