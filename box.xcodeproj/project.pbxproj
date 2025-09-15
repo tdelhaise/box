@@ -367,7 +367,7 @@
 			path = lib;
 			sourceTree = "<group>";
 		};
-		E43B07DE2E76C4A900F4A321 /* src */ = {
+		E43B07DE2E76C4A900F4A321 /* sources */ = {
 			isa = PBXGroup;
 			children = (
 				E43B08232E77048100F4A321 /* include */,
@@ -375,7 +375,7 @@
 				E43B07C82E76C4A900F4A321 /* boxd */,
 				E43B07DD2E76C4A900F4A321 /* lib */,
 			);
-			path = src;
+			path = sources;
 			sourceTree = "<group>";
 		};
 		E43B08232E77048100F4A321 /* include */ = {
@@ -574,7 +574,7 @@
 				E43B083C2E77086A00F4A321 /* NEXT_STEPS.md */,
 				E43B083D2E77087800F4A321 /* README.md */,
 				E43B083E2E77088000F4A321 /* SPECS.md */,
-				E43B07DE2E76C4A900F4A321 /* src */,
+				E43B07DE2E76C4A900F4A321 /* sources */,
 				E43B07962E76BFB400F4A321 /* examples */,
 				E43B07B12E76C3EE00F4A321 /* Frameworks */,
 				E4F1E25F2E76BEE90087D297 /* Products */,
@@ -946,7 +946,10 @@
 					"$(inherited)",
 					/usr/local/Cellar/libsodium/1.0.20/lib,
 				);
-				OTHER_CFLAGS = "-DHAVE_SODIUM";
+				OTHER_CFLAGS = (
+					"-DHAVE_SODIUM",
+					"-DBF_NOISE_TEST_HOOKS",
+				);
 				PRIVATE_HEADERS_FOLDER_PATH = "";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PUBLIC_HEADERS_FOLDER_PATH = "";
@@ -967,7 +970,10 @@
 					"$(inherited)",
 					/usr/local/Cellar/libsodium/1.0.20/lib,
 				);
-				OTHER_CFLAGS = "-DHAVE_SODIUM";
+				OTHER_CFLAGS = (
+					"-DHAVE_SODIUM",
+					"-DBF_NOISE_TEST_HOOKS",
+				);
 				PRIVATE_HEADERS_FOLDER_PATH = "";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PUBLIC_HEADERS_FOLDER_PATH = "";
@@ -1096,6 +1102,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = SB7H9B6TY8;
 				ENABLE_HARDENED_RUNTIME = YES;
+				OTHER_CFLAGS = (
+					"-D",
+					"BF_NOISE_TEST_HOOKS=1",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
@@ -1106,6 +1116,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = SB7H9B6TY8;
 				ENABLE_HARDENED_RUNTIME = YES;
+				OTHER_CFLAGS = (
+					"-D",
+					"BF_NOISE_TEST_HOOKS=1",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;

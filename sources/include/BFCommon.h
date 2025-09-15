@@ -30,6 +30,7 @@ enum { BF_OK = 0, BF_ERR = -1 };
 #define BFLog(fmt, ...) BFLogWrite(BF_LOG_INFO, fmt, ##__VA_ARGS__)
 #define BFError(fmt, ...) BFLogWrite(BF_LOG_ERROR, fmt, ##__VA_ARGS__)
 #define BFWarn(fmt, ...) BFLogWrite(BF_LOG_WARN, fmt, ##__VA_ARGS__)
+#define BFDebug(fmt, ...) BFLogWrite(BF_LOG_DEBUG, fmt, ##__VA_ARGS__)
 
 // Helper d'erreur fatale (arrête le programme avec perror)
 void BFFatal(const char *message);

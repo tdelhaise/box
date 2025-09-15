@@ -1,3 +1,5 @@
+#define BF_NOISE_TEST_HOOKS
+
 #include "BFCommon.h"
 #include "BFNetwork.h"
 
@@ -7,6 +9,8 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+
 
 static int createUdpServer(struct sockaddr_in *outAddress, int *outErrorCode) {
     int                fileDescriptor = (int)socket(AF_INET, SOCK_DGRAM, 0);
@@ -47,6 +51,7 @@ static int createUdpClient(const struct sockaddr_in *serverAddress) {
 int main(void) {
     struct sockaddr_in serverBindAddress;
     int                lastErrorCode = 0;
+	BFLoggerSetLevel(BF_LOG_DEBUG);
     int                serverSocket  = createUdpServer(&serverBindAddress, &lastErrorCode);
     if (serverSocket < 0) {
         fprintf(stderr, "Skipping test_BFNetworkNoise: cannot bind UDP socket in this environment\n");

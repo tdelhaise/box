@@ -12,6 +12,8 @@
 extern "C" {
 #endif
 
+#define BF_MACRO_SIZE_ASSOCIATED_HEADER 4
+
 typedef struct BFNetworkConnection BFNetworkConnection;
 
 typedef enum BFNetworkTransport {
