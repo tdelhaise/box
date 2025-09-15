@@ -17,23 +17,23 @@ typedef struct BFSharedDictionary BFSharedDictionary;
 typedef void (*BFSharedDictionaryDestroyValue)(void *value);
 
 // Lifecycle
-BFSharedDictionary *BFSharedDictionaryCreate(BFSharedDictionaryDestroyValue destroy_cb);
-void                BFSharedDictionaryFree(BFSharedDictionary *dict);
+BFSharedDictionary *BFSharedDictionaryCreate(BFSharedDictionaryDestroyValue destroyCallback);
+void                BFSharedDictionaryFree(BFSharedDictionary *sharedDictionary);
 
 // Query
-size_t BFSharedDictionaryCount(BFSharedDictionary *dict);
+size_t BFSharedDictionaryCount(BFSharedDictionary *sharedDictionary);
 
 // Set/Insert: inserts or replaces value for key. Returns 0 on success, BF_ERR on failure.
-int BFSharedDictionarySet(BFSharedDictionary *dict, const char *key, void *value);
+int BFSharedDictionarySet(BFSharedDictionary *sharedDictionary, const char *key, void *value);
 
 // Get: returns stored value pointer or NULL if not found.
-void *BFSharedDictionaryGet(BFSharedDictionary *dict, const char *key);
+void *BFSharedDictionaryGet(BFSharedDictionary *sharedDictionary, const char *key);
 
 // Remove: removes entry and returns the stored value (caller owns it), or NULL if not found.
-void *BFSharedDictionaryRemove(BFSharedDictionary *dict, const char *key);
+void *BFSharedDictionaryRemove(BFSharedDictionary *sharedDictionary, const char *key);
 
 // Clear all entries; calls destroy_cb on each value if provided.
-int BFSharedDictionaryClear(BFSharedDictionary *dict);
+int BFSharedDictionaryClear(BFSharedDictionary *sharedDictionary);
 
 #ifdef __cplusplus
 }

@@ -17,7 +17,7 @@ struct BFSharedDictionary {
     BFDictNode                   **buckets;
     size_t                         bucketCount;
     size_t                         count;
-    BFSharedDictionaryDestroyValue destroy_cb; // optional
+    BFSharedDictionaryDestroyValue destroyCallback; // optional
 };
 
 static unsigned long djb2(const char *s) {
@@ -46,11 +46,12 @@ static char *dup_cstr(const char *s) {
     return copyPtr;
 }
 
-BFSharedDictionary *BFSharedDictionaryCreate(BFSharedDictionaryDestroyValue destroy_cb) {
+BFSharedDictionary *BFSharedDictionaryCreate(BFSharedDictionaryDestroyValue destroyCallback) {
     const size_t        buckets    = 256U; // simple default
-    BFSharedDictionary *dictionary = (BFSharedDictionary *)BFMemoryAllocate(sizeof(*dictionary));
-    if (!dictionary)
-        return NULL;
+    BFSharedDictionary *dictionary = (BFSharedDictionary *)BFMemoryAllocate(sizeof(BFSharedDictionary));
+	if (!dictionary) {
+		return NULL;
+	}
     dictionary->buckets = (BFDictNode **)BFMemoryAllocate(sizeof(BFDictNode *) * buckets);
     if (!dictionary->buckets) {
         BFMemoryRelease(dictionary);
@@ -59,44 +60,46 @@ BFSharedDictionary *BFSharedDictionaryCreate(BFSharedDictionaryDestroyValue dest
     memset(dictionary->buckets, 0, sizeof(BFDictNode *) * buckets);
     dictionary->bucketCount = buckets;
     dictionary->count       = 0U;
-    dictionary->destroy_cb  = destroy_cb;
+    dictionary->destroyCallback  = destroyCallback;
     (void)pthread_mutex_init(&dictionary->mutex, NULL);
     return dictionary;
 }
 
-void BFSharedDictionaryFree(BFSharedDictionary *dict) {
-    if (!dict)
-        return;
-    (void)BFSharedDictionaryClear(dict);
-    BFMemoryRelease(dict->buckets);
-    pthread_mutex_destroy(&dict->mutex);
-    BFMemoryRelease(dict);
+void BFSharedDictionaryFree(BFSharedDictionary *sharedDictionary) {
+	if (!sharedDictionary) {
+		return;
+	}
+    (void)BFSharedDictionaryClear(sharedDictionary);
+    BFMemoryRelease(sharedDictionary->buckets);
+    pthread_mutex_destroy(&sharedDictionary->mutex);
+    BFMemoryRelease(sharedDictionary);
 }
 
-size_t BFSharedDictionaryCount(BFSharedDictionary *dict) {
-    if (!dict)
-        return 0U;
-    pthread_mutex_lock(&dict->mutex);
-    size_t currentCount = dict->count;
-    pthread_mutex_unlock(&dict->mutex);
+size_t BFSharedDictionaryCount(BFSharedDictionary *sharedDictionary) {
+	if (!sharedDictionary) {
+		return 0U;
+	}
+    pthread_mutex_lock(&sharedDictionary->mutex);
+    size_t currentCount = sharedDictionary->count;
+    pthread_mutex_unlock(&sharedDictionary->mutex);
     return currentCount;
 }
 
-int BFSharedDictionarySet(BFSharedDictionary *dict, const char *key, void *value) {
-    if (!dict || !key)
+int BFSharedDictionarySet(BFSharedDictionary *dictionary, const char *key, void *value) {
+    if (!dictionary || !key)
         return BF_ERR;
-    size_t bucketIndex = pick_bucket(key, dict->bucketCount);
+    size_t bucketIndex = pick_bucket(key, dictionary->bucketCount);
 
-    pthread_mutex_lock(&dict->mutex);
-    BFDictNode *currentNode = dict->buckets[bucketIndex];
+    pthread_mutex_lock(&dictionary->mutex);
+    BFDictNode *currentNode = dictionary->buckets[bucketIndex];
     while (currentNode) {
         if (strcmp(currentNode->key, key) == 0) {
             // replace
-            if (dict->destroy_cb && currentNode->value && currentNode->value != value) {
-                dict->destroy_cb(currentNode->value);
+            if (dictionary->destroyCallback && currentNode->value && currentNode->value != value) {
+				dictionary->destroyCallback(currentNode->value);
             }
             currentNode->value = value;
-            pthread_mutex_unlock(&dict->mutex);
+            pthread_mutex_unlock(&dictionary->mutex);
             return BF_OK;
         }
         currentNode = currentNode->next;
@@ -104,39 +107,41 @@ int BFSharedDictionarySet(BFSharedDictionary *dict, const char *key, void *value
     // insert new at head
     BFDictNode *newNode = (BFDictNode *)BFMemoryAllocate(sizeof(*newNode));
     if (!newNode) {
-        pthread_mutex_unlock(&dict->mutex);
+        pthread_mutex_unlock(&dictionary->mutex);
         return BF_ERR;
     }
     newNode->key               = dup_cstr(key);
     newNode->value             = value;
-    newNode->next              = dict->buckets[bucketIndex];
-    dict->buckets[bucketIndex] = newNode;
-    dict->count++;
-    pthread_mutex_unlock(&dict->mutex);
+    newNode->next              = dictionary->buckets[bucketIndex];
+	dictionary->buckets[bucketIndex] = newNode;
+	dictionary->count++;
+    pthread_mutex_unlock(&dictionary->mutex);
     return BF_OK;
 }
 
-void *BFSharedDictionaryGet(BFSharedDictionary *dict, const char *key) {
-    if (!dict || !key)
-        return NULL;
-    size_t bucketIndex = pick_bucket(key, dict->bucketCount);
-    pthread_mutex_lock(&dict->mutex);
-    BFDictNode *currentNode = dict->buckets[bucketIndex];
+void *BFSharedDictionaryGet(BFSharedDictionary *dictionary, const char *key) {
+	if (!dictionary || !key) {
+		return NULL;
+	}
+    size_t bucketIndex = pick_bucket(key, dictionary->bucketCount);
+    pthread_mutex_lock(&dictionary->mutex);
+    BFDictNode *currentNode = dictionary->buckets[bucketIndex];
     while (currentNode) {
         if (strcmp(currentNode->key, key) == 0) {
             void *value = currentNode->value;
-            pthread_mutex_unlock(&dict->mutex);
+            pthread_mutex_unlock(&dictionary->mutex);
             return value;
         }
         currentNode = currentNode->next;
     }
-    pthread_mutex_unlock(&dict->mutex);
+    pthread_mutex_unlock(&dictionary->mutex);
     return NULL;
 }
 
 void *BFSharedDictionaryRemove(BFSharedDictionary *dict, const char *key) {
-    if (!dict || !key)
-        return NULL;
+	if (!dict || !key) {
+		return NULL;
+	}
     size_t bucketIndex = pick_bucket(key, dict->bucketCount);
     pthread_mutex_lock(&dict->mutex);
     BFDictNode *currentNode  = dict->buckets[bucketIndex];
