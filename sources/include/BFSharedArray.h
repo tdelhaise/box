@@ -19,7 +19,7 @@ typedef struct BFSharedArray BFSharedArray;
 typedef void (*BFSharedArrayDestroy)(void *object);
 
 // Lifecycle
-BFSharedArray *BFSharedArrayCreate(BFSharedArrayDestroy destroy_cb);
+BFSharedArray *BFSharedArrayCreate(BFSharedArrayDestroy destroyCallback);
 void           BFSharedArrayFree(BFSharedArray *array); // clears and frees
 
 // Query
