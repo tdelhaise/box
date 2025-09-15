@@ -86,18 +86,18 @@ int main(void) {
 
     BFNetworkSecurity clientSecurity = serverSecurity;
 
-    BFNetworkConnection *serverConn = BFNetworkAcceptDatagram(BFNetworkTransportNOISE, serverSocket, &learnedPeerAddress, learnedPeerLength, &serverSecurity);
-    if (!serverConn) {
+    BFNetworkConnection *serverConnection = BFNetworkAcceptDatagram(BFNetworkTransportNOISE, serverSocket, &learnedPeerAddress, learnedPeerLength, &serverSecurity);
+    if (!serverConnection) {
         fprintf(stderr, "server noise accept failed\n");
         close(clientSocket);
         close(serverSocket);
         return 1;
     }
 
-    BFNetworkConnection *clientConn = BFNetworkConnectDatagram(BFNetworkTransportNOISE, clientSocket, (struct sockaddr *)&serverBindAddress, (socklen_t)sizeof(serverBindAddress), &clientSecurity);
-    if (!clientConn) {
+    BFNetworkConnection *clientConnection = BFNetworkConnectDatagram(BFNetworkTransportNOISE, clientSocket, (struct sockaddr *)&serverBindAddress, (socklen_t)sizeof(serverBindAddress), &clientSecurity);
+    if (!clientConnection) {
         fprintf(stderr, "client noise connect failed\n");
-        BFNetworkClose(serverConn);
+        BFNetworkClose(serverConnection);
         close(clientSocket);
         close(serverSocket);
         return 1;
@@ -105,39 +105,39 @@ int main(void) {
 
     // Positive case: client sends ping, server receives and replies, client receives pong
     const char *pingText = "ping";
-    if (BFNetworkSend(clientConn, pingText, (int)strlen(pingText)) <= 0) {
+    if (BFNetworkSend(clientConnection, pingText, (int)strlen(pingText)) <= 0) {
         fprintf(stderr, "send ping failed\n");
-        BFNetworkClose(clientConn);
-        BFNetworkClose(serverConn);
+        BFNetworkClose(clientConnection);
+        BFNetworkClose(serverConnection);
         close(clientSocket);
         close(serverSocket);
         return 1;
     }
     char serverPlaintext[64];
-    int  serverRead = BFNetworkReceive(serverConn, serverPlaintext, (int)sizeof(serverPlaintext));
+    int  serverRead = BFNetworkReceive(serverConnection, serverPlaintext, (int)sizeof(serverPlaintext));
     if (serverRead != 4 || memcmp(serverPlaintext, "ping", 4) != 0) {
         fprintf(stderr, "server expected ping, got %d\n", serverRead);
-        BFNetworkClose(clientConn);
-        BFNetworkClose(serverConn);
+        BFNetworkClose(clientConnection);
+        BFNetworkClose(serverConnection);
         close(clientSocket);
         close(serverSocket);
         return 1;
     }
     const char *pongText = "pong";
-    if (BFNetworkSend(serverConn, pongText, (int)strlen(pongText)) <= 0) {
+    if (BFNetworkSend(serverConnection, pongText, (int)strlen(pongText)) <= 0) {
         fprintf(stderr, "send pong failed\n");
-        BFNetworkClose(clientConn);
-        BFNetworkClose(serverConn);
+        BFNetworkClose(clientConnection);
+        BFNetworkClose(serverConnection);
         close(clientSocket);
         close(serverSocket);
         return 1;
     }
     char clientPlaintext[64];
-    int  clientRead = BFNetworkReceive(clientConn, clientPlaintext, (int)sizeof(clientPlaintext));
+    int  clientRead = BFNetworkReceive(clientConnection, clientPlaintext, (int)sizeof(clientPlaintext));
     if (clientRead != 4 || memcmp(clientPlaintext, "pong", 4) != 0) {
         fprintf(stderr, "client expected pong, got %d\n", clientRead);
-        BFNetworkClose(clientConn);
-        BFNetworkClose(serverConn);
+        BFNetworkClose(clientConnection);
+        BFNetworkClose(serverConnection);
         close(clientSocket);
         close(serverSocket);
         return 1;
@@ -145,11 +145,11 @@ int main(void) {
 
     // Negative header case: send clear junk directly; expect BF_ERR on server recv
     (void)sendto(clientSocket, "junk", 4, 0, (struct sockaddr *)&serverBindAddress, sizeof(serverBindAddress));
-    int negativeRead = BFNetworkReceive(serverConn, serverPlaintext, (int)sizeof(serverPlaintext));
+    int negativeRead = BFNetworkReceive(serverConnection, serverPlaintext, (int)sizeof(serverPlaintext));
     if (negativeRead >= 0) {
         fprintf(stderr, "expected error on bad header\n");
-        BFNetworkClose(clientConn);
-        BFNetworkClose(serverConn);
+        BFNetworkClose(clientConnection);
+        BFNetworkClose(serverConnection);
         close(clientSocket);
         close(serverSocket);
         return 1;
@@ -162,21 +162,21 @@ int main(void) {
     BFNetworkConnection *serverWrong      = BFNetworkAcceptDatagram(BFNetworkTransportNOISE, serverSocket, &learnedPeerAddress, learnedPeerLength, &wrongServerSecurity);
     if (!serverWrong) {
         fprintf(stderr, "server wrong accept failed\n");
-        BFNetworkClose(clientConn);
-        BFNetworkClose(serverConn);
+        BFNetworkClose(clientConnection);
+        BFNetworkClose(serverConnection);
         close(clientSocket);
         close(serverSocket);
         return 1;
     }
     const char *textHello = "hello";
-    (void)BFNetworkSend(clientConn, textHello, (int)strlen(textHello));
+    (void)BFNetworkSend(clientConnection, textHello, (int)strlen(textHello));
     int wrongRead = BFNetworkReceive(serverWrong, serverPlaintext, (int)sizeof(serverPlaintext));
     // With wrong key, decryption must fail
     if (wrongRead >= 0) {
         fprintf(stderr, "expected decrypt failure with wrong key\n");
         BFNetworkClose(serverWrong);
-        BFNetworkClose(clientConn);
-        BFNetworkClose(serverConn);
+        BFNetworkClose(clientConnection);
+        BFNetworkClose(serverConnection);
         close(clientSocket);
         close(serverSocket);
         return 1;
@@ -185,12 +185,12 @@ int main(void) {
 
     // Replay case: resend the last client frame and expect server to reject it
 #ifdef BF_NOISE_TEST_HOOKS
-    if (BFNetworkDebugResendLastFrame(clientConn) > 0) {
-        int replayRead = BFNetworkReceive(serverConn, serverPlaintext, (int)sizeof(serverPlaintext));
+    if (BFNetworkDebugResendLastFrame(clientConnection) > 0) {
+        int replayRead = BFNetworkReceive(serverConnection, serverPlaintext, (int)sizeof(serverPlaintext));
         if (replayRead >= 0) {
             fprintf(stderr, "expected replay rejection\n");
-            BFNetworkClose(clientConn);
-            BFNetworkClose(serverConn);
+            BFNetworkClose(clientConnection);
+            BFNetworkClose(serverConnection);
             close(clientSocket);
             close(serverSocket);
             return 1;
@@ -198,8 +198,8 @@ int main(void) {
     }
 #endif
 
-    BFNetworkClose(clientConn);
-    BFNetworkClose(serverConn);
+    BFNetworkClose(clientConnection);
+    BFNetworkClose(serverConnection);
     close(clientSocket);
     close(serverSocket);
     return 0;
