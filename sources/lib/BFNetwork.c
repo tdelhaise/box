@@ -12,7 +12,7 @@
 struct BFNetworkConnection {
     int                udp_fd;
     BFNetworkTransport transport;
-    void              *quic; // QUIC backend handle (opaque)
+    void               *handle; // backend handle (opaque)
 };
 
 BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int udpSocket, const struct sockaddr *server, socklen_t serverLength, const BFNetworkSecurity *security) {
@@ -25,8 +25,8 @@ BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int 
         memset(networkConnection, 0, sizeof(BFNetworkConnection));
         networkConnection->udp_fd    = udpSocket;
         networkConnection->transport = transport;
-        networkConnection->quic      = BFNetworkQuicConnect(udpSocket, server, serverLength, security);
-        if (!networkConnection->quic) {
+        networkConnection->handle      = BFNetworkQuicConnect(udpSocket, server, serverLength, security);
+        if (!networkConnection->handle) {
             BFMemoryRelease(networkConnection);
             return NULL;
         }
@@ -44,8 +44,8 @@ BFNetworkConnection *BFNetworkConnectDatagram(BFNetworkTransport transport, int 
         memset(networkConnection, 0, sizeof(BFNetworkConnection));
         networkConnection->udp_fd    = udpSocket;
         networkConnection->transport = transport;
-        networkConnection->quic      = BFNetworkNoiseConnect(udpSocket, server, serverLength, security);
-        if (!networkConnection->quic) {
+        networkConnection->handle      = BFNetworkNoiseConnect(udpSocket, server, serverLength, security);
+        if (!networkConnection->handle) {
             BFMemoryRelease(networkConnection);
             return NULL;
         }
@@ -65,8 +65,8 @@ BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int u
         memset(networkConnection, 0, sizeof(BFNetworkConnection));
         networkConnection->udp_fd    = udpSocket;
         networkConnection->transport = transport;
-        networkConnection->quic      = BFNetworkQuicAccept(udpSocket, peer, peerLength, security);
-        if (!networkConnection->quic) {
+        networkConnection->handle      = BFNetworkQuicAccept(udpSocket, peer, peerLength, security);
+        if (!networkConnection->handle) {
             BFMemoryRelease(networkConnection);
             return NULL;
         }
@@ -84,8 +84,8 @@ BFNetworkConnection *BFNetworkAcceptDatagram(BFNetworkTransport transport, int u
         memset(networkConnection, 0, sizeof(BFNetworkConnection));
         networkConnection->udp_fd    = udpSocket;
         networkConnection->transport = transport;
-        networkConnection->quic      = BFNetworkNoiseAccept(udpSocket, peer, peerLength, security);
-        if (!networkConnection->quic) {
+        networkConnection->handle      = BFNetworkNoiseAccept(udpSocket, peer, peerLength, security);
+        if (!networkConnection->handle) {
             BFMemoryRelease(networkConnection);
             return NULL;
         }
@@ -100,10 +100,10 @@ int BFNetworkSend(BFNetworkConnection *networkConnection, const void *buffer, in
         return BF_ERR;
 #ifdef BOX_USE_QUIC
     if (networkConnection->transport == BFNetworkTransportQUIC)
-        return BFNetworkQuicSend(networkConnection->quic, buffer, length);
+        return BFNetworkQuicSend(networkConnection->handle, buffer, length);
 #endif
     if (networkConnection->transport == BFNetworkTransportNOISE)
-        return BFNetworkNoiseSend(networkConnection->quic, buffer, length);
+        return BFNetworkNoiseSend(networkConnection->handle, buffer, length);
     return BF_ERR;
 }
 
@@ -113,11 +113,11 @@ int BFNetworkReceive(BFNetworkConnection *networkConnection, void *buffer, int l
 	}
 #ifdef BOX_USE_QUIC
 	if (networkConnection->transport == BFNetworkTransportQUIC) {
-		return BFNetworkQuicRecv(networkConnection->quic, buffer, length);
+		return BFNetworkQuicRecv(networkConnection->handle, buffer, length);
 	}
 #endif
 	if (networkConnection->transport == BFNetworkTransportNOISE) {
-		return BFNetworkNoiseReceive(networkConnection->quic, buffer, length);
+		return BFNetworkNoiseReceive(networkConnection->handle, buffer, length);
 	}
     return BF_ERR;
 }
@@ -127,14 +127,14 @@ void BFNetworkClose(BFNetworkConnection *networkConnection) {
 		return;
 	}
 #ifdef BOX_USE_QUIC
-	if (networkConnection->quic) {
-		BFNetworkQuicClose(networkConnection->quic);
+	if (networkConnection->handle) {
+		BFNetworkQuicClose(networkConnection->handle);
 	}
 #endif
     // For NOISE we reuse the same opaque pointer field
     // (close is a no-op if not a NOISE handle)
     // Try closing via NOISE adapter as well.
-    BFNetworkNoiseClose(networkConnection->quic);
+    BFNetworkNoiseClose(networkConnection->handle);
     BFMemoryRelease(networkConnection);
 }
 
@@ -145,7 +145,7 @@ int        BFNetworkDebugResendLastFrame(BFNetworkConnection *networkConnection)
 		return BF_ERR;
 	}
 	if (networkConnection->transport == BFNetworkTransportNOISE) {
-		return BFNetworkNoiseDebugResendLastFrame(networkConnection->quic);
+		return BFNetworkNoiseDebugResendLastFrame(networkConnection->handle);
 	}
     return BF_ERR;
 }
