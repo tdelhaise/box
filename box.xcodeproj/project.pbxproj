@@ -76,6 +76,41 @@
 			remoteGlobalIDString = E43B07AC2E76C3C600F4A321;
 			remoteInfo = BoxFoundation;
 		};
+		E4CEDD0A2E796D0A00166166 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E4F1E2562E76BEE90087D297 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E43B07AC2E76C3C600F4A321;
+			remoteInfo = BoxFoundation;
+		};
+		E4CEDD0C2E796D1300166166 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E4F1E2562E76BEE90087D297 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E43B07AC2E76C3C600F4A321;
+			remoteInfo = BoxFoundation;
+		};
+		E4CEDD0E2E796D1900166166 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E4F1E2562E76BEE90087D297 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E43B07AC2E76C3C600F4A321;
+			remoteInfo = BoxFoundation;
+		};
+		E4CEDD102E796D2600166166 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E4F1E2562E76BEE90087D297 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E43B07AC2E76C3C600F4A321;
+			remoteInfo = BoxFoundation;
+		};
+		E4CEDD122E796D3000166166 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E4F1E2562E76BEE90087D297 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E43B07AC2E76C3C600F4A321;
+			remoteInfo = BoxFoundation;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -675,6 +710,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				E4CEDD0B2E796D0A00166166 /* PBXTargetDependency */,
 			);
 			name = test_BFNetworkNoise;
 			packageProductDependencies = (
@@ -694,6 +730,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				E4CEDD0D2E796D1300166166 /* PBXTargetDependency */,
 			);
 			name = test_BFBoxProtocolV1;
 			packageProductDependencies = (
@@ -713,6 +750,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				E4CEDD0F2E796D1900166166 /* PBXTargetDependency */,
 			);
 			name = test_BFAead;
 			packageProductDependencies = (
@@ -732,6 +770,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				E4CEDD112E796D2600166166 /* PBXTargetDependency */,
 			);
 			name = test_BFBoxProtocol;
 			packageProductDependencies = (
@@ -751,6 +790,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				E4CEDD132E796D3000166166 /* PBXTargetDependency */,
 			);
 			name = test_BFMemory;
 			packageProductDependencies = (
@@ -930,6 +970,31 @@
 			isa = PBXTargetDependency;
 			target = E43B07AC2E76C3C600F4A321 /* BoxFoundation */;
 			targetProxy = E43B07F62E76C4EF00F4A321 /* PBXContainerItemProxy */;
+		};
+		E4CEDD0B2E796D0A00166166 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E43B07AC2E76C3C600F4A321 /* BoxFoundation */;
+			targetProxy = E4CEDD0A2E796D0A00166166 /* PBXContainerItemProxy */;
+		};
+		E4CEDD0D2E796D1300166166 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E43B07AC2E76C3C600F4A321 /* BoxFoundation */;
+			targetProxy = E4CEDD0C2E796D1300166166 /* PBXContainerItemProxy */;
+		};
+		E4CEDD0F2E796D1900166166 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E43B07AC2E76C3C600F4A321 /* BoxFoundation */;
+			targetProxy = E4CEDD0E2E796D1900166166 /* PBXContainerItemProxy */;
+		};
+		E4CEDD112E796D2600166166 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E43B07AC2E76C3C600F4A321 /* BoxFoundation */;
+			targetProxy = E4CEDD102E796D2600166166 /* PBXContainerItemProxy */;
+		};
+		E4CEDD132E796D3000166166 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E43B07AC2E76C3C600F4A321 /* BoxFoundation */;
+			targetProxy = E4CEDD122E796D3000166166 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1275,7 +1340,7 @@
 				E43B07B02E76C3C600F4A321 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		E43B07FC2E76C4EF00F4A321 /* Build configuration list for PBXNativeTarget "boxd" */ = {
 			isa = XCConfigurationList;
@@ -1284,7 +1349,7 @@
 				E43B07FE2E76C4EF00F4A321 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		E4818B7F2E77759C003ADC3E /* Build configuration list for PBXNativeTarget "test_BFNetworkNoise" */ = {
 			isa = XCConfigurationList;
@@ -1293,7 +1358,7 @@
 				E4818B7E2E77759C003ADC3E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		E4818B8A2E7777DB003ADC3E /* Build configuration list for PBXNativeTarget "test_BFBoxProtocolV1" */ = {
 			isa = XCConfigurationList;
@@ -1302,7 +1367,7 @@
 				E4818B8C2E7777DB003ADC3E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		E4818B972E777865003ADC3E /* Build configuration list for PBXNativeTarget "test_BFAead" */ = {
 			isa = XCConfigurationList;
@@ -1311,7 +1376,7 @@
 				E4818B992E777865003ADC3E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		E4818BA52E777F97003ADC3E /* Build configuration list for PBXNativeTarget "test_BFBoxProtocol" */ = {
 			isa = XCConfigurationList;
@@ -1320,7 +1385,7 @@
 				E4818BA72E777F97003ADC3E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		E4818BB02E778005003ADC3E /* Build configuration list for PBXNativeTarget "test_BFMemory" */ = {
 			isa = XCConfigurationList;
@@ -1329,7 +1394,7 @@
 				E4818BB22E778005003ADC3E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		E4F1E2592E76BEE90087D297 /* Build configuration list for PBXProject "box" */ = {
 			isa = XCConfigurationList;
@@ -1338,7 +1403,7 @@
 				E4F1E2642E76BEE90087D297 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		E4F1E2652E76BEE90087D297 /* Build configuration list for PBXNativeTarget "box" */ = {
 			isa = XCConfigurationList;
@@ -1347,7 +1412,7 @@
 				E4F1E2672E76BEE90087D297 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};
