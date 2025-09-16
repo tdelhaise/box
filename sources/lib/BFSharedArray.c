@@ -85,7 +85,7 @@ size_t BFSharedArrayCount(BFSharedArray *array) {
     return currentCount;
 }
 
-static int size_to_index(size_t sizeIndex) {
+static int BFSharedArraySizeToIndex(size_t sizeIndex) {
 	if (sizeIndex > (size_t)INT_MAX) {
 		return BF_ERR;
 	}
@@ -113,7 +113,7 @@ int BFSharedArrayInsert(BFSharedArray *array, size_t index, void *object) {
         array->count              = 1U;
         int indexReturn           = 0;
         pthread_mutex_unlock(&array->mutex);
-        indexReturn = size_to_index(0U);
+        indexReturn = BFSharedArraySizeToIndex(0U);
         return indexReturn;
     }
 
@@ -142,7 +142,7 @@ int BFSharedArrayInsert(BFSharedArray *array, size_t index, void *object) {
     array->count++;
     size_t insertedIndex = index;
     pthread_mutex_unlock(&array->mutex);
-    return size_to_index(insertedIndex);
+    return BFSharedArraySizeToIndex(insertedIndex);
 }
 
 int BFSharedArrayPush(BFSharedArray *array, void *object) {
