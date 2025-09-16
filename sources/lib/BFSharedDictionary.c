@@ -6,44 +6,44 @@
 #include <pthread.h>
 #include <string.h>
 
-typedef struct BFDictNode {
-    char              *key;   // duplicated
-    void              *value; // stored pointer
-    struct BFDictNode *next;
-} BFDictNode;
+typedef struct BFDictionaryNode {
+    char                    *key;   // duplicated
+    void                    *value; // stored pointer
+    struct BFDictionaryNode *next;
+} BFDictionaryNode;
 
 struct BFSharedDictionary {
     pthread_mutex_t                mutex;
-    BFDictNode                   **buckets;
+	BFDictionaryNode               **buckets;
     size_t                         bucketCount;
     size_t                         count;
     BFSharedDictionaryDestroyValue destroyCallback; // optional
 };
 
-static unsigned long djb2(const char *s) {
+static unsigned long BFSharedDictionaryHashValueFromString(const char *string) {
     unsigned long hashValue = 5381UL;
     int           character = 0;
-    while (s && (character = *s++) != 0) {
+    while (string && (character = *string++) != 0) {
         hashValue = ((hashValue << 5) + hashValue) + (unsigned long)character; // h*33 + c
     }
     return hashValue;
 }
 
-static size_t pick_bucket(const char *key, size_t bucketCount) {
-    unsigned long hashValue = djb2(key);
+static size_t BFSharedDictionaryPickBucket(const char *key, size_t bucketCount) {
+    unsigned long hashValue = BFSharedDictionaryHashValueFromString(key);
     return (size_t)(hashValue % (bucketCount ? bucketCount : 1U));
 }
 
-static char *dup_cstr(const char *s) {
-    if (!s)
+static char *BFSharedDictionaryDuplicateCString(const char *string) {
+    if (!string)
         return NULL;
-    size_t length  = strlen(s);
-    char  *copyPtr = (char *)BFMemoryAllocate(length + 1U);
-    if (!copyPtr)
+    size_t length  = strlen(string);
+    char  *copyPointer = (char *)BFMemoryAllocate(length + 1U);
+    if (!copyPointer)
         return NULL;
-    memcpy(copyPtr, s, length);
-    copyPtr[length] = '\0';
-    return copyPtr;
+	memcpy(copyPointer, string, length);
+	copyPointer[length] = '\0';
+    return copyPointer;
 }
 
 BFSharedDictionary *BFSharedDictionaryCreate(BFSharedDictionaryDestroyValue destroyCallback) {
@@ -52,12 +52,12 @@ BFSharedDictionary *BFSharedDictionaryCreate(BFSharedDictionaryDestroyValue dest
 	if (!dictionary) {
 		return NULL;
 	}
-    dictionary->buckets = (BFDictNode **)BFMemoryAllocate(sizeof(BFDictNode *) * buckets);
+    dictionary->buckets = (BFDictionaryNode **)BFMemoryAllocate(sizeof(BFDictionaryNode *) * buckets);
     if (!dictionary->buckets) {
         BFMemoryRelease(dictionary);
         return NULL;
     }
-    memset(dictionary->buckets, 0, sizeof(BFDictNode *) * buckets);
+    memset(dictionary->buckets, 0, sizeof(BFDictionaryNode *) * buckets);
     dictionary->bucketCount = buckets;
     dictionary->count       = 0U;
     dictionary->destroyCallback  = destroyCallback;
@@ -88,10 +88,10 @@ size_t BFSharedDictionaryCount(BFSharedDictionary *sharedDictionary) {
 int BFSharedDictionarySet(BFSharedDictionary *dictionary, const char *key, void *value) {
     if (!dictionary || !key)
         return BF_ERR;
-    size_t bucketIndex = pick_bucket(key, dictionary->bucketCount);
+    size_t bucketIndex = BFSharedDictionaryPickBucket(key, dictionary->bucketCount);
 
     pthread_mutex_lock(&dictionary->mutex);
-    BFDictNode *currentNode = dictionary->buckets[bucketIndex];
+    BFDictionaryNode *currentNode = dictionary->buckets[bucketIndex];
     while (currentNode) {
         if (strcmp(currentNode->key, key) == 0) {
             // replace
@@ -105,12 +105,12 @@ int BFSharedDictionarySet(BFSharedDictionary *dictionary, const char *key, void 
         currentNode = currentNode->next;
     }
     // insert new at head
-    BFDictNode *newNode = (BFDictNode *)BFMemoryAllocate(sizeof(*newNode));
+    BFDictionaryNode *newNode = (BFDictionaryNode *)BFMemoryAllocate(sizeof(*newNode));
     if (!newNode) {
         pthread_mutex_unlock(&dictionary->mutex);
         return BF_ERR;
     }
-    newNode->key               = dup_cstr(key);
+    newNode->key               = BFSharedDictionaryDuplicateCString(key);
     newNode->value             = value;
     newNode->next              = dictionary->buckets[bucketIndex];
 	dictionary->buckets[bucketIndex] = newNode;
@@ -123,9 +123,9 @@ void *BFSharedDictionaryGet(BFSharedDictionary *dictionary, const char *key) {
 	if (!dictionary || !key) {
 		return NULL;
 	}
-    size_t bucketIndex = pick_bucket(key, dictionary->bucketCount);
+    size_t bucketIndex = BFSharedDictionaryPickBucket(key, dictionary->bucketCount);
     pthread_mutex_lock(&dictionary->mutex);
-    BFDictNode *currentNode = dictionary->buckets[bucketIndex];
+    BFDictionaryNode *currentNode = dictionary->buckets[bucketIndex];
     while (currentNode) {
         if (strcmp(currentNode->key, key) == 0) {
             void *value = currentNode->value;
@@ -138,24 +138,25 @@ void *BFSharedDictionaryGet(BFSharedDictionary *dictionary, const char *key) {
     return NULL;
 }
 
-void *BFSharedDictionaryRemove(BFSharedDictionary *dict, const char *key) {
-	if (!dict || !key) {
+void *BFSharedDictionaryRemove(BFSharedDictionary *dictionary, const char *key) {
+	if (!dictionary || !key) {
 		return NULL;
 	}
-    size_t bucketIndex = pick_bucket(key, dict->bucketCount);
-    pthread_mutex_lock(&dict->mutex);
-    BFDictNode *currentNode  = dict->buckets[bucketIndex];
-    BFDictNode *previousNode = NULL;
+    size_t bucketIndex = BFSharedDictionaryPickBucket(key, dictionary->bucketCount);
+    pthread_mutex_lock(&dictionary->mutex);
+    BFDictionaryNode *currentNode  = dictionary->buckets[bucketIndex];
+    BFDictionaryNode *previousNode = NULL;
     while (currentNode) {
         if (strcmp(currentNode->key, key) == 0) {
-            if (previousNode)
-                previousNode->next = currentNode->next;
-            else
-                dict->buckets[bucketIndex] = currentNode->next;
-            dict->count--;
+			if (previousNode) {
+				previousNode->next = currentNode->next;
+			} else {
+				dictionary->buckets[bucketIndex] = currentNode->next;
+			}
+			dictionary->count--;
             void *value   = currentNode->value;
             char *keyCopy = currentNode->key;
-            pthread_mutex_unlock(&dict->mutex);
+            pthread_mutex_unlock(&dictionary->mutex);
             BFMemoryRelease(keyCopy);
             BFMemoryRelease(currentNode);
             return value;
@@ -163,27 +164,27 @@ void *BFSharedDictionaryRemove(BFSharedDictionary *dict, const char *key) {
         previousNode = currentNode;
         currentNode  = currentNode->next;
     }
-    pthread_mutex_unlock(&dict->mutex);
+    pthread_mutex_unlock(&dictionary->mutex);
     return NULL;
 }
 
-int BFSharedDictionaryClear(BFSharedDictionary *dict) {
-    if (!dict)
+int BFSharedDictionaryClear(BFSharedDictionary *dictionary) {
+    if (!dictionary)
         return BF_ERR;
-    pthread_mutex_lock(&dict->mutex);
-    BFDictNode **buckets        = dict->buckets;
-    size_t       bucketCapacity = dict->bucketCount;
-    dict->count                 = 0U;
-    dict->buckets               = buckets; // unchanged
-    pthread_mutex_unlock(&dict->mutex);
+    pthread_mutex_lock(&dictionary->mutex);
+    BFDictionaryNode **buckets        = dictionary->buckets;
+    size_t       bucketCapacity = dictionary->bucketCount;
+	dictionary->count                 = 0U;
+	dictionary->buckets               = buckets; // unchanged
+    pthread_mutex_unlock(&dictionary->mutex);
 
     for (size_t bucketIndex = 0; bucketIndex < bucketCapacity; ++bucketIndex) {
-        BFDictNode *currentNode = buckets[bucketIndex];
+        BFDictionaryNode *currentNode = buckets[bucketIndex];
         buckets[bucketIndex]    = NULL;
         while (currentNode) {
-            BFDictNode *nextNode = currentNode->next;
-            if (dict->destroy_cb && currentNode->value)
-                dict->destroy_cb(currentNode->value);
+            BFDictionaryNode *nextNode = currentNode->next;
+			if (dictionary->destroyCallback && currentNode->value)
+				dictionary->destroyCallback(currentNode->value);
             BFMemoryRelease(currentNode->key);
             BFMemoryRelease(currentNode);
             currentNode = nextNode;
