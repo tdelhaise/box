@@ -10,8 +10,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-
-
 static int createUdpServer(struct sockaddr_in *outAddress, int *outErrorCode) {
     int                fileDescriptor = (int)socket(AF_INET, SOCK_DGRAM, 0);
     struct sockaddr_in address;
@@ -51,8 +49,8 @@ static int createUdpClient(const struct sockaddr_in *serverAddress) {
 int main(void) {
     struct sockaddr_in serverBindAddress;
     int                lastErrorCode = 0;
-	BFLoggerSetLevel(BF_LOG_DEBUG);
-    int                serverSocket  = createUdpServer(&serverBindAddress, &lastErrorCode);
+    BFLoggerSetLevel(BF_LOG_DEBUG);
+    int serverSocket = createUdpServer(&serverBindAddress, &lastErrorCode);
     if (serverSocket < 0) {
         fprintf(stderr, "Skipping test_BFNetworkNoise: cannot bind UDP socket in this environment\n");
         return 0; // skip gracefully in restricted sandboxes (CI will run it normally)

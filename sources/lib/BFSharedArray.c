@@ -23,12 +23,12 @@ struct BFSharedArray {
 
 static BFSharedArrayNode *BFSharedArrayNodeNew(void *value) {
     BFSharedArrayNode *newNode = (BFSharedArrayNode *)BFMemoryAllocate(sizeof(*newNode));
-	if (!newNode) {
-		return NULL;
-	}
-    newNode->value = value;
-    newNode->previous  = NULL;
-    newNode->next  = NULL;
+    if (!newNode) {
+        return NULL;
+    }
+    newNode->value    = value;
+    newNode->previous = NULL;
+    newNode->next     = NULL;
     return newNode;
 }
 
@@ -42,24 +42,24 @@ static BFSharedArrayNode *BFSharedArrayGetNodeAtLocked(BFSharedArray *sharedArra
     // bidirectional walk for efficiency
     if (index < sharedArray->count / 2U) {
         BFSharedArrayNode *cursor = sharedArray->head;
-		for (size_t walkIndex = 0; cursor && walkIndex < index; ++walkIndex) {
-			cursor = cursor->next;
-		}
+        for (size_t walkIndex = 0; cursor && walkIndex < index; ++walkIndex) {
+            cursor = cursor->next;
+        }
         return cursor;
     } else {
         BFSharedArrayNode *cursor = sharedArray->tail;
-		for (size_t walkIndex = sharedArray->count - 1U; cursor && walkIndex > index; --walkIndex) {
-			cursor = cursor->previous;
-		}
+        for (size_t walkIndex = sharedArray->count - 1U; cursor && walkIndex > index; --walkIndex) {
+            cursor = cursor->previous;
+        }
         return cursor;
     }
 }
 
 BFSharedArray *BFSharedArrayCreate(BFSharedArrayDestroy destroyCallback) {
     BFSharedArray *arrayInstance = (BFSharedArray *)BFMemoryAllocate(sizeof(BFSharedArray));
-	if (!arrayInstance) {
-		return NULL;
-	}
+    if (!arrayInstance) {
+        return NULL;
+    }
     memset(arrayInstance, 0, sizeof(BFSharedArray));
     (void)pthread_mutex_init(&arrayInstance->mutex, NULL);
     arrayInstance->destroyCallback = destroyCallback;
@@ -67,18 +67,18 @@ BFSharedArray *BFSharedArrayCreate(BFSharedArrayDestroy destroyCallback) {
 }
 
 void BFSharedArrayFree(BFSharedArray *array) {
-	if (!array) {
-		return;
-	}
+    if (!array) {
+        return;
+    }
     (void)BFSharedArrayClear(array);
     pthread_mutex_destroy(&array->mutex);
     BFMemoryRelease(array);
 }
 
 size_t BFSharedArrayCount(BFSharedArray *array) {
-	if (!array) {
-		return 0;
-	}
+    if (!array) {
+        return 0;
+    }
     pthread_mutex_lock(&array->mutex);
     size_t currentCount = array->count;
     pthread_mutex_unlock(&array->mutex);
@@ -86,25 +86,25 @@ size_t BFSharedArrayCount(BFSharedArray *array) {
 }
 
 static int BFSharedArraySizeToIndex(size_t sizeIndex) {
-	if (sizeIndex > (size_t)INT_MAX) {
-		return BF_ERR;
-	}
+    if (sizeIndex > (size_t)INT_MAX) {
+        return BF_ERR;
+    }
     return (int)sizeIndex;
 }
 
 int BFSharedArrayInsert(BFSharedArray *array, size_t index, void *object) {
-	if (!array) {
-		return BF_ERR;
-	}
+    if (!array) {
+        return BF_ERR;
+    }
     BFSharedArrayNode *newNode = BFSharedArrayNodeNew(object);
-	if (!newNode) {
-		return BF_ERR;
-	}
+    if (!newNode) {
+        return BF_ERR;
+    }
 
     pthread_mutex_lock(&array->mutex);
     if (index > array->count) {
         pthread_mutex_unlock(&array->mutex);
-		BFSharedArrayNodeFree(newNode);
+        BFSharedArrayNodeFree(newNode);
         return BF_ERR;
     }
 
@@ -131,13 +131,13 @@ int BFSharedArrayInsert(BFSharedArray *array, size_t index, void *object) {
         BFSharedArrayNode *arrayNodeAtIndex = BFSharedArrayGetNodeAtLocked(array, index);
         if (!arrayNodeAtIndex) {
             pthread_mutex_unlock(&array->mutex);
-			BFSharedArrayNodeFree(newNode);
+            BFSharedArrayNodeFree(newNode);
             return BF_ERR;
         }
-        newNode->previous  = arrayNodeAtIndex->previous;
-        newNode->next  = arrayNodeAtIndex;
-		arrayNodeAtIndex->previous->next = newNode;
-		arrayNodeAtIndex->previous       = newNode;
+        newNode->previous                = arrayNodeAtIndex->previous;
+        newNode->next                    = arrayNodeAtIndex;
+        arrayNodeAtIndex->previous->next = newNode;
+        arrayNodeAtIndex->previous       = newNode;
     }
     array->count++;
     size_t insertedIndex = index;
@@ -146,9 +146,9 @@ int BFSharedArrayInsert(BFSharedArray *array, size_t index, void *object) {
 }
 
 int BFSharedArrayPush(BFSharedArray *array, void *object) {
-	if (!array) {
-		return BF_ERR;
-	}
+    if (!array) {
+        return BF_ERR;
+    }
     pthread_mutex_lock(&array->mutex);
     size_t currentCountIndex = array->count;
     pthread_mutex_unlock(&array->mutex);
@@ -160,70 +160,70 @@ int BFSharedArrayUnshift(BFSharedArray *array, void *object) {
 }
 
 void *BFSharedArrayGet(BFSharedArray *array, size_t index) {
-	if (!array) {
-		return NULL;
-	}
+    if (!array) {
+        return NULL;
+    }
     pthread_mutex_lock(&array->mutex);
     BFSharedArrayNode *arrayNodeAtIndex = BFSharedArrayGetNodeAtLocked(array, index);
-    void              *value = arrayNodeAtIndex ? arrayNodeAtIndex->value : NULL;
+    void              *value            = arrayNodeAtIndex ? arrayNodeAtIndex->value : NULL;
     pthread_mutex_unlock(&array->mutex);
     return value;
 }
 
 void *BFSharedArraySet(BFSharedArray *array, size_t index, void *object) {
-	if (!array) {
-		return NULL;
-	}
+    if (!array) {
+        return NULL;
+    }
     pthread_mutex_lock(&array->mutex);
     BFSharedArrayNode *arrayNodeAtIndex = BFSharedArrayGetNodeAtLocked(array, index);
     if (!arrayNodeAtIndex) {
         pthread_mutex_unlock(&array->mutex);
         return NULL;
     }
-    void *previousValue = arrayNodeAtIndex->value;
-	arrayNodeAtIndex->value           = object;
+    void *previousValue     = arrayNodeAtIndex->value;
+    arrayNodeAtIndex->value = object;
     pthread_mutex_unlock(&array->mutex);
     return previousValue;
 }
 
 void *BFSharedArrayRemoveAt(BFSharedArray *array, size_t index) {
-	if (!array) {
-		return NULL;
-	}
+    if (!array) {
+        return NULL;
+    }
     pthread_mutex_lock(&array->mutex);
     BFSharedArrayNode *arrayNodeAtIndex = BFSharedArrayGetNodeAtLocked(array, index);
     if (!arrayNodeAtIndex) {
         pthread_mutex_unlock(&array->mutex);
         return NULL;
     }
-	if (arrayNodeAtIndex->previous) {
-		arrayNodeAtIndex->previous->next = arrayNodeAtIndex->next;
-	} else {
-		array->head = arrayNodeAtIndex->next;
-	}
+    if (arrayNodeAtIndex->previous) {
+        arrayNodeAtIndex->previous->next = arrayNodeAtIndex->next;
+    } else {
+        array->head = arrayNodeAtIndex->next;
+    }
 
-	if (arrayNodeAtIndex->next) {
-		arrayNodeAtIndex->next->previous = arrayNodeAtIndex->previous;
-	} else {
-		array->tail = arrayNodeAtIndex->previous;
-	}
+    if (arrayNodeAtIndex->next) {
+        arrayNodeAtIndex->next->previous = arrayNodeAtIndex->previous;
+    } else {
+        array->tail = arrayNodeAtIndex->previous;
+    }
 
     array->count--;
     void *value = arrayNodeAtIndex->value;
     pthread_mutex_unlock(&array->mutex);
-	BFSharedArrayNodeFree(arrayNodeAtIndex);
+    BFSharedArrayNodeFree(arrayNodeAtIndex);
     return value;
 }
 
 int BFSharedArrayClear(BFSharedArray *array) {
-	if (!array) {
-		return BF_ERR;
-	}
+    if (!array) {
+        return BF_ERR;
+    }
     pthread_mutex_lock(&array->mutex);
     BFSharedArrayNode *arrayNode = array->head;
-    array->head          = NULL;
-    array->tail          = NULL;
-    array->count         = 0U;
+    array->head                  = NULL;
+    array->tail                  = NULL;
+    array->count                 = 0U;
     pthread_mutex_unlock(&array->mutex);
 
     while (arrayNode) {
@@ -231,8 +231,8 @@ int BFSharedArrayClear(BFSharedArray *array) {
         if (array->destroyCallback && arrayNode->value) {
             array->destroyCallback(arrayNode->value);
         }
-		BFSharedArrayNodeFree(arrayNode);
-		arrayNode = next;
+        BFSharedArrayNodeFree(arrayNode);
+        arrayNode = next;
     }
     return BF_OK;
 }
