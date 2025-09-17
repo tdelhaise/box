@@ -81,6 +81,8 @@
 		E4F1D7772E79C149009A2E75 /* libBoxFoundation.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E43B07AD2E76C3C600F4A321 /* libBoxFoundation.a */; };
 		E4F1D7852E79C181009A2E75 /* test_BFSharedDictionaryStress.c in Sources */ = {isa = PBXBuildFile; fileRef = E43B08482E77212E00F4A321 /* test_BFSharedDictionaryStress.c */; };
 		E4F1D7862E79C187009A2E75 /* libBoxFoundation.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E43B07AD2E76C3C600F4A321 /* libBoxFoundation.a */; };
+		E4F1D7882E79F15F009A2E75 /* BFFileManager.h in Sources */ = {isa = PBXBuildFile; fileRef = E4F1D7872E79F14D009A2E75 /* BFFileManager.h */; };
+		E4F1D78A2E79F37C009A2E75 /* BFFileManager.c in Sources */ = {isa = PBXBuildFile; fileRef = E4F1D7892E79F37C009A2E75 /* BFFileManager.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -479,6 +481,8 @@
 		E4F1D75E2E79C0DA009A2E75 /* test_BFSharedArrayStress */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test_BFSharedArrayStress; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4F1D76D2E79C11D009A2E75 /* test_BFSharedDictionary */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test_BFSharedDictionary; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4F1D77C2E79C16A009A2E75 /* test_BFSharedDictionaryStress */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test_BFSharedDictionaryStress; sourceTree = BUILT_PRODUCTS_DIR; };
+		E4F1D7872E79F14D009A2E75 /* BFFileManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BFFileManager.h; sourceTree = "<group>"; };
+		E4F1D7892E79F37C009A2E75 /* BFFileManager.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = BFFileManager.c; sourceTree = "<group>"; };
 		E4F1E25E2E76BEE90087D297 /* box */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = box; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -695,6 +699,7 @@
 				E43B07DA2E76C4A900F4A321 /* BFUdpClient.c */,
 				E43B07DB2E76C4A900F4A321 /* BFUdpServer.c */,
 				E43B07DC2E76C4A900F4A321 /* BFVersion.c */,
+				E4F1D7892E79F37C009A2E75 /* BFFileManager.c */,
 			);
 			path = lib;
 			sourceTree = "<group>";
@@ -713,6 +718,7 @@
 		E43B08232E77048100F4A321 /* include */ = {
 			isa = PBXGroup;
 			children = (
+				E4F1D7872E79F14D009A2E75 /* BFFileManager.h */,
 				E43B08132E77048100F4A321 /* BFAead.h */,
 				E43B08142E77048100F4A321 /* BFBoxProtocol.h */,
 				E43B08152E77048100F4A321 /* BFBoxProtocolV1.h */,
@@ -1456,6 +1462,7 @@
 				E43B07E12E76C4C800F4A321 /* BFBoxProtocolV1.c in Sources */,
 				E43B07E22E76C4C800F4A321 /* BFCommon.c in Sources */,
 				E43B07E32E76C4C800F4A321 /* BFConfig.c in Sources */,
+				E4F1D78A2E79F37C009A2E75 /* BFFileManager.c in Sources */,
 				E43B07E42E76C4C800F4A321 /* BFLogger.c in Sources */,
 				E43B07E52E76C4C800F4A321 /* BFMemory.c in Sources */,
 				E43B07E62E76C4C800F4A321 /* BFNetwork.c in Sources */,
@@ -1465,6 +1472,7 @@
 				E43B07EA2E76C4C800F4A321 /* BFNetworkQuicInternal.h in Sources */,
 				E43B07EB2E76C4C800F4A321 /* BFRunloop.c in Sources */,
 				E43B07EC2E76C4C800F4A321 /* BFSharedArray.c in Sources */,
+				E4F1D7882E79F15F009A2E75 /* BFFileManager.h in Sources */,
 				E43B07ED2E76C4C800F4A321 /* BFSharedDictionary.c in Sources */,
 				E43B07EE2E76C4C800F4A321 /* BFSocket.c in Sources */,
 				E43B07EF2E76C4C800F4A321 /* BFUdp.c in Sources */,

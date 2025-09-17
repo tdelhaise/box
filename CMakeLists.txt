@@ -38,8 +38,6 @@ if(BOX_MEMORY_SIGNAL_TRACE)
 	add_compile_definitions(BOX_MEMORY_SIGNAL_TRACE)
 endif()
 
-
-
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/sources/include)
 
 # Expose project version to C as BOX_VERSION
@@ -66,6 +64,7 @@ if(NOT BOX_BUILD_MINIMAL)
           sources/lib/BFUdpClient.c
           sources/lib/BFBoxProtocol.c
           sources/lib/BFVersion.c
+          sources/lib/BFFileManager.c
   )
   # No OpenSSL link required
   if (WIN32)
