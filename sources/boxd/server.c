@@ -22,7 +22,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-typedef struct ServerDtlsOptions {
+typedef struct ServerNetworkOptions {
     const char *certificateFile;
     const char *keyFile;
     const char *preShareKeyIdentity;
@@ -33,7 +33,7 @@ typedef struct ServerDtlsOptions {
     BFLogLevel  commandLineLogLevel;
     int         hasLogTarget;
     char        commandLineLogTarget[128];
-} ServerDtlsOptions;
+} ServerNetworkOptions;
 
 // Simple in-memory object for demo GET/PUT
 typedef struct StoredObject {
@@ -72,7 +72,7 @@ static void ServerPrintUsage(const char *program) {
             program, (unsigned)BFGlobalDefaultPort);
 }
 
-static void ServerParseArgs(int argc, char **argv, ServerDtlsOptions *outOptions) {
+static void ServerParseArgs(int argc, char **argv, ServerNetworkOptions *outOptions) {
     memset(outOptions, 0, sizeof(*outOptions));
     for (int argumentIndex = 1; argumentIndex < argc; ++argumentIndex) {
         const char *arg = argv[argumentIndex];
@@ -229,7 +229,7 @@ static void dontAllowRunningAsRoot(void) {
 }
 
 int main(int argc, char **argv) {
-    ServerDtlsOptions options;
+    ServerNetworkOptions options;
     ServerParseArgs(argc, argv, &options);
     BFLoggerInit("boxd");
     BFLoggerSetLevel(BF_LOG_INFO);
@@ -404,7 +404,7 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    // 3) Pas de DTLS: échanges v1 en UDP clair
+    // 3) Pas de TLS: échanges v1 en UDP clair par défaut
 
     // Envoyer un HELLO applicatif (v1) en UDP clair avec statut OK et versions supportées
     uint8_t  transmitBuffer[BF_MACRO_MAX_DATAGRAM_SIZE];

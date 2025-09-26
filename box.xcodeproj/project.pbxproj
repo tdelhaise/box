@@ -451,7 +451,6 @@
 		E43B084F2E7722AD00F4A321 /* check_naming.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = check_naming.sh; sourceTree = "<group>"; };
 		E43B08502E7722AD00F4A321 /* fast_build.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = fast_build.sh; sourceTree = "<group>"; };
 		E43B08512E7722AD00F4A321 /* format.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = format.sh; sourceTree = "<group>"; };
-		E43B08522E7722AD00F4A321 /* test_dtls_cert_verify.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = test_dtls_cert_verify.sh; sourceTree = "<group>"; };
 		E43B08542E77246700F4A321 /* box_jni.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = box_jni.c; sourceTree = "<group>"; };
 		E43B08552E77246700F4A321 /* CMakeLists.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = CMakeLists.txt; sourceTree = "<group>"; };
 		E43B08572E77246700F4A321 /* MainActivity.java */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.java; path = MainActivity.java; sourceTree = "<group>"; };
@@ -773,7 +772,6 @@
 				E43B084F2E7722AD00F4A321 /* check_naming.sh */,
 				E43B08502E7722AD00F4A321 /* fast_build.sh */,
 				E43B08512E7722AD00F4A321 /* format.sh */,
-				E43B08522E7722AD00F4A321 /* test_dtls_cert_verify.sh */,
 			);
 			path = scripts;
 			sourceTree = "<group>";

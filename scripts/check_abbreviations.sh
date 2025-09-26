@@ -20,7 +20,22 @@ elif [ -n "${ABBREV_PATHS:-}" ]; then
   # shellcheck disable=SC2206
   DIRS=(${ABBREV_PATHS})
 else
-  DIRS=(include src test)
+  DEFAULT_DIRS=(
+    sources/include
+    sources/lib
+    sources/box
+    sources/boxd
+    test
+  )
+  DIRS=()
+  for directory in "${DEFAULT_DIRS[@]}"; do
+    if [ -d "$directory" ]; then
+      DIRS+=("$directory")
+    fi
+  done
+  if [ "${#DIRS[@]}" -eq 0 ]; then
+    DIRS=(.)
+  fi
 fi
 
 FILES=$(rg -n --no-heading --color never -e "$PATTERN" "${DIRS[@]}" || true)

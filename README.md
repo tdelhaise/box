@@ -85,7 +85,8 @@ Terminal 1 — serveur:
 ```bash
 ./build/boxd \
   --pre-share-key-identity box-client \
-  --pre-share-key secretpsk
+  --pre-share-key secretpsk \
+  --transport noise
 ```
 
 Terminal 2 — client:
@@ -93,27 +94,16 @@ Terminal 2 — client:
 ./build/box \
   --pre-share-key-identity box-client \
   --pre-share-key secretpsk \
+  --transport noise \
   127.0.0.1 12567
 ```
 
 Observation attendue (logs):
-- le serveur reçoit un datagramme initial, effectue le handshake DTLS, envoie un HELLO applicatif, puis répond PONG aux PINGs.
-- le client réalise le handshake DTLS, affiche le HELLO du serveur, envoie un PING et affiche le PONG.
-
-### Exemple de bout-en-bout (Certificats)
-
-Terminal 1 — serveur:
-```bash
-./build/boxd --cert server.pem --key server.key
-```
-
-Terminal 2 — client:
-```bash
-./build/box --cert client.pem --key client.key 127.0.0.1 12567
-```
+- le serveur reçoit un datagramme initial, mélange les paramètres Noise (PSK + identités facultatives), envoie un HELLO applicatif, puis répond PONG aux PINGs.
+- le client réalise la même dérivation Noise, affiche le HELLO du serveur, envoie un PING et affiche le PONG.
 
 Remarques:
-- Le chiffrement (Noise + XChaCha) est en préparation (AEAD présent). Voir DEVELOPMENT_STRATEGY.md.
+- Le chiffrement (Noise + XChaCha) repose aujourd’hui sur un pré-partage simple (`--pre-share-key`). La dérivation NK/IK est en cours d’industrialisation. Voir DEVELOPMENT_STRATEGY.md.
 
 ### Configuration
 

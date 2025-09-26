@@ -33,6 +33,8 @@ typedef struct BFNetworkNoiseHandle {
     uint64_t receiveWindowMax;
     uint64_t receiveWindowBitmap;
 #ifdef BF_NOISE_TEST_HOOKS
+    size_t  replayFrameLength;
+    uint8_t replayFrame[BF_MACRO_MAX_DATAGRAM_SIZE];
     size_t  lastFrameLength;
     uint8_t lastFrame[BF_MACRO_MAX_DATAGRAM_SIZE];
 #endif
@@ -224,8 +226,17 @@ int BFNetworkNoiseSend(void *handlePointer, const void *buffer, int length) {
     BFDebug("BFNetworkNoiseSend: producedLength: %d", producedLength);
     size_t frameLength = 4U + (size_t)sizeof(nonce) + (size_t)producedLength;
 #ifdef BF_NOISE_TEST_HOOKS
-    memcpy(handle->lastFrame, frameBuffer, frameLength);
-    handle->lastFrameLength = frameLength;
+    if (handle->lastFrameLength > 0 && frameLength <= sizeof(handle->replayFrame)) {
+        memcpy(handle->replayFrame, handle->lastFrame, handle->lastFrameLength);
+        handle->replayFrameLength = handle->lastFrameLength;
+    }
+    if (frameLength <= sizeof(handle->lastFrame)) {
+        memcpy(handle->lastFrame, frameBuffer, frameLength);
+        handle->lastFrameLength = frameLength;
+    } else {
+        handle->lastFrameLength   = 0;
+        handle->replayFrameLength = 0;
+    }
 #endif
     ssize_t sent = sendto(handle->udpFileDescriptor, frameBuffer, frameLength, 0, (struct sockaddr *)&handle->peer.address, handle->peer.length);
     if (sent < 0) {
@@ -322,10 +333,19 @@ int BFNetworkNoiseDebugResendLastFrame(void *handlePointer) {
     if (!handle) {
         return BF_ERR;
     }
-    if (handle->lastFrameLength == 0) {
+    const uint8_t *framePointer = NULL;
+    size_t         frameLength  = 0;
+    if (handle->replayFrameLength > 0) {
+        framePointer = handle->replayFrame;
+        frameLength  = handle->replayFrameLength;
+    } else if (handle->lastFrameLength > 0) {
+        framePointer = handle->lastFrame;
+        frameLength  = handle->lastFrameLength;
+    }
+    if (!framePointer || frameLength == 0) {
         return BF_ERR;
     }
-    ssize_t sent = sendto(handle->udpFileDescriptor, handle->lastFrame, handle->lastFrameLength, 0, (struct sockaddr *)&handle->peer.address, handle->peer.length);
+    ssize_t sent = sendto(handle->udpFileDescriptor, framePointer, frameLength, 0, (struct sockaddr *)&handle->peer.address, handle->peer.length);
     if (sent < 0) {
         return BF_ERR;
     }

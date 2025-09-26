@@ -28,8 +28,8 @@ CI Summary (GitHub Actions)
 
 Coding Conventions (highlights)
 - C11 with Clang toolchain preferred. Keep changes minimal and focused.
-- Public APIs live under `include/box/`; library sources under `src/lib/`.
-- Executables: `src/box/` (client), `src/boxd/` (daemon). Do not run `boxd` as root/admin.
+- Public APIs live under `include/box/`; library sources under `sources/lib/`.
+- Executables: `sources/box/` (client), `sources/boxd/` (daemon). Do not run `boxd` as root/admin.
 - Naming: `BF` prefix for library symbols; explicit variable/parameter names (avoid abbreviations like `buffer`, `address`, `pointer`, `index`, etc. are required; abbreviations like `buf`, `addr`, `ptr`, `idx` are forbidden). See CODE_CONVENTIONS.md.
 - Security posture: default‑deny ACLs, adhere to Noise + XChaCha crypto roadmap, and follow non‑root policy.
 - Admin channel (Unix): local socket `~/.box/run/boxd.socket` with a `status` command; client supports `box admin status`.
@@ -39,10 +39,10 @@ Platform Notes
 - For Android builds, use `-DBOX_BUILD_MINIMAL=ON` initially; see ANDROID.md.
 
 Where to Put Things
-- New protocol code: extend BFBoxProtocol and adjacent modules under `src/lib/` with tests in `test/`.
-- Storage interfaces and ACL engine: new files under `src/lib/` with headers in `include/box/`.
-- CLI subcommands: extend `src/box/client.c` (temporary) or add small command dispatcher module.
-- Server behavior: extend `src/boxd/server.c` incrementally toward the design in DEVELOPMENT_STRATEGY.md.
+- New protocol code: extend BFBoxProtocol and adjacent modules under `sources/lib/` with tests in `test/`.
+- Storage interfaces and ACL engine: new files under `sources/lib/` with headers in `include/box/`.
+- CLI subcommands: extend `sources/box/client.c` (temporary) or add small command dispatcher module.
+- Server behavior: extend `sources/boxd/server.c` incrementally toward the design in DEVELOPMENT_STRATEGY.md.
 
 Do/Don’t
 - Do: write small, testable patches; update docs when behavior changes.

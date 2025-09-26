@@ -16,13 +16,13 @@
 #include <sys/un.h>
 #endif
 
-typedef struct ClientDtlsOptions {
+typedef struct ClientNetworkOptions {
     const char *certificateFile;
     const char *keyFile;
     const char *preShareKeyIdentity;
     const char *preShareKeyAscii;
     const char *transport;
-} ClientDtlsOptions;
+} ClientNetworkOptions;
 
 typedef struct ClientAction {
     int         doPut;
@@ -47,7 +47,7 @@ static void ClientPrintUsage(const char *program) {
             program, program, program, program, program, program);
 }
 
-static void ClientParseArgs(int argc, char **argv, ClientDtlsOptions *outOptions, const char **outAddress, uint16_t *outPort, const char **outPortOrigin, ClientAction *outAction) {
+static void ClientParseArgs(int argc, char **argv, ClientNetworkOptions *outOptions, const char **outAddress, uint16_t *outPort, const char **outPortOrigin, ClientAction *outAction) {
     memset(outOptions, 0, sizeof(*outOptions));
     memset(outAction, 0, sizeof(*outAction));
     const char *address    = BFGlobalDefaultAddress;
@@ -177,11 +177,11 @@ int main(int argc, char **argv) {
     if (argc >= 3 && strcmp(argv[1], "admin") == 0 && strcmp(argv[2], "status") == 0) {
         return ClientAdminStatus();
     }
-    ClientDtlsOptions options;
-    ClientAction      action;
-    const char       *address    = NULL;
-    uint16_t          port       = 0;
-    const char       *portOrigin = NULL;
+    ClientNetworkOptions options;
+    ClientAction         action;
+    const char          *address    = NULL;
+    uint16_t             port       = 0;
+    const char          *portOrigin = NULL;
     ClientParseArgs(argc, argv, &options, &address, &port, &portOrigin, &action);
     BFLoggerInit("box");
     BFLoggerSetLevel(BF_LOG_INFO);
