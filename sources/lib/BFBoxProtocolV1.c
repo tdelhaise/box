@@ -1,4 +1,5 @@
 #include "BFBoxProtocolV1.h"
+#include "BFCommon.h"
 
 #include <arpa/inet.h>
 #include <string.h>
@@ -289,4 +290,111 @@ int BFV1UnpackGet(const uint8_t *payload, uint32_t payloadLength, const uint8_t 
     if (outQueuePathLength)
         *outQueuePathLength = queuePathLength;
     return 0;
+}
+
+// -----------------------------------------------------------------------------
+// BFData helpers
+// -----------------------------------------------------------------------------
+
+static int BFV1FinalizeData(BFData *frame, int packedLength) {
+    if (packedLength < 0) {
+        return packedLength;
+    }
+    if (BFDataSetLength(frame, (size_t)packedLength) != BF_OK) {
+        return -1;
+    }
+    return BF_OK;
+}
+
+int BFV1PackToData(BFData *frame, uint32_t command, uint64_t requestId, const void *payload, uint32_t payloadLength) {
+    if (!frame) {
+        return -1;
+    }
+    size_t required = 18U + (size_t)payloadLength;
+    if (BFDataEnsureCapacity(frame, required) != BF_OK) {
+        return -1;
+    }
+    uint8_t *bytes = BFDataGetMutableBytes(frame);
+    if (!bytes) {
+        return -1;
+    }
+    int packed = BFV1Pack(bytes, frame->capacity, command, requestId, payload, payloadLength);
+    return BFV1FinalizeData(frame, packed);
+}
+
+int BFV1PackStatusToData(BFData *frame, uint32_t command, uint64_t requestId, uint8_t statusCode, const char *message) {
+    if (!frame) {
+        return -1;
+    }
+    size_t messageLength = message ? strlen(message) : 0U;
+    size_t required      = 18U + 1U + messageLength;
+    if (BFDataEnsureCapacity(frame, required) != BF_OK) {
+        return -1;
+    }
+    uint8_t *bytes = BFDataGetMutableBytes(frame);
+    if (!bytes) {
+        return -1;
+    }
+    int packed = BFV1PackStatus(bytes, frame->capacity, command, requestId, statusCode, message);
+    return BFV1FinalizeData(frame, packed);
+}
+
+int BFV1PackHelloToData(BFData *frame, uint64_t requestId, uint8_t statusCode, const uint16_t *versions, uint8_t versionCount) {
+    if (!frame) {
+        return -1;
+    }
+    size_t required = 18U + 2U + 2U * (size_t)versionCount;
+    if (BFDataEnsureCapacity(frame, required) != BF_OK) {
+        return -1;
+    }
+    uint8_t *bytes = BFDataGetMutableBytes(frame);
+    if (!bytes) {
+        return -1;
+    }
+    int packed = BFV1PackHello(bytes, frame->capacity, requestId, statusCode, versions, versionCount);
+    return BFV1FinalizeData(frame, packed);
+}
+
+int BFV1PackPutToData(BFData *frame, uint64_t requestId, const char *queuePath, const char *contentType, const uint8_t *data, uint32_t dataLength) {
+    if (!frame) {
+        return -1;
+    }
+    size_t queuePathLength   = queuePath ? strlen(queuePath) : 0U;
+    size_t contentTypeLength = contentType ? strlen(contentType) : 0U;
+    size_t required          = 18U + 2U + queuePathLength + 2U + contentTypeLength + 4U + (size_t)dataLength;
+    if (BFDataEnsureCapacity(frame, required) != BF_OK) {
+        return -1;
+    }
+    uint8_t *bytes = BFDataGetMutableBytes(frame);
+    if (!bytes) {
+        return -1;
+    }
+    int packed = BFV1PackPut(bytes, frame->capacity, requestId, queuePath, contentType, data, dataLength);
+    return BFV1FinalizeData(frame, packed);
+}
+
+int BFV1PackGetToData(BFData *frame, uint64_t requestId, const char *queuePath) {
+    if (!frame) {
+        return -1;
+    }
+    size_t queuePathLength = queuePath ? strlen(queuePath) : 0U;
+    size_t required        = 18U + 2U + queuePathLength;
+    if (BFDataEnsureCapacity(frame, required) != BF_OK) {
+        return -1;
+    }
+    uint8_t *bytes = BFDataGetMutableBytes(frame);
+    if (!bytes) {
+        return -1;
+    }
+    int packed = BFV1PackGet(bytes, frame->capacity, requestId, queuePath);
+    return BFV1FinalizeData(frame, packed);
+}
+
+int BFV1UnpackFromData(const BFData *frame, uint32_t *outCommand, uint64_t *outRequestId, const uint8_t **outPayload, uint32_t *outPayloadLength) {
+    if (!frame) {
+        return -1;
+    }
+    const uint8_t *bytes = BFDataGetBytes(frame);
+    size_t         len   = BFDataGetLength(frame);
+    return BFV1Unpack(bytes, len, outCommand, outRequestId, outPayload, outPayloadLength);
 }

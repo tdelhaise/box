@@ -1,4 +1,6 @@
 #include "BFBoxProtocolV1.h"
+#include "BFCommon.h"
+#include "BFData.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -23,6 +25,22 @@ int main(void) {
     assert(outPayload != NULL);
     assert(outPayloadLength == strlen(message));
     assert(memcmp(outPayload, message, outPayloadLength) == 0);
+
+    BFData frame = BFDataCreate(0U);
+    assert(BFV1PackToData(&frame, command, requestId, message, (uint32_t)strlen(message)) == BF_OK);
+
+    outCommand         = 0;
+    outRequestId       = 0;
+    outPayload         = NULL;
+    outPayloadLength   = 0;
+    int unpackFromData = BFV1UnpackFromData(&frame, &outCommand, &outRequestId, &outPayload, &outPayloadLength);
+    assert(unpackFromData == packed);
+    assert(outCommand == command);
+    assert(outRequestId == requestId);
+    assert(outPayloadLength == strlen(message));
+    assert(memcmp(outPayload, message, outPayloadLength) == 0);
+
+    BFDataReset(&frame);
 
     printf("BFBoxProtocolV1 OK\n");
     return 0;

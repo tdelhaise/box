@@ -9,10 +9,10 @@ static void BFDataZero(BFData *data) {
     if (!data) {
         return;
     }
-    data->bytes       = NULL;
-    data->length      = 0U;
-    data->capacity    = 0U;
-    data->ownsMemory  = 0;
+    data->bytes      = NULL;
+    data->length     = 0U;
+    data->capacity   = 0U;
+    data->ownsMemory = 0;
 }
 
 BFData BFDataCreateWithBytesNoCopy(uint8_t *bufferPointer, size_t bufferLength) {
@@ -84,8 +84,8 @@ int BFDataEnsureCapacity(BFData *data, size_t requiredCapacity) {
     if (data->ownsMemory && data->bytes) {
         BFMemoryRelease(data->bytes);
     }
-    data->bytes    = newBuffer;
-    data->capacity = newCapacity;
+    data->bytes      = newBuffer;
+    data->capacity   = newCapacity;
     data->ownsMemory = 1;
     return BF_OK;
 }
@@ -172,8 +172,8 @@ char *BFDataCopyBytesAsCString(const BFData *data) {
     if (!data) {
         return NULL;
     }
-    size_t  length = data->length;
-    char   *copy   = (char *)BFMemoryAllocate(length + 1U);
+    size_t length = data->length;
+    char  *copy   = (char *)BFMemoryAllocate(length + 1U);
     if (!copy) {
         return NULL;
     }
@@ -202,11 +202,11 @@ static char *BFDataEncodeBase64(const uint8_t *input, size_t length) {
     size_t inputIndex  = 0U;
     size_t outputIndex = 0U;
     while (inputIndex < length) {
-        size_t   remaining = length - inputIndex;
-        uint32_t octetA    = input[inputIndex++];
-        uint32_t octetB    = remaining > 1U ? input[inputIndex++] : 0U;
-        uint32_t octetC    = remaining > 2U ? input[inputIndex++] : 0U;
-        uint32_t triple    = (octetA << 16U) | (octetB << 8U) | octetC;
+        size_t   remaining    = length - inputIndex;
+        uint32_t octetA       = input[inputIndex++];
+        uint32_t octetB       = remaining > 1U ? input[inputIndex++] : 0U;
+        uint32_t octetC       = remaining > 2U ? input[inputIndex++] : 0U;
+        uint32_t triple       = (octetA << 16U) | (octetB << 8U) | octetC;
         output[outputIndex++] = base64Alphabet[(triple >> 18U) & 0x3FU];
         output[outputIndex++] = base64Alphabet[(triple >> 12U) & 0x3FU];
         output[outputIndex++] = (remaining > 1U) ? base64Alphabet[(triple >> 6U) & 0x3FU] : '=';
@@ -235,7 +235,7 @@ static void BFDataInitializeBase64Table(void) {
         base64DecodeTable[(unsigned char)base64Alphabet[index]] = index;
     }
     base64DecodeTable[(unsigned char)'='] = 0U;
-    base64TableInitialized                 = 1;
+    base64TableInitialized                = 1;
 }
 
 static int BFDataDecodeBase64(const char *inputCString, uint8_t **outBytes, size_t *outLength) {
@@ -256,8 +256,8 @@ static int BFDataDecodeBase64(const char *inputCString, uint8_t **outBytes, size
             padding++;
         }
     }
-    size_t outputLength = ((inputLength / 4U) * 3U) - padding;
-    uint8_t *output     = (uint8_t *)BFMemoryAllocate(outputLength);
+    size_t   outputLength = ((inputLength / 4U) * 3U) - padding;
+    uint8_t *output       = (uint8_t *)BFMemoryAllocate(outputLength);
     if (!output) {
         return BF_ERR;
     }
@@ -268,9 +268,7 @@ static int BFDataDecodeBase64(const char *inputCString, uint8_t **outBytes, size
         unsigned char charB = (unsigned char)inputCString[inputIndex++];
         unsigned char charC = (unsigned char)inputCString[inputIndex++];
         unsigned char charD = (unsigned char)inputCString[inputIndex++];
-        if (base64DecodeTable[charA] == 0xFF || base64DecodeTable[charB] == 0xFF ||
-            (charC != '=' && base64DecodeTable[charC] == 0xFF) ||
-            (charD != '=' && base64DecodeTable[charD] == 0xFF)) {
+        if (base64DecodeTable[charA] == 0xFF || base64DecodeTable[charB] == 0xFF || (charC != '=' && base64DecodeTable[charC] == 0xFF) || (charD != '=' && base64DecodeTable[charD] == 0xFF)) {
             BFMemoryRelease(output);
             return BF_ERR;
         }
@@ -278,7 +276,7 @@ static int BFDataDecodeBase64(const char *inputCString, uint8_t **outBytes, size
         uint32_t sextetB = base64DecodeTable[charB];
         uint32_t sextetC = (charC == '=') ? 0U : base64DecodeTable[charC];
         uint32_t sextetD = (charD == '=') ? 0U : base64DecodeTable[charD];
-        uint32_t triple   = (sextetA << 18U) | (sextetB << 12U) | (sextetC << 6U) | sextetD;
+        uint32_t triple  = (sextetA << 18U) | (sextetB << 12U) | (sextetC << 6U) | sextetD;
         if (outputIndex < outputLength) {
             output[outputIndex++] = (uint8_t)((triple >> 16U) & 0xFFU);
         }

@@ -1,6 +1,7 @@
 #ifndef BF_BOX_PROTOCOL_V1_H
 #define BF_BOX_PROTOCOL_V1_H
 
+#include "BFData.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -86,6 +87,20 @@ int BFV1UnpackPut(const uint8_t *payload, uint32_t payloadLength, const uint8_t 
 int BFV1PackGet(uint8_t *buffer, size_t bufferLength, uint64_t requestId, const char *queuePath);
 
 int BFV1UnpackGet(const uint8_t *payload, uint32_t payloadLength, const uint8_t **outQueuePath, uint16_t *outQueuePathLength);
+
+// BFData helpers -------------------------------------------------------------
+
+int BFV1PackToData(BFData *frame, uint32_t command, uint64_t requestId, const void *payload, uint32_t payloadLength);
+
+int BFV1PackStatusToData(BFData *frame, uint32_t command, uint64_t requestId, uint8_t statusCode, const char *message);
+
+int BFV1PackHelloToData(BFData *frame, uint64_t requestId, uint8_t statusCode, const uint16_t *versions, uint8_t versionCount);
+
+int BFV1PackPutToData(BFData *frame, uint64_t requestId, const char *queuePath, const char *contentType, const uint8_t *data, uint32_t dataLength);
+
+int BFV1PackGetToData(BFData *frame, uint64_t requestId, const char *queuePath);
+
+int BFV1UnpackFromData(const BFData *frame, uint32_t *outCommand, uint64_t *outRequestId, const uint8_t **outPayload, uint32_t *outPayloadLength);
 
 #ifdef __cplusplus
 }

@@ -26,9 +26,9 @@ static void testCreateAndAppend(void) {
 }
 
 static void testBase64RoundTrip(void) {
-    const char  *plainText = "Man"; // classic Base64 fixture
-    BFData        original = BFDataCreateWithBytes((const uint8_t *)plainText, strlen(plainText));
-    char         *encoded  = BFDataCopyBase64EncodedString(&original);
+    const char *plainText = "Man"; // classic Base64 fixture
+    BFData      original  = BFDataCreateWithBytes((const uint8_t *)plainText, strlen(plainText));
+    char       *encoded   = BFDataCopyBase64EncodedString(&original);
     assert(encoded != NULL);
     assert(strcmp(encoded, "TWFu") == 0);
 
@@ -50,7 +50,7 @@ static void testSetLengthAndCopy(void) {
     mutableBytes[1]       = 0xBBU;
 
     assert(BFDataSetLength(&data, 4U) == BF_OK);
-    mutableBytes = BFDataGetMutableBytes(&data);
+    mutableBytes    = BFDataGetMutableBytes(&data);
     mutableBytes[2] = 0xCCU;
     mutableBytes[3] = 0xDDU;
 
