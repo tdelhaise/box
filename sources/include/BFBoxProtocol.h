@@ -19,6 +19,10 @@ int BFProtocolPack(uint8_t *buffet, size_t buffetLength, BFMessageType type, con
 
 int BFProtocolUnpack(const uint8_t *buffet, size_t buffetLength, BFHeader *header, const uint8_t **payload);
 
+void BFProtocolSetV1Enabled(int enabled);
+
+int BFProtocolIsV1Enabled(void);
+
 #ifdef __cplusplus
 }
 #endif
