@@ -1,5 +1,6 @@
 #include "BFBoxProtocolV1.h"
 #include "BFCommon.h"
+#include "BFData.h"
 #include "BFMemory.h"
 #include "BFNetwork.h"
 #include "BFUdp.h"
@@ -213,11 +214,10 @@ int main(int argc, char **argv) {
     }
 
     // 1) Envoyer HELLO (v1) en UDP clair avec versions supportées
-    uint8_t  transmitBuffer[BF_MACRO_MAX_DATAGRAM_SIZE];
+    BFData   transmitFrame        = BFDataCreate(0U);
     uint64_t requestId            = 1;
     uint16_t supportedVersions[1] = {1};
-    int      packed               = BFV1PackHello(transmitBuffer, sizeof(transmitBuffer), requestId, BFV1_STATUS_OK, supportedVersions, 1);
-    if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed, (struct sockaddr *)&server, sizeof(server)) < 0) {
+    if (BFV1PackHelloToData(&transmitFrame, requestId, BFV1_STATUS_OK, supportedVersions, 1) != BF_OK || BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&server, sizeof(server)) < 0) {
         BFFatal("sendto (HELLO)");
     }
 
@@ -259,8 +259,7 @@ int main(int argc, char **argv) {
     // 4) Envoyer STATUS (ping)
     const char *ping = "ping";
     requestId        = 2;
-    packed           = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, requestId, BFV1_STATUS_OK, ping);
-    if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed, (struct sockaddr *)&server, sizeof(server)) < 0) {
+    if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, requestId, BFV1_STATUS_OK, ping) != BF_OK || BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&server, sizeof(server)) < 0) {
         BFFatal("sendto (STATUS)");
     }
 
@@ -292,14 +291,12 @@ int main(int argc, char **argv) {
         const char *contentType = action.contentType ? action.contentType : "application/octet-stream";
         const char *putText     = action.data;
         requestId               = 3;
-        packed                  = BFV1PackPut(transmitBuffer, sizeof(transmitBuffer), requestId, queuePath, contentType, (const uint8_t *)putText, (uint32_t)strlen(putText));
-        if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed, (struct sockaddr *)&server, sizeof(server)) < 0) {
+        if (BFV1PackPutToData(&transmitFrame, requestId, queuePath, contentType, (const uint8_t *)putText, (uint32_t)strlen(putText)) != BF_OK || BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&server, sizeof(server)) < 0) {
             BFFatal("sendto (PUT)");
         }
     } else if (action.doGet && action.queue) {
         requestId = 4;
-        packed    = BFV1PackGet(transmitBuffer, sizeof(transmitBuffer), requestId, action.queue);
-        if (packed <= 0 || BFUdpSend(udpSocket, transmitBuffer, (size_t)packed, (struct sockaddr *)&server, sizeof(server)) < 0) {
+        if (BFV1PackGetToData(&transmitFrame, requestId, action.queue) != BF_OK || BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&server, sizeof(server)) < 0) {
             BFFatal("sendto (GET)");
         }
         // Read one response and print summary
@@ -336,6 +333,8 @@ int main(int argc, char **argv) {
     if (action.queueAllocated && action.queue) {
         BFMemoryRelease((void *)action.queue);
     }
+
+    BFDataReset(&transmitFrame);
 
     // Noise transport smoke test if requested
     if (options.transport && strcmp(options.transport, "noise") == 0) {
