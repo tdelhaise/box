@@ -14,11 +14,11 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-	
+
 typedef struct BFFile BFFile;
-	
+
 #ifdef __cplusplus
 }
 #endif
-	
+
 #endif // !BF_FILE_MANAGER_H

@@ -46,10 +46,7 @@ typedef struct StoredObject {
     uint32_t dataLength;
 } StoredObject;
 
-typedef enum ServerEventType {
-    ServerEventTick         = 1000,
-    ServerEventAdminStatus  = 1001
-} ServerEventType;
+typedef enum ServerEventType { ServerEventTick = 1000, ServerEventAdminStatus = 1001 } ServerEventType;
 
 #if defined(__unix__) || defined(__APPLE__)
 typedef struct ServerAdminRequest {
@@ -475,8 +472,8 @@ int main(int argc, char **argv) {
 
     // Admin channel (Unix domain socket, non-bloquant, minimal skeleton)
 #if defined(__unix__) || defined(__APPLE__)
-    int                      adminListenSocket    = -1;
-    BFRunloop               *adminRunloop         = NULL;
+    int                      adminListenSocket = -1;
+    BFRunloop               *adminRunloop      = NULL;
     ServerAdminThreadContext adminThreadContext;
     pthread_t                adminThread;
     int                      adminThreadStarted = 0;
@@ -530,7 +527,7 @@ int main(int argc, char **argv) {
                         BFRunloopPostStop(adminRunloop);
                         BFRunloopJoin(adminRunloop);
                         BFRunloopFree(adminRunloop);
-                        adminRunloop = NULL;
+                        adminRunloop               = NULL;
                         adminThreadContext.runloop = NULL;
                         close(adminListenSocket);
                         adminListenSocket = -1;
@@ -541,7 +538,7 @@ int main(int argc, char **argv) {
             } else {
                 BFError("boxd: failed to bind admin channel");
                 close(adminListenSocket);
-                adminListenSocket = -1;
+                adminListenSocket                         = -1;
                 adminThreadContext.listenSocketDescriptor = -1;
             }
         }
@@ -786,7 +783,7 @@ cleanup:
     globalRunning = 0;
     if (adminListenSocket >= 0) {
         close(adminListenSocket);
-        adminListenSocket = -1;
+        adminListenSocket                         = -1;
         adminThreadContext.listenSocketDescriptor = -1;
     }
     if (adminThreadStarted) {
