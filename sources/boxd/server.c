@@ -12,7 +12,9 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#if defined(__unix__) || defined(__APPLE__)
 #include <pthread.h>
+#endif
 #include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
@@ -44,6 +46,12 @@ typedef struct StoredObject {
     uint32_t dataLength;
 } StoredObject;
 
+typedef enum ServerEventType {
+    ServerEventTick         = 1000,
+    ServerEventAdminStatus  = 1001
+} ServerEventType;
+
+#if defined(__unix__) || defined(__APPLE__)
 typedef struct ServerAdminRequest {
     int    clientSocketDescriptor;
     size_t requestLength;
@@ -55,11 +63,6 @@ typedef struct ServerAdminThreadContext {
     BFRunloop    *runloop;
     volatile int *runningFlagPointer;
 } ServerAdminThreadContext;
-
-typedef enum ServerEventType {
-    ServerEventTick         = 1000,
-    ServerEventAdminStatus  = 1001
-} ServerEventType;
 
 static void ServerAdminRequestDestroy(void *pointer) {
     if (!pointer) {
@@ -172,6 +175,7 @@ static void *ServerAdminListenerThread(void *contextPointer) {
     }
     return NULL;
 }
+#endif // __unix__ || __APPLE__
 
 static void destroyStoredObject(void *pointer) {
     if (!pointer)
@@ -292,6 +296,7 @@ static void ServerMainHandler(BFRunloop *runloop, BFRunloopEvent *event, void *c
     if (event->type == BFRunloopEventStop) {
         return;
     }
+#if defined(__unix__) || defined(__APPLE__)
     if (event->type == ServerEventAdminStatus) {
         ServerAdminRequest *adminRequest = (ServerAdminRequest *)event->payload;
         if (!adminRequest) {
@@ -320,6 +325,7 @@ static void ServerMainHandler(BFRunloop *runloop, BFRunloopEvent *event, void *c
         }
         return;
     }
+#endif
     if (event->type == ServerEventTick) {
         // Re-post a low-frequency tick as a heartbeat example
         BFRunloopEvent tick = {.type = ServerEventTick, .payload = NULL, .destroy = NULL};
@@ -468,13 +474,13 @@ int main(int argc, char **argv) {
     }
 
     // Admin channel (Unix domain socket, non-bloquant, minimal skeleton)
-    int                      adminListenSocket = -1;
-    BFRunloop               *adminRunloop      = NULL;
+#if defined(__unix__) || defined(__APPLE__)
+    int                      adminListenSocket    = -1;
+    BFRunloop               *adminRunloop         = NULL;
     ServerAdminThreadContext adminThreadContext;
     pthread_t                adminThread;
     int                      adminThreadStarted = 0;
     memset(&adminThreadContext, 0, sizeof(adminThreadContext));
-#if defined(__unix__) || defined(__APPLE__)
     if (homeDirectory && *homeDirectory) {
         char adminSocketPath[512];
         snprintf(adminSocketPath, sizeof(adminSocketPath), "%s/.box/run/boxd.socket", homeDirectory);
@@ -540,7 +546,7 @@ int main(int argc, char **argv) {
             }
         }
     }
-#endif
+#endif // __unix__ || __APPLE__
 
     // 1) Attente d'un datagram clair pour connaître l'adresse du client
     struct sockaddr_storage peer       = {0};
