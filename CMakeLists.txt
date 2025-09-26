@@ -55,6 +55,7 @@ if(NOT BOX_BUILD_MINIMAL)
           sources/lib/BFRunloop.c
           sources/lib/BFSharedArray.c
           sources/lib/BFSharedDictionary.c
+          sources/lib/BFStorageManager.c
           sources/lib/BFBoxProtocolV1.c
           sources/lib/BFNetwork.c
           sources/lib/BFNetworkQuic.c
@@ -255,6 +256,11 @@ if(NOT BOX_BUILD_MINIMAL)
   target_include_directories(test_BFFileManager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(test_BFFileManager PRIVATE BoxFoundation)
   add_test(NAME test_BFFileManager COMMAND test_BFFileManager)
+
+  add_executable(test_BFStorageManager test/test_BFStorageManager.c)
+  target_include_directories(test_BFStorageManager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFStorageManager PRIVATE BoxFoundation)
+  add_test(NAME test_BFStorageManager COMMAND test_BFStorageManager)
 
   add_executable(test_BFData test/test_BFData.c)
   target_include_directories(test_BFData PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
