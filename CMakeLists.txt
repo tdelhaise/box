@@ -51,6 +51,7 @@ if(NOT BOX_BUILD_MINIMAL)
           sources/lib/BFSocket.c
           sources/lib/BFConfig.c
           sources/lib/BFMemory.c
+          sources/lib/BFData.c
           sources/lib/BFRunloop.c
           sources/lib/BFSharedArray.c
           sources/lib/BFSharedDictionary.c
@@ -247,6 +248,11 @@ if(NOT BOX_BUILD_MINIMAL)
   target_include_directories(test_BFMemory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(test_BFMemory PRIVATE BoxFoundation)
   add_test(NAME test_BFMemory COMMAND test_BFMemory)
+
+  add_executable(test_BFData test/test_BFData.c)
+  target_include_directories(test_BFData PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFData PRIVATE BoxFoundation)
+  add_test(NAME test_BFData COMMAND test_BFData)
 
   add_executable(test_BFAead test/test_BFAead.c)
   target_include_directories(test_BFAead PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
