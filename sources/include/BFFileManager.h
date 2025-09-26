@@ -8,6 +8,7 @@
 #ifndef BF_FILE_MANAGER_H
 #define BF_FILE_MANAGER_H
 
+#include "BFData.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -15,7 +16,19 @@
 extern "C" {
 #endif
 
-typedef struct BFFile BFFile;
+typedef struct BFFileManager BFFileManager;
+
+BFFileManager *BFFileManagerCreate(const char *rootPath);
+
+void BFFileManagerFree(BFFileManager *fileManager);
+
+int BFFileManagerEnsureDirectory(BFFileManager *fileManager, const char *relativePath);
+
+int BFFileManagerWriteFile(BFFileManager *fileManager, const char *relativePath, const BFData *data);
+
+int BFFileManagerReadFile(BFFileManager *fileManager, const char *relativePath, BFData *outData);
+
+int BFFileManagerRemoveFile(BFFileManager *fileManager, const char *relativePath);
 
 #ifdef __cplusplus
 }

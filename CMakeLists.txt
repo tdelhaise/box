@@ -251,6 +251,11 @@ if(NOT BOX_BUILD_MINIMAL)
   target_link_libraries(test_BFMemory PRIVATE BoxFoundation)
   add_test(NAME test_BFMemory COMMAND test_BFMemory)
 
+  add_executable(test_BFFileManager test/test_BFFileManager.c)
+  target_include_directories(test_BFFileManager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFFileManager PRIVATE BoxFoundation)
+  add_test(NAME test_BFFileManager COMMAND test_BFFileManager)
+
   add_executable(test_BFData test/test_BFData.c)
   target_include_directories(test_BFData PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(test_BFData PRIVATE BoxFoundation)
