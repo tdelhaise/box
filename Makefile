@@ -3,6 +3,7 @@
 .PHONY: help configure build test check check-strict format format-check certs clean rebuild docker-build docker-shell
 
 BUILD_TYPE ?= Debug
+BUILD_DIR ?= "build-$(BUILD_TYPE)"
 
 help:
 	@echo "Targets:"
@@ -21,27 +22,27 @@ help:
 	@echo "  docker-shell     - Start an interactive shell in the dev container with repo mounted"
 
 configure:
-	@cmake -S . -B build -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) $(OPENSSL_ROOT_DIR:%=-DOPENSSL_ROOT_DIR=%)
+	@cmake -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) $(OPENSSL_ROOT_DIR:%=-DOPENSSL_ROOT_DIR=%)
 
 build:
-	@cmake --build build -j
+	@cmake --build $(BUILD_DIR) -j
 
 test:
-	@ctest --test-dir build --output-on-failure
+	@ctest --test-dir $(BUILD_DIR) --output-on-failure
 
 bench:
 	@$(MAKE) build
 	@echo "Running BFSharedArray benchmark..."
-	@./build/bench_BFSharedArray || true
+	@./$(BUILD_DIR)/bench_BFSharedArray || true
 	@echo "Running BFSharedDictionary benchmark..."
-	@./build/bench_BFSharedDictionary || true
+	@./$(BUILD_DIR)/bench_BFSharedDictionary || true
 
 check:
-	@cmake --build build --target check || bash scripts/check_naming.sh
+	@cmake --build $(BUILD_DIR) --target check || bash scripts/check_naming.sh
 	@bash scripts/check_abbreviations.sh || true
 
 check-strict:
-	@cmake --build build --target check || bash scripts/check_naming.sh
+	@cmake --build $(BUILD_DIR) --target check || bash scripts/check_naming.sh
 	@ENFORCE_ABBREV=1 bash scripts/check_abbreviations.sh sources/include sources/box sources/boxd android/jni
 
 format:
@@ -51,13 +52,13 @@ format-check:
 	@bash scripts/check_format.sh
 
 certs:
-	@cmake --build build --target certs
+	@cmake --build $(BUILD_DIR) --target certs
 
 clean:
-	@cmake --build build --target clean || true
+	@cmake --build $(BUILD_DIR) --target clean || true
 
 rebuild:
-	@rm -rf build
+	@rm -rf $(BUILD_DIR)
 	@$(MAKE) configure BUILD_TYPE=$(BUILD_TYPE)
 	@$(MAKE) build
 
