@@ -63,6 +63,7 @@
 		E4C9DBFF2E86C4D0008B96E6 /* BFData.c in Sources */ = {isa = PBXBuildFile; fileRef = E4C9DBFE2E86C4D0008B96E6 /* BFData.c */; };
 		E4C9DC0B2E86C6F4008B96E6 /* libBoxFoundation.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E43B07AD2E76C3C600F4A321 /* libBoxFoundation.a */; };
 		E4C9DC0F2E86C754008B96E6 /* test_BFData.c in Sources */ = {isa = PBXBuildFile; fileRef = E4C9DC0E2E86C754008B96E6 /* test_BFData.c */; };
+		E4C9DC112E86F270008B96E6 /* BFConfig.h in Headers */ = {isa = PBXBuildFile; fileRef = E4C9DC102E86F270008B96E6 /* BFConfig.h */; };
 		E4F1D6EE2E79BC43009A2E75 /* shared_array.c in Sources */ = {isa = PBXBuildFile; fileRef = E43B07942E76BFB400F4A321 /* shared_array.c */; };
 		E4F1D6EF2E79BC4F009A2E75 /* libBoxFoundation.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E43B07AD2E76C3C600F4A321 /* libBoxFoundation.a */; };
 		E4F1D6FD2E79BDBB009A2E75 /* shared_dictionary.c in Sources */ = {isa = PBXBuildFile; fileRef = E43B07952E76BFB400F4A321 /* shared_dictionary.c */; };
@@ -493,6 +494,7 @@
 		E4C9DBFE2E86C4D0008B96E6 /* BFData.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = BFData.c; sourceTree = "<group>"; };
 		E4C9DC042E86C6CF008B96E6 /* test_BFData */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test_BFData; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4C9DC0E2E86C754008B96E6 /* test_BFData.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = test_BFData.c; sourceTree = "<group>"; };
+		E4C9DC102E86F270008B96E6 /* BFConfig.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BFConfig.h; sourceTree = "<group>"; };
 		E4F1D6E52E79BC07009A2E75 /* sharedArray */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = sharedArray; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4F1D6F42E79BD90009A2E75 /* sharedDictionary */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = sharedDictionary; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4F1D7032E79BE0F009A2E75 /* benchSharedDictionary */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = benchSharedDictionary; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -750,6 +752,7 @@
 		E43B08232E77048100F4A321 /* include */ = {
 			isa = PBXGroup;
 			children = (
+				E4C9DC102E86F270008B96E6 /* BFConfig.h */,
 				E4C9DBFC2E86C4B0008B96E6 /* BFData.h */,
 				E4F1D7872E79F14D009A2E75 /* BFFileManager.h */,
 				E43B08132E77048100F4A321 /* BFAead.h */,
@@ -1002,6 +1005,7 @@
 				E43B08302E77048100F4A321 /* BFNetwork.h in Headers */,
 				E43B08312E77048100F4A321 /* BFSharedDictionary.h in Headers */,
 				E43B08322E77048100F4A321 /* BFSharedArray.h in Headers */,
+				E4C9DC112E86F270008B96E6 /* BFConfig.h in Headers */,
 				E43B08332E77048100F4A321 /* BFUdp.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

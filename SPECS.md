@@ -778,6 +778,29 @@ In `~/.box/boxd.toml`:
 - Storage: local filesystem plus a binary B‑tree index. Pluggable backends may use BSD `libdb`, LMDB, or an equivalent portable store.
  - OS: Linux/macOS; IPv6 preferred, IPv4 supported.
 
+14.1 Storage layers (implementation roadmap)
+
+- `BFFileManager` — abstraction minimale des I/O fichier/
+  - Crée/Supprime fichiers et répertoires depuis une racine déterminée.
+  - Lit/écrit des contenus via `BFData` (lecture binaire, écriture atomique temporaire + rename).
+  - Expose des helpers pour lister un dossier, vérifier l’existence, obtenir tampons `BFData`, tout en encapsulant les détails POSIX/Windows.
+
+- `BFStorageManager` — logique métier Box au-dessus de `BFFileManager`.
+  - Organise la hiérarchie `{storage_root}/queues/<queue>/` (par défaut `~/.box/data/queues` configurable via `boxd.toml`).
+  - API envisagée :
+    - `Put(queue, data, metadata)` → écrit un fichier (ex. `<timestamp>-<digest>.msg`) et retourne un `messageId` explicite.
+    - `GetLast(queue)` → rend la dernière entrée (ordre par horodatage/id).
+    - `GetById(queue, messageId)` → lecture ciblée.
+    - Extensions futures : `Delete`, `List`, index B-tree pour recherche.
+  - Raccroche les index (B-tree) dans une version ultérieure (prévoir un emplacement type `{queue}/index.db`).
+  - Stratégie concurrente : décider si `BFStorageManager` sérialise en interne (mutex) ou si `boxd` séquence les appels.
+
+- Tests :
+  - `test_BFFileManager` → création/suppression/nested directories, lecture d’un fichier, comportement erreur.
+  - `test_BFStorageManager` → `Put`/`Get`, génération d’id, lecture d’un `queueKey` inexistant, intégration basique.
+
+- À long terme : abstraction plugable pour changer de backend (LMDB) sans impacter `BFStorageManager`.
+
 15. Open Questions / TBD
 
 - NAT traversal/STUN/ICE: out of scope for MVP; evaluate later.
