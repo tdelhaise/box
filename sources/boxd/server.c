@@ -610,12 +610,11 @@ int main(int argc, char **argv) {
     // 3) Pas de TLS: échanges v1 en UDP clair par défaut
 
     // Envoyer un HELLO applicatif (v1) en UDP clair avec statut OK et versions supportées
-    uint8_t  transmitBuffer[BF_MACRO_MAX_DATAGRAM_SIZE];
+    BFData   transmitFrame        = BFDataCreate(0U);
     uint64_t requestId            = 1;
     uint16_t supportedVersions[1] = {1};
-    int      packed               = BFV1PackHello(transmitBuffer, sizeof(transmitBuffer), requestId, BFV1_STATUS_OK, supportedVersions, 1);
-    if (packed > 0) {
-        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)packed, (struct sockaddr *)&peer, peerLength);
+    if (BFV1PackHelloToData(&transmitFrame, requestId, BFV1_STATUS_OK, supportedVersions, 1) == BF_OK) {
+        (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&peer, peerLength);
     }
 
     // 4) Boucle simple: attendre STATUS (ping) et répondre STATUS (pong)
@@ -659,29 +658,26 @@ int main(int argc, char **argv) {
                 }
                 if (hasCompatible) {
                     uint16_t supported[1] = {1};
-                    int      responseSize = BFV1PackHello(transmitBuffer, sizeof(transmitBuffer), receivedReqId + 1, BFV1_STATUS_OK, supported, 1);
-                    if (responseSize > 0) {
-                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
+                    if (BFV1PackHelloToData(&transmitFrame, receivedReqId + 1, BFV1_STATUS_OK, supported, 1) == BF_OK) {
+                        (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
                     }
                 } else {
-                    int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "unsupported-version");
-                    if (responseSize > 0) {
-                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
+                    if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "unsupported-version") == BF_OK) {
+                        (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
                     }
                 }
             } else {
-                int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-hello");
-                if (responseSize > 0) {
-                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
+                if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-hello") == BF_OK) {
+                    (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
                 }
             }
             break;
         }
         case BFV1_STATUS: {
             BFLog("boxd: STATUS reçu (%u octets)", (unsigned)payloadLength);
-            int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_OK, "pong");
-            if (responseSize > 0)
-                (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
+            if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_OK, "pong") == BF_OK) {
+                (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
+            }
             break;
         }
         case BFV1_PUT: {
@@ -728,13 +724,13 @@ int main(int argc, char **argv) {
                 }
                 (void)BFSharedDictionarySet(store, queueKey, object);
                 BFMemoryRelease(queueKey);
-                int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_OK, "stored");
-                if (responseSize > 0)
-                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
+                if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_OK, "stored") == BF_OK) {
+                    (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
+                }
             } else {
-                int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-put");
-                if (responseSize > 0)
-                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
+                if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-put") == BF_OK) {
+                    (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
+                }
             }
             break;
         }
@@ -750,27 +746,26 @@ int main(int argc, char **argv) {
                 queueKey[queuePathLength] = '\0';
                 StoredObject *object      = (StoredObject *)BFSharedDictionaryGet(store, queueKey);
                 if (object) {
-                    int responseSize = BFV1PackPut(transmitBuffer, sizeof(transmitBuffer), receivedReqId + 1, queueKey, object->contentType, object->data, object->dataLength);
-                    if (responseSize > 0)
-                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
+                    if (BFV1PackPutToData(&transmitFrame, receivedReqId + 1, queueKey, object->contentType, object->data, object->dataLength) == BF_OK) {
+                        (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
+                    }
                 } else {
-                    int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "not-found");
-                    if (responseSize > 0)
-                        (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
+                    if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "not-found") == BF_OK) {
+                        (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
+                    }
                 }
                 BFMemoryRelease(queueKey);
             } else {
-                int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-get");
-                if (responseSize > 0)
-                    (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
+                if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-get") == BF_OK) {
+                    (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
+                }
             }
             break;
         }
         default: {
             BFLog("boxd: commande inconnue: %u", command);
-            int responseSize = BFV1PackStatus(transmitBuffer, sizeof(transmitBuffer), BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "unknown-command");
-            if (responseSize > 0) {
-                (void)BFUdpSend(udpSocket, transmitBuffer, (size_t)responseSize, (struct sockaddr *)&from, fromLength);
+            if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "unknown-command") == BF_OK) {
+                (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
             }
             break;
         }
@@ -779,6 +774,7 @@ int main(int argc, char **argv) {
 
 cleanup:
     close(udpSocket);
+    BFDataReset(&transmitFrame);
 #if defined(__unix__) || defined(__APPLE__)
     globalRunning = 0;
     if (adminListenSocket >= 0) {
