@@ -10,9 +10,9 @@ Status (high level)
 
 Immediate TODOs (near-term)
 1) Protocol framing v1 in C (Issue #13)
-   - [ ] Add v1 header (magic 'B', version, length, command, request_id) alongside current simple header.
-   - [ ] Gate via feature flag; update tests in `test/test_BFBoxProtocol.c`.
-   - [ ] Exit: round‑trip HELLO over UDP (unencrypted, temporary) using the new frame; tests green.
+   - [x] Add v1 header (magic 'B', version, length, command, request_id) alongside current simple header.
+   - [x] Gate via feature flag; update tests in `test/test_BFBoxProtocol.c`.
+   - [ ] Exit: round‑trip HELLO over UDP (unencrypted, temporary) using the new frame; tests green (toggle exists but default encore simple; valider workflow complet + doc).
 
 2) Config + Non‑root enforcement + Admin channel (skeleton) (Issue #14)
    - [x] Enforce non‑root startup on Unix/macOS; parse `~/.box/boxd.toml` for port/log settings; expose `box admin status` over the Unix socket.

@@ -1,3 +1,4 @@
+#include "BFBoxProtocol.h"
 #include "BFBoxProtocolV1.h"
 #include "BFCommon.h"
 #include "BFData.h"
@@ -23,6 +24,7 @@ typedef struct ClientNetworkOptions {
     const char *preShareKeyIdentity;
     const char *preShareKeyAscii;
     const char *transport;
+    const char *protocol; // "simple" or "v1"
 } ClientNetworkOptions;
 
 typedef struct ClientAction {
@@ -37,13 +39,13 @@ typedef struct ClientAction {
 static void ClientPrintUsage(const char *program) {
     fprintf(stderr,
             "Usage: %s [address] [port] [--port <udp>] [--put <queue>[:type] <data>] [--get <queue>]\n"
-            "          [--transport <clear|noise>] [--pre-share-key <ascii>]\n"
+            "          [--transport <clear|noise>] [--protocol <simple|v1>] [--pre-share-key <ascii>]\n"
             "          [--version] [--help]\n"
             "       | %s admin status    # query local daemon status (Unix)\n\n"
             "Examples:\n"
             "  %s 127.0.0.1 9988 --put /message:text/plain \"Hello\"\n"
             "  %s 127.0.0.1 --port 9988 --get /message\n"
-            "  %s --transport noise --pre-share-key devsecret\n"
+            "  %s --transport noise --protocol v1 --pre-share-key devsecret\n"
             "  %s admin status\n",
             program, program, program, program, program, program);
 }
@@ -96,6 +98,8 @@ static void ClientParseArgs(int argc, char **argv, ClientNetworkOptions *outOpti
             outAction->queue = argv[++argumentIndex];
         } else if (strcmp(arg, "--transport") == 0 && argumentIndex + 1 < argc) {
             outOptions->transport = argv[++argumentIndex];
+        } else if (strcmp(arg, "--protocol") == 0 && argumentIndex + 1 < argc) {
+            outOptions->protocol = argv[++argumentIndex];
         } else if (strcmp(arg, "--pre-share-key") == 0 && argumentIndex + 1 < argc) {
             outOptions->preShareKeyAscii = argv[++argumentIndex];
         } else if (arg[0] != '-') {
@@ -212,6 +216,18 @@ int main(int argc, char **argv) {
     if (udpSocket < 0) {
         BFFatal("BFUdpClient");
     }
+
+    int enableProtocolV1 = 0;
+    if (options.protocol) {
+        if (strcmp(options.protocol, "v1") == 0) {
+            enableProtocolV1 = 1;
+        } else if (strcmp(options.protocol, "simple") == 0) {
+            enableProtocolV1 = 0;
+        } else {
+            BFError("box: protocole inconnu: %s (attendu simple|v1)", options.protocol);
+        }
+    }
+    BFProtocolSetV1Enabled(enableProtocolV1);
 
     // 1) Envoyer HELLO (v1) en UDP clair avec versions supportées
     BFData   transmitFrame        = BFDataCreate(0U);

@@ -90,6 +90,12 @@ int BFConfigLoadServer(const char *filePath, BFServerConfig *outConfig) {
             outConfig->hasLogTarget                                = 1;
             continue;
         }
+        if (strcmp(key, "protocol") == 0) {
+            strncpy(outConfig->protocol, val, sizeof(outConfig->protocol) - 1);
+            outConfig->protocol[sizeof(outConfig->protocol) - 1] = '\0';
+            outConfig->hasProtocol                               = 1;
+            continue;
+        }
         if (strcmp(key, "transport") == 0) {
             strncpy(outConfig->transportGeneral, val, sizeof(outConfig->transportGeneral) - 1);
             outConfig->transportGeneral[sizeof(outConfig->transportGeneral) - 1] = '\0';

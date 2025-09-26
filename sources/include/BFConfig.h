@@ -15,6 +15,8 @@ typedef struct BFServerConfig {
     BFLogLevel logLevel;
     int        hasLogTarget;
     char       logTarget[128];
+    int        hasProtocol;
+    char       protocol[16]; // "simple"|"v1"
     // Transport toggles (smoke and per-operation)
     int  hasTransportGeneral;
     char transportGeneral[16]; // "clear"|"noise"

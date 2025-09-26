@@ -69,14 +69,16 @@ Sortie simplifiée des aides intégrées:
 Client `box`:
 ```
 Usage: box [address] [port] [--port <udp>] [--put <queue>[:type] <data>] [--get <queue>]
+          [--transport <clear|noise>] [--protocol <simple|v1>] [--pre-share-key <ascii>]
           [--version] [--help]
 ```
 
 Serveur `boxd`:
 ```
 Usage: boxd [--port <udp>] [--log-level <lvl>] [--log-target <tgt>]
-          [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]
-          [--pre-share-key <ascii>] [--version] [--help]
+          [--protocol <simple|v1>] [--cert <pem>] [--key <pem>]
+          [--pre-share-key-identity <id>] [--pre-share-key <ascii>]
+          [--version] [--help]
 ```
 
 ### Exemple de bout-en-bout (PreShareKey)
@@ -113,6 +115,11 @@ Fichier optionnel: `~/.box/boxd.toml` (Unix/macOS). Clés reconnues:
 port = 12567
 log_level = "info"    # trace|debug|info|warn|error
 log_target = "syslog"  # stderr|syslog|oslog|eventlog|file:/path
+protocol = "simple"    # simple|v1
+transport = "clear"    # clear|noise (général)
+transport_status = "clear"
+transport_put = "clear"
+transport_get = "clear"
 ```
 
 Priorité des sources (port, niveau et cible de log):

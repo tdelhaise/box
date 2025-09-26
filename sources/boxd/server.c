@@ -1,3 +1,4 @@
+#include "BFBoxProtocol.h"
 #include "BFBoxProtocolV1.h"
 #include "BFCommon.h"
 #include "BFConfig.h"
@@ -32,6 +33,7 @@ typedef struct ServerNetworkOptions {
     const char *preShareKeyIdentity;
     const char *preShareKeyAscii;
     const char *transport;
+    const char *protocol;
     uint16_t    port; // optional CLI override
     int         hasLogLevel;
     BFLogLevel  commandLineLogLevel;
@@ -188,13 +190,14 @@ static void destroyStoredObject(void *pointer) {
 static void ServerPrintUsage(const char *program) {
     fprintf(stderr,
             "Usage: %s [--port <udp>] [--log-level <lvl>] [--log-target <tgt>]\n"
-            "          [--cert <pem>] [--key <pem>] [--pre-share-key-identity <id>]\n"
-            "          [--pre-share-key <ascii>] [--version] [--help]\n\n"
+            "          [--protocol <simple|v1>] [--cert <pem>] [--key <pem>]\n"
+            "          [--pre-share-key-identity <id>] [--pre-share-key <ascii>] [--version] [--help]\n\n"
             "Options:\n"
             "  --port <udp>           UDP port to bind (default %u)\n"
             "  --log-level <lvl>      trace|debug|info|warn|error (default info)\n"
             "  --log-target <tgt>     override default platform target (Windows=eventlog, "
             "macOS=oslog, Unix=syslog, else=stderr); also accepts file:<path>\n"
+            "  --protocol <mode>      simple|v1 (default simple)\n"
             "\n"
             "Notes:\n"
             "  - Refuses to run as root (Unix/macOS).\n"
@@ -262,6 +265,8 @@ static void ServerParseArgs(int argc, char **argv, ServerNetworkOptions *outOpti
             outOptions->preShareKeyAscii = argv[++argumentIndex];
         } else if (strcmp(arg, "--transport") == 0 && argumentIndex + 1 < argc) {
             outOptions->transport = argv[++argumentIndex];
+        } else if (strcmp(arg, "--protocol") == 0 && argumentIndex + 1 < argc) {
+            outOptions->protocol = argv[++argumentIndex];
         } else {
             BFError("Unknown option: %s", arg);
             ServerPrintUsage(argv[0]);
@@ -439,6 +444,9 @@ int main(int argc, char **argv) {
             if (!options.preShareKeyAscii && serverConfigurationLoaded.hasPreShareKeyAscii) {
                 options.preShareKeyAscii = serverConfigurationLoaded.preShareKeyAscii;
             }
+            if (!options.protocol && serverConfigurationLoaded.hasProtocol) {
+                options.protocol = serverConfigurationLoaded.protocol;
+            }
         }
     }
 #endif
@@ -446,9 +454,21 @@ int main(int argc, char **argv) {
     // Log startup parameters (avoid printing secrets)
     char targetName[256] = {0};
     BFLoggerGetTarget(targetName, sizeof(targetName));
-    const char *levelName = BFLoggerLevelName(BFLoggerGetLevel());
+    const char *levelName        = BFLoggerLevelName(BFLoggerGetLevel());
+    const char *protocolMode     = options.protocol ? options.protocol : "simple";
+    int         enableProtocolV1 = 0;
+    if (strcmp(protocolMode, "v1") == 0) {
+        enableProtocolV1 = 1;
+    } else if (strcmp(protocolMode, "simple") == 0) {
+        enableProtocolV1 = 0;
+    } else {
+        BFWarn("boxd: protocole inconnu: %s (attendu simple|v1) — utilisation du mode simple", protocolMode);
+        protocolMode     = "simple";
+        enableProtocolV1 = 0;
+    }
+    BFProtocolSetV1Enabled(enableProtocolV1);
     BFLog("boxd: start port=%u portOrigin=%s logLevel=%s logTarget=%s config=%s cert=%s key=%s "
-          "pskId=%s psk=%s transport=%s",
+          "pskId=%s psk=%s transport=%s protocol=%s",
           (unsigned)serverPort, portOrigin, levelName, targetName,
           (
 #if defined(__unix__) || defined(__APPLE__)
@@ -457,7 +477,7 @@ int main(int argc, char **argv) {
               "absent"
 #endif
               ),
-          options.certificateFile ? options.certificateFile : "(none)", options.keyFile ? options.keyFile : "(none)", options.preShareKeyIdentity ? options.preShareKeyIdentity : "(none)", options.preShareKeyAscii ? "[set]" : "(unset)", options.transport ? options.transport : "(default)");
+          options.certificateFile ? options.certificateFile : "(none)", options.keyFile ? options.keyFile : "(none)", options.preShareKeyIdentity ? options.preShareKeyIdentity : "(none)", options.preShareKeyAscii ? "[set]" : "(unset)", options.transport ? options.transport : "(default)", protocolMode);
 
     // Create in-memory store for demo
     BFSharedDictionary *store = BFSharedDictionaryCreate(destroyStoredObject);
