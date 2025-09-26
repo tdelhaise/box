@@ -10,7 +10,9 @@
 #include "BFVersion.h"
 
 #include <arpa/inet.h>
+#include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
@@ -41,6 +43,135 @@ typedef struct StoredObject {
     uint8_t *data;
     uint32_t dataLength;
 } StoredObject;
+
+typedef struct ServerAdminRequest {
+    int    clientSocketDescriptor;
+    size_t requestLength;
+    char   requestBuffer[128];
+} ServerAdminRequest;
+
+typedef struct ServerAdminThreadContext {
+    int           listenSocketDescriptor;
+    BFRunloop    *runloop;
+    volatile int *runningFlagPointer;
+} ServerAdminThreadContext;
+
+typedef enum ServerEventType {
+    ServerEventTick         = 1000,
+    ServerEventAdminStatus  = 1001
+} ServerEventType;
+
+static void ServerAdminRequestDestroy(void *pointer) {
+    if (!pointer) {
+        return;
+    }
+    ServerAdminRequest *adminRequest = (ServerAdminRequest *)pointer;
+    if (adminRequest->clientSocketDescriptor >= 0) {
+        close(adminRequest->clientSocketDescriptor);
+        adminRequest->clientSocketDescriptor = -1;
+    }
+    BFMemoryRelease(adminRequest);
+}
+
+static int ServerAdminWriteAll(int socketDescriptor, const char *buffer, size_t length) {
+    size_t totalWritten = 0;
+    while (totalWritten < length) {
+        ssize_t written = write(socketDescriptor, buffer + totalWritten, length - totalWritten);
+        if (written < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return BF_ERR;
+        }
+        if (written == 0) {
+            return BF_ERR;
+        }
+        totalWritten += (size_t)written;
+    }
+    return BF_OK;
+}
+
+static void *ServerAdminListenerThread(void *contextPointer) {
+    ServerAdminThreadContext *threadContext = (ServerAdminThreadContext *)contextPointer;
+    if (!threadContext) {
+        return NULL;
+    }
+    const size_t bufferCapacity = sizeof(((ServerAdminRequest *)0)->requestBuffer);
+    while (threadContext->runningFlagPointer && *(threadContext->runningFlagPointer)) {
+        int clientSocketDescriptor = accept(threadContext->listenSocketDescriptor, NULL, NULL);
+        if (clientSocketDescriptor < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (!threadContext->runningFlagPointer || !*(threadContext->runningFlagPointer)) {
+                break;
+            }
+            if (errno == EBADF) {
+                break;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                continue;
+            }
+            BFWarn("boxd: admin accept failed (%d)", errno);
+            continue;
+        }
+
+        int existingFlags = fcntl(clientSocketDescriptor, F_GETFL, 0);
+        if (existingFlags >= 0) {
+            (void)fcntl(clientSocketDescriptor, F_SETFL, existingFlags & ~O_NONBLOCK);
+        }
+
+        char   localRequestBuffer[sizeof(((ServerAdminRequest *)0)->requestBuffer)];
+        size_t totalRead = 0;
+        memset(localRequestBuffer, 0, sizeof(localRequestBuffer));
+        while (totalRead < bufferCapacity - 1U) {
+            ssize_t readCount = read(clientSocketDescriptor, localRequestBuffer + totalRead, (bufferCapacity - 1U) - totalRead);
+            if (readCount < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                break;
+            }
+            if (readCount == 0) {
+                break;
+            }
+            totalRead += (size_t)readCount;
+            if (memchr(localRequestBuffer, '\n', totalRead) != NULL) {
+                break;
+            }
+        }
+
+        if (totalRead == 0) {
+            close(clientSocketDescriptor);
+            continue;
+        }
+        if (totalRead >= bufferCapacity) {
+            totalRead = bufferCapacity - 1U;
+        }
+        localRequestBuffer[totalRead] = '\0';
+
+        ServerAdminRequest *adminRequest = (ServerAdminRequest *)BFMemoryAllocate(sizeof(ServerAdminRequest));
+        if (!adminRequest) {
+            BFWarn("boxd: unable to allocate admin request");
+            close(clientSocketDescriptor);
+            continue;
+        }
+        memset(adminRequest, 0, sizeof(ServerAdminRequest));
+        adminRequest->clientSocketDescriptor = clientSocketDescriptor;
+        adminRequest->requestLength          = totalRead;
+        memcpy(adminRequest->requestBuffer, localRequestBuffer, totalRead + 1U);
+
+        BFRunloopEvent adminEvent = {
+            .type    = ServerEventAdminStatus,
+            .payload = adminRequest,
+            .destroy = ServerAdminRequestDestroy,
+        };
+        if (!threadContext->runloop || BFRunloopPost(threadContext->runloop, &adminEvent) != BF_OK) {
+            ServerAdminRequestDestroy(adminRequest);
+        }
+    }
+    return NULL;
+}
 
 static void destroyStoredObject(void *pointer) {
     if (!pointer)
@@ -156,11 +287,37 @@ void installSignalHandler(void) {
 }
 
 // Runloop handlers (placeholders for now)
-typedef enum ServerEventType { ServerEventTick = 1000 } ServerEventType;
-
 static void ServerMainHandler(BFRunloop *runloop, BFRunloopEvent *event, void *context) {
     (void)context;
     if (event->type == BFRunloopEventStop) {
+        return;
+    }
+    if (event->type == ServerEventAdminStatus) {
+        ServerAdminRequest *adminRequest = (ServerAdminRequest *)event->payload;
+        if (!adminRequest) {
+            return;
+        }
+        const char *statusSubstring = strstr(adminRequest->requestBuffer, "status");
+        if (statusSubstring != NULL) {
+            char responseBuffer[256];
+            int  responseSize = snprintf(responseBuffer, sizeof(responseBuffer), "{\"status\":\"ok\",\"version\":\"%s\"}\n", BFVersionString());
+            if (responseSize < 0 || (size_t)responseSize >= sizeof(responseBuffer)) {
+                responseSize = (int)strlen("{\"status\":\"ok\",\"version\":\"unknown\"}\n");
+                strcpy(responseBuffer, "{\"status\":\"ok\",\"version\":\"unknown\"}\n");
+            }
+            if (ServerAdminWriteAll(adminRequest->clientSocketDescriptor, responseBuffer, (size_t)responseSize) != BF_OK) {
+                BFWarn("boxd: admin status write failed");
+            }
+        } else {
+            const char *messageText = "unknown-command\n";
+            if (ServerAdminWriteAll(adminRequest->clientSocketDescriptor, messageText, strlen(messageText)) != BF_OK) {
+                BFWarn("boxd: admin command write failed");
+            }
+        }
+        if (adminRequest->clientSocketDescriptor >= 0) {
+            close(adminRequest->clientSocketDescriptor);
+            adminRequest->clientSocketDescriptor = -1;
+        }
         return;
     }
     if (event->type == ServerEventTick) {
@@ -311,7 +468,12 @@ int main(int argc, char **argv) {
     }
 
     // Admin channel (Unix domain socket, non-bloquant, minimal skeleton)
-    int adminListenSocket = -1;
+    int                      adminListenSocket = -1;
+    BFRunloop               *adminRunloop      = NULL;
+    ServerAdminThreadContext adminThreadContext;
+    pthread_t                adminThread;
+    int                      adminThreadStarted = 0;
+    memset(&adminThreadContext, 0, sizeof(adminThreadContext));
 #if defined(__unix__) || defined(__APPLE__)
     if (homeDirectory && *homeDirectory) {
         char adminSocketPath[512];
@@ -327,15 +489,54 @@ int main(int argc, char **argv) {
             if (bind(adminListenSocket, (struct sockaddr *)&adminAddress, sizeof(adminAddress)) == 0) {
                 (void)chmod(adminSocketPath, 0600);
                 (void)listen(adminListenSocket, 4);
-                // Non-blocking accept
-                int flags = fcntl(adminListenSocket, F_GETFL, 0);
-                if (flags >= 0)
-                    (void)fcntl(adminListenSocket, F_SETFL, flags | O_NONBLOCK);
                 BFLog("boxd: admin channel ready at %s", adminSocketPath);
+                adminThreadContext.listenSocketDescriptor = adminListenSocket;
+                adminThreadContext.runningFlagPointer     = &globalRunning;
+                adminRunloop                              = BFRunloopCreate();
+                if (!adminRunloop) {
+                    BFWarn("boxd: unable to create admin runloop");
+                    close(adminListenSocket);
+                    adminListenSocket = -1;
+                    unlink(adminSocketPath);
+                    adminThreadContext.listenSocketDescriptor = -1;
+                } else if (BFRunloopSetHandler(adminRunloop, ServerMainHandler, NULL) != BF_OK) {
+                    BFWarn("boxd: unable to configure admin runloop");
+                    BFRunloopFree(adminRunloop);
+                    adminRunloop = NULL;
+                    close(adminListenSocket);
+                    adminListenSocket = -1;
+                    unlink(adminSocketPath);
+                    adminThreadContext.listenSocketDescriptor = -1;
+                } else if (BFRunloopStart(adminRunloop) != BF_OK) {
+                    BFWarn("boxd: unable to start admin runloop");
+                    BFRunloopFree(adminRunloop);
+                    adminRunloop = NULL;
+                    close(adminListenSocket);
+                    adminListenSocket = -1;
+                    unlink(adminSocketPath);
+                    adminThreadContext.listenSocketDescriptor = -1;
+                } else {
+                    adminThreadContext.runloop = adminRunloop;
+                    if (pthread_create(&adminThread, NULL, ServerAdminListenerThread, &adminThreadContext) == 0) {
+                        adminThreadStarted = 1;
+                    } else {
+                        BFWarn("boxd: unable to start admin listener thread");
+                        BFRunloopPostStop(adminRunloop);
+                        BFRunloopJoin(adminRunloop);
+                        BFRunloopFree(adminRunloop);
+                        adminRunloop = NULL;
+                        adminThreadContext.runloop = NULL;
+                        close(adminListenSocket);
+                        adminListenSocket = -1;
+                        unlink(adminSocketPath);
+                        adminThreadContext.listenSocketDescriptor = -1;
+                    }
+                }
             } else {
                 BFError("boxd: failed to bind admin channel");
                 close(adminListenSocket);
                 adminListenSocket = -1;
+                adminThreadContext.listenSocketDescriptor = -1;
             }
         }
     }
@@ -400,8 +601,7 @@ int main(int argc, char **argv) {
             }
         }
         BFNetworkClose(networkConnection);
-        close(udpSocket);
-        return 0;
+        goto cleanup;
     }
 
     // 3) Pas de TLS: échanges v1 en UDP clair par défaut
@@ -418,28 +618,6 @@ int main(int argc, char **argv) {
     // 4) Boucle simple: attendre STATUS (ping) et répondre STATUS (pong)
     int consecutiveErrors = 0;
     while (globalRunning) {
-        // Handle one admin connection if pending (non-blocking)
-#if defined(__unix__) || defined(__APPLE__)
-        if (adminListenSocket >= 0) {
-            int adminClient = accept(adminListenSocket, NULL, NULL);
-            if (adminClient >= 0) {
-                char    requestBuffer[128] = {0};
-                ssize_t requestSize        = read(adminClient, requestBuffer, sizeof(requestBuffer));
-                if (requestSize > 0) {
-                    // Trim and check for "status"
-                    if (strstr(requestBuffer, "status") != NULL) {
-                        char response[256];
-                        snprintf(response, sizeof(response), "{\"status\":\"ok\",\"version\":\"%s\"}\n", BFVersionString());
-                        (void)write(adminClient, response, strlen(response));
-                    } else {
-                        const char *messageText = "unknown-command\n";
-                        (void)write(adminClient, messageText, strlen(messageText));
-                    }
-                }
-                close(adminClient);
-            }
-        }
-#endif
         struct sockaddr_storage from       = {0};
         socklen_t               fromLength = sizeof(from);
         int                     readCount  = (int)BFUdpReceive(udpSocket, receiveBuffer, sizeof(receiveBuffer), (struct sockaddr *)&from, &fromLength);
@@ -596,10 +774,24 @@ int main(int argc, char **argv) {
         }
     }
 
+cleanup:
     close(udpSocket);
 #if defined(__unix__) || defined(__APPLE__)
-    if (adminListenSocket >= 0)
+    globalRunning = 0;
+    if (adminListenSocket >= 0) {
         close(adminListenSocket);
+        adminListenSocket = -1;
+        adminThreadContext.listenSocketDescriptor = -1;
+    }
+    if (adminThreadStarted) {
+        (void)pthread_join(adminThread, NULL);
+    }
+    if (adminRunloop) {
+        BFRunloopPostStop(adminRunloop);
+        BFRunloopJoin(adminRunloop);
+        BFRunloopFree(adminRunloop);
+        adminRunloop = NULL;
+    }
 #endif
     return 0;
 }
