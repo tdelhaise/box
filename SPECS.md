@@ -42,6 +42,13 @@ Unlike traditional cloud offerings, Box is designed to run on user-controlled ha
 - Authorization: Servers only accept requests from clients that appear in the Location Service as registered for the relevant User UUID.
 - Storage: Server persists objects per queue, keyed by metadata (time, content digest, optional IDs). Storage is pluggable (filesystem by default).
 
+4.1 Daemon Execution Model
+
+- `boxd` runs four cooperative threads: the main thread owns the StorageManager and LocationManager runloop; a network input thread receives datagrams, performs framing/Noise validation, and posts semantic events to the main loop; a network output thread serializes transmission requests; and an admin thread services the Unix-domain control socket.
+- All four threads execute BFRunloop instances so work is posted asynchronously; the main loop is the sole owner of stateful subsystems (storage, ACLs, configuration) to keep locking narrow.
+- Near-term follow-up: finish wiring the existing BFRunloop scaffolding so the main, network input, and network output runloops are started during daemon boot and exchange events for simple UDP v1 traffic.
+- Mid-term follow-up: extend BFRunloop with per-platform reactor backends (kqueue on BSD/macOS, epoll on Linux, IOCP or WSAPoll on Windows) so readiness notifications replace blocking I/O without introducing third-party dependencies.
+
 5. Security and Identity
 
 5.1 Identities

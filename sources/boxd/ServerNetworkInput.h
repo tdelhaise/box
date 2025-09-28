@@ -8,7 +8,8 @@
 #ifndef ServerNetworkInput_h
 #define ServerNetworkInput_h
 
-#include <stdio.h>
+#include "BFRunloop.h"
+#include "ServerRuntime.h"
 
 void ServerNetworkInputHandler(BFRunloop *runloop, BFRunloopEvent *event, void *context);
 

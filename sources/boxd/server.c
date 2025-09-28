@@ -11,6 +11,9 @@
 #include "BFVersion.h"
 #include "ServerEventType.h"
 #include "ServerAdmin.h"
+#include "ServerNetworkInput.h"
+#include "ServerNetworkOutput.h"
+#include "ServerRuntime.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -60,6 +63,404 @@ static void destroyStoredObjectCallback(void *pointer) {
     if (object->data)
         BFMemoryRelease(object->data);
     BFMemoryRelease(object);
+}
+
+ServerNetworkDatagram *ServerNetworkDatagramCreate(const uint8_t *datagramBytes,
+                                                   size_t         datagramLength,
+                                                   const struct sockaddr_storage *peerAddress,
+                                                   socklen_t      peerAddressLength) {
+    ServerNetworkDatagram *datagram = (ServerNetworkDatagram *)BFMemoryAllocate(sizeof(ServerNetworkDatagram));
+    if (!datagram) {
+        return NULL;
+    }
+    memset(datagram, 0, sizeof(ServerNetworkDatagram));
+    if (peerAddress && peerAddressLength > 0) {
+        datagram->peerAddress       = *peerAddress;
+        datagram->peerAddressLength = peerAddressLength;
+    }
+    datagram->datagramLength = datagramLength;
+    if (datagramLength > 0) {
+        datagram->datagramBytes = (uint8_t *)BFMemoryAllocate(datagramLength);
+        if (!datagram->datagramBytes) {
+            BFMemoryRelease(datagram);
+            return NULL;
+        }
+        memcpy(datagram->datagramBytes, datagramBytes, datagramLength);
+    } else {
+        datagram->datagramBytes = NULL;
+    }
+    return datagram;
+}
+
+void ServerNetworkDatagramDestroy(void *payloadPointer) {
+    if (!payloadPointer) {
+        return;
+    }
+    ServerNetworkDatagram *datagram = (ServerNetworkDatagram *)payloadPointer;
+    if (datagram->datagramBytes) {
+        BFMemoryRelease(datagram->datagramBytes);
+        datagram->datagramBytes = NULL;
+    }
+    BFMemoryRelease(datagram);
+}
+
+ServerNetworkSendRequest *ServerNetworkSendRequestCreate(const uint8_t *payloadBytes,
+                                                         size_t         payloadLength,
+                                                         const struct sockaddr_storage *peerAddress,
+                                                         socklen_t      peerAddressLength) {
+    ServerNetworkSendRequest *sendRequest = (ServerNetworkSendRequest *)BFMemoryAllocate(sizeof(ServerNetworkSendRequest));
+    if (!sendRequest) {
+        return NULL;
+    }
+    memset(sendRequest, 0, sizeof(ServerNetworkSendRequest));
+    if (peerAddress && peerAddressLength > 0) {
+        sendRequest->peerAddress       = *peerAddress;
+        sendRequest->peerAddressLength = peerAddressLength;
+    }
+    sendRequest->payloadLength = payloadLength;
+    if (payloadLength > 0) {
+        sendRequest->payloadBytes = (uint8_t *)BFMemoryAllocate(payloadLength);
+        if (!sendRequest->payloadBytes) {
+            BFMemoryRelease(sendRequest);
+            return NULL;
+        }
+        memcpy(sendRequest->payloadBytes, payloadBytes, payloadLength);
+    } else {
+        sendRequest->payloadBytes = NULL;
+    }
+    return sendRequest;
+}
+
+void ServerNetworkSendRequestDestroy(void *payloadPointer) {
+    if (!payloadPointer) {
+        return;
+    }
+    ServerNetworkSendRequest *sendRequest = (ServerNetworkSendRequest *)payloadPointer;
+    if (sendRequest->payloadBytes) {
+        BFMemoryRelease(sendRequest->payloadBytes);
+        sendRequest->payloadBytes = NULL;
+    }
+    BFMemoryRelease(sendRequest);
+}
+
+ServerNoisePlaintext *ServerNoisePlaintextCreate(const uint8_t *messageBytes, size_t messageLength) {
+    ServerNoisePlaintext *plaintext = (ServerNoisePlaintext *)BFMemoryAllocate(sizeof(ServerNoisePlaintext));
+    if (!plaintext) {
+        return NULL;
+    }
+    memset(plaintext, 0, sizeof(ServerNoisePlaintext));
+    plaintext->messageLength = messageLength;
+    if (messageLength > 0) {
+        plaintext->messageBytes = (uint8_t *)BFMemoryAllocate(messageLength);
+        if (!plaintext->messageBytes) {
+            BFMemoryRelease(plaintext);
+            return NULL;
+        }
+        memcpy(plaintext->messageBytes, messageBytes, messageLength);
+    } else {
+        plaintext->messageBytes = NULL;
+    }
+    return plaintext;
+}
+
+void ServerNoisePlaintextDestroy(void *payloadPointer) {
+    if (!payloadPointer) {
+        return;
+    }
+    ServerNoisePlaintext *plaintext = (ServerNoisePlaintext *)payloadPointer;
+    if (plaintext->messageBytes) {
+        BFMemoryRelease(plaintext->messageBytes);
+        plaintext->messageBytes = NULL;
+    }
+    BFMemoryRelease(plaintext);
+}
+
+static void ServerEnqueueSend(ServerRuntimeContext *runtimeContext,
+                              const uint8_t       *payloadBytes,
+                              size_t               payloadLength,
+                              const struct sockaddr_storage *peerAddress,
+                              socklen_t            peerAddressLength) {
+    if (!runtimeContext || !runtimeContext->networkOutputRunloop) {
+        return;
+    }
+    ServerNetworkSendRequest *sendRequest = ServerNetworkSendRequestCreate(payloadBytes, payloadLength, peerAddress, peerAddressLength);
+    if (!sendRequest) {
+        BFWarn("boxd: unable to allocate send request");
+        return;
+    }
+    BFRunloopEvent sendEvent = {
+        .type    = ServerEventNetworkOutputSend,
+        .payload = sendRequest,
+        .destroy = ServerNetworkSendRequestDestroy,
+    };
+    if (BFRunloopPost(runtimeContext->networkOutputRunloop, &sendEvent) != BF_OK) {
+        ServerNetworkSendRequestDestroy(sendRequest);
+    }
+}
+
+static void ServerHandlePlainDatagram(ServerRuntimeContext *runtimeContext, ServerNetworkDatagram *datagram) {
+    if (!runtimeContext || !datagram) {
+        return;
+    }
+
+    if (!runtimeContext->handshakeCompleted) {
+        uint16_t supportedVersions[1] = {1};
+        uint64_t requestIdentifier    = 1;
+        if (BFV1PackHelloToData(&runtimeContext->transmitBuffer, requestIdentifier, BFV1_STATUS_OK, supportedVersions, 1) == BF_OK) {
+            ServerEnqueueSend(runtimeContext,
+                              BFDataGetBytes(&runtimeContext->transmitBuffer),
+                              BFDataGetLength(&runtimeContext->transmitBuffer),
+                              &datagram->peerAddress,
+                              datagram->peerAddressLength);
+        }
+        runtimeContext->handshakeCompleted = 1;
+        return;
+    }
+
+    if (!datagram->datagramBytes || datagram->datagramLength == 0U) {
+        return;
+    }
+
+    uint32_t       commandIdentifier    = 0;
+    uint64_t       requestIdentifier    = 0;
+    const uint8_t *payloadPointer       = NULL;
+    uint32_t       payloadLength        = 0;
+    int            unpacked             = BFV1Unpack(datagram->datagramBytes,
+                                          (size_t)datagram->datagramLength,
+                                          &commandIdentifier,
+                                          &requestIdentifier,
+                                          &payloadPointer,
+                                          &payloadLength);
+    if (unpacked < 0) {
+        BFLog("boxd: trame v1 invalide");
+        return;
+    }
+
+    switch (commandIdentifier) {
+    case BFV1_HELLO: {
+        uint8_t  statusCode         = 0xFFU;
+        uint16_t versionBuffer[4]   = {0};
+        uint8_t  versionCount       = 0;
+        int      unpackedHello      = BFV1UnpackHello(payloadPointer,
+                                                payloadLength,
+                                                &statusCode,
+                                                versionBuffer,
+                                                (uint8_t)(sizeof(versionBuffer) / sizeof(versionBuffer[0])),
+                                                &versionCount);
+        if (unpackedHello == 0 && versionCount > 0U) {
+            int hasCompatibleVersion = 0;
+            for (uint8_t versionIndex = 0; versionIndex < versionCount; ++versionIndex) {
+                if (versionBuffer[versionIndex] == 1U) {
+                    hasCompatibleVersion = 1;
+                    break;
+                }
+            }
+            if (hasCompatibleVersion) {
+                uint16_t supportedVersions[1] = {1};
+                if (BFV1PackHelloToData(&runtimeContext->transmitBuffer,
+                                        requestIdentifier + 1U,
+                                        BFV1_STATUS_OK,
+                                        supportedVersions,
+                                        1) == BF_OK) {
+                    ServerEnqueueSend(runtimeContext,
+                                      BFDataGetBytes(&runtimeContext->transmitBuffer),
+                                      BFDataGetLength(&runtimeContext->transmitBuffer),
+                                      &datagram->peerAddress,
+                                      datagram->peerAddressLength);
+                }
+            } else {
+                if (BFV1PackStatusToData(&runtimeContext->transmitBuffer,
+                                         BFV1_STATUS,
+                                         requestIdentifier + 1U,
+                                         BFV1_STATUS_BAD_REQUEST,
+                                         "unsupported-version") == BF_OK) {
+                    ServerEnqueueSend(runtimeContext,
+                                      BFDataGetBytes(&runtimeContext->transmitBuffer),
+                                      BFDataGetLength(&runtimeContext->transmitBuffer),
+                                      &datagram->peerAddress,
+                                      datagram->peerAddressLength);
+                }
+            }
+        } else {
+            if (BFV1PackStatusToData(&runtimeContext->transmitBuffer,
+                                     BFV1_STATUS,
+                                     requestIdentifier + 1U,
+                                     BFV1_STATUS_BAD_REQUEST,
+                                     "bad-hello") == BF_OK) {
+                ServerEnqueueSend(runtimeContext,
+                                  BFDataGetBytes(&runtimeContext->transmitBuffer),
+                                  BFDataGetLength(&runtimeContext->transmitBuffer),
+                                  &datagram->peerAddress,
+                                  datagram->peerAddressLength);
+            }
+        }
+        break;
+    }
+    case BFV1_STATUS: {
+        BFLog("boxd: STATUS reçu (%u octets)", (unsigned)payloadLength);
+        if (BFV1PackStatusToData(&runtimeContext->transmitBuffer,
+                                 BFV1_STATUS,
+                                 requestIdentifier + 1U,
+                                 BFV1_STATUS_OK,
+                                 "pong") == BF_OK) {
+            ServerEnqueueSend(runtimeContext,
+                              BFDataGetBytes(&runtimeContext->transmitBuffer),
+                              BFDataGetLength(&runtimeContext->transmitBuffer),
+                              &datagram->peerAddress,
+                              datagram->peerAddressLength);
+        }
+        break;
+    }
+    case BFV1_PUT: {
+        BFLog("boxd: PUT %u octets", (unsigned)payloadLength);
+        const uint8_t *queuePathPointer   = NULL;
+        uint16_t       queuePathLength    = 0;
+        const uint8_t *contentTypePointer = NULL;
+        uint16_t       contentTypeLength  = 0;
+        const uint8_t *dataPointer        = NULL;
+        uint32_t       dataLength         = 0;
+        int unpackedPut = BFV1UnpackPut(payloadPointer,
+                                        payloadLength,
+                                        &queuePathPointer,
+                                        &queuePathLength,
+                                        &contentTypePointer,
+                                        &contentTypeLength,
+                                        &dataPointer,
+                                        &dataLength);
+        if (unpackedPut == 0) {
+            char *queueKey = (char *)BFMemoryAllocate((size_t)queuePathLength + 1U);
+            if (!queueKey) {
+                break;
+            }
+            memcpy(queueKey, queuePathPointer, queuePathLength);
+            queueKey[queuePathLength] = '\0';
+
+            char *contentTypeString = (char *)BFMemoryAllocate((size_t)contentTypeLength + 1U);
+            if (!contentTypeString) {
+                BFMemoryRelease(queueKey);
+                break;
+            }
+            memcpy(contentTypeString, contentTypePointer, contentTypeLength);
+            contentTypeString[contentTypeLength] = '\0';
+
+            StoredObject *storedObject = (StoredObject *)BFMemoryAllocate(sizeof(StoredObject));
+            if (!storedObject) {
+                BFMemoryRelease(queueKey);
+                BFMemoryRelease(contentTypeString);
+                break;
+            }
+            storedObject->contentType = contentTypeString;
+            storedObject->dataLength  = dataLength;
+            storedObject->data        = NULL;
+            if (dataLength > 0) {
+                storedObject->data = (uint8_t *)BFMemoryAllocate(dataLength);
+                if (!storedObject->data) {
+                    BFMemoryRelease(queueKey);
+                    destroyStoredObjectCallback(storedObject);
+                    break;
+                }
+                memcpy(storedObject->data, dataPointer, dataLength);
+            }
+            (void)BFSharedDictionarySet(runtimeContext->sharedStore, queueKey, storedObject);
+            BFMemoryRelease(queueKey);
+
+            if (BFV1PackStatusToData(&runtimeContext->transmitBuffer,
+                                     BFV1_STATUS,
+                                     requestIdentifier + 1U,
+                                     BFV1_STATUS_OK,
+                                     "stored") == BF_OK) {
+                ServerEnqueueSend(runtimeContext,
+                                  BFDataGetBytes(&runtimeContext->transmitBuffer),
+                                  BFDataGetLength(&runtimeContext->transmitBuffer),
+                                  &datagram->peerAddress,
+                                  datagram->peerAddressLength);
+            }
+        } else {
+            if (BFV1PackStatusToData(&runtimeContext->transmitBuffer,
+                                     BFV1_STATUS,
+                                     requestIdentifier + 1U,
+                                     BFV1_STATUS_BAD_REQUEST,
+                                     "bad-put") == BF_OK) {
+                ServerEnqueueSend(runtimeContext,
+                                  BFDataGetBytes(&runtimeContext->transmitBuffer),
+                                  BFDataGetLength(&runtimeContext->transmitBuffer),
+                                  &datagram->peerAddress,
+                                  datagram->peerAddressLength);
+            }
+        }
+        break;
+    }
+    case BFV1_GET: {
+        const uint8_t *queuePathPointer = NULL;
+        uint16_t       queuePathLength  = 0;
+        int unpackedGet = BFV1UnpackGet(payloadPointer, payloadLength, &queuePathPointer, &queuePathLength);
+        if (unpackedGet == 0) {
+            char *queueKey = (char *)BFMemoryAllocate((size_t)queuePathLength + 1U);
+            if (!queueKey) {
+                break;
+            }
+            memcpy(queueKey, queuePathPointer, queuePathLength);
+            queueKey[queuePathLength] = '\0';
+
+            StoredObject *storedObject = (StoredObject *)BFSharedDictionaryGet(runtimeContext->sharedStore, queueKey);
+            if (storedObject) {
+                if (BFV1PackPutToData(&runtimeContext->transmitBuffer,
+                                      requestIdentifier + 1U,
+                                      queueKey,
+                                      storedObject->contentType,
+                                      storedObject->data,
+                                      storedObject->dataLength) == BF_OK) {
+                    ServerEnqueueSend(runtimeContext,
+                                      BFDataGetBytes(&runtimeContext->transmitBuffer),
+                                      BFDataGetLength(&runtimeContext->transmitBuffer),
+                                      &datagram->peerAddress,
+                                      datagram->peerAddressLength);
+                }
+            } else {
+                if (BFV1PackStatusToData(&runtimeContext->transmitBuffer,
+                                         BFV1_STATUS,
+                                         requestIdentifier + 1U,
+                                         BFV1_STATUS_BAD_REQUEST,
+                                         "not-found") == BF_OK) {
+                    ServerEnqueueSend(runtimeContext,
+                                      BFDataGetBytes(&runtimeContext->transmitBuffer),
+                                      BFDataGetLength(&runtimeContext->transmitBuffer),
+                                      &datagram->peerAddress,
+                                      datagram->peerAddressLength);
+                }
+            }
+            BFMemoryRelease(queueKey);
+        } else {
+            if (BFV1PackStatusToData(&runtimeContext->transmitBuffer,
+                                     BFV1_STATUS,
+                                     requestIdentifier + 1U,
+                                     BFV1_STATUS_BAD_REQUEST,
+                                     "bad-get") == BF_OK) {
+                ServerEnqueueSend(runtimeContext,
+                                  BFDataGetBytes(&runtimeContext->transmitBuffer),
+                                  BFDataGetLength(&runtimeContext->transmitBuffer),
+                                  &datagram->peerAddress,
+                                  datagram->peerAddressLength);
+            }
+        }
+        break;
+    }
+    default: {
+        BFLog("boxd: commande inconnue: %u", commandIdentifier);
+        if (BFV1PackStatusToData(&runtimeContext->transmitBuffer,
+                                 BFV1_STATUS,
+                                 requestIdentifier + 1U,
+                                 BFV1_STATUS_BAD_REQUEST,
+                                 "unknown-command") == BF_OK) {
+            ServerEnqueueSend(runtimeContext,
+                              BFDataGetBytes(&runtimeContext->transmitBuffer),
+                              BFDataGetLength(&runtimeContext->transmitBuffer),
+                              &datagram->peerAddress,
+                              datagram->peerAddressLength);
+        }
+        break;
+    }
+    }
 }
 
 static void ServerPrintUsage(const char *program) {
@@ -150,11 +551,6 @@ static void ServerParseArgs(int argc, char **argv, ServerNetworkOptions *outOpti
     }
 }
 
-// --- Simple BFRunloop-based threading skeleton (network-input, network-output, main) ---
-static BFRunloop *globalRunloopMain   = NULL;
-static BFRunloop *globalRunloopNetIn  = NULL;
-static BFRunloop *globalRunloopNetOut = NULL;
-
 static volatile int globalRunning = 1;
 static void onInteruptSignal(int signalNumber) {
     (void)signalNumber;
@@ -170,10 +566,16 @@ void installSignalHandler(void) {
 
 // Runloop handlers (placeholders for now)
 static void ServerMainHandler(BFRunloop *runloop, BFRunloopEvent *event, void *context) {
-    (void)context;
+    (void)runloop;
+    if (!event) {
+        return;
+    }
     if (event->type == BFRunloopEventStop) {
         return;
     }
+
+    ServerRuntimeContext *runtimeContext = (ServerRuntimeContext *)context;
+
 #if defined(__unix__) || defined(__APPLE__)
     if (event->type == ServerEventAdminStatus) {
         ServerAdminRequest *adminRequest = (ServerAdminRequest *)event->payload;
@@ -183,12 +585,17 @@ static void ServerMainHandler(BFRunloop *runloop, BFRunloopEvent *event, void *c
         const char *statusSubstring = strstr(adminRequest->requestBuffer, "status");
         if (statusSubstring != NULL) {
             char responseBuffer[256];
-            int  responseSize = snprintf(responseBuffer, sizeof(responseBuffer), "{\"status\":\"ok\",\"version\":\"%s\"}\n", BFVersionString());
+            int  responseSize = snprintf(responseBuffer,
+                                         sizeof(responseBuffer),
+                                         "{\"status\":\"ok\",\"version\":\"%s\"}\n",
+                                         BFVersionString());
             if (responseSize < 0 || (size_t)responseSize >= sizeof(responseBuffer)) {
                 responseSize = (int)strlen("{\"status\":\"ok\",\"version\":\"unknown\"}\n");
                 strcpy(responseBuffer, "{\"status\":\"ok\",\"version\":\"unknown\"}\n");
             }
-            if (ServerAdminWriteAll(adminRequest->clientSocketDescriptor, responseBuffer, (size_t)responseSize) != BF_OK) {
+            if (ServerAdminWriteAll(adminRequest->clientSocketDescriptor,
+                                    responseBuffer,
+                                    (size_t)responseSize) != BF_OK) {
                 BFWarn("boxd: admin status write failed");
             }
         } else {
@@ -204,10 +611,37 @@ static void ServerMainHandler(BFRunloop *runloop, BFRunloopEvent *event, void *c
         return;
     }
 #endif
+
+    if (event->type == ServerEventNetworkDatagramInbound) {
+        ServerNetworkDatagram *datagram = (ServerNetworkDatagram *)event->payload;
+        if (runtimeContext && !runtimeContext->useNoiseTransport) {
+            ServerHandlePlainDatagram(runtimeContext, datagram);
+        }
+        return;
+    }
+
+    if (event->type == ServerEventNoisePlaintext) {
+        ServerNoisePlaintext *plaintext = (ServerNoisePlaintext *)event->payload;
+        if (!runtimeContext || !runtimeContext->useNoiseTransport) {
+            return;
+        }
+        if (plaintext && plaintext->messageBytes && plaintext->messageLength > 0U) {
+            BFLog("boxd(noise): plaintext received (%zu bytes)", plaintext->messageLength);
+        }
+        const char *pongResponse = "pong";
+        ServerEnqueueSend(runtimeContext,
+                          (const uint8_t *)pongResponse,
+                          strlen(pongResponse),
+                          NULL,
+                          0);
+        return;
+    }
+
     if (event->type == ServerEventTick) {
-        // Re-post a low-frequency tick as a heartbeat example
         BFRunloopEvent tick = {.type = ServerEventTick, .payload = NULL, .destroy = NULL};
-        (void)BFRunloopPost(runloop, &tick);
+        if (runtimeContext && runtimeContext->mainRunloop) {
+            (void)BFRunloopPost(runtimeContext->mainRunloop, &tick);
+        }
     }
 }
 
@@ -356,6 +790,15 @@ int main(int argc, char **argv) {
         BFFatal("BFUdpServer");
     }
 
+    ServerRuntimeContext runtimeContext;
+    memset(&runtimeContext, 0, sizeof(runtimeContext));
+    runtimeContext.udpSocketDescriptor  = udpSocket;
+    runtimeContext.sharedStore          = store;
+    runtimeContext.runningFlagPointer   = &globalRunning;
+    runtimeContext.useNoiseTransport    = 0;
+    runtimeContext.handshakeCompleted   = 0;
+    runtimeContext.transmitBuffer       = BFDataCreate(0U);
+
     // Admin channel (Unix domain socket, non-bloquant, minimal skeleton)
 #if defined(__unix__) || defined(__APPLE__)
     int                      adminListenSocket = -1;
@@ -388,7 +831,7 @@ int main(int argc, char **argv) {
                     adminListenSocket = -1;
                     unlink(adminSocketPath);
                     adminThreadContext.listenSocketDescriptor = -1;
-                } else if (BFRunloopSetHandler(adminRunloop, ServerMainHandler, NULL) != BF_OK) {
+                } else if (BFRunloopSetHandler(adminRunloop, ServerMainHandler, &runtimeContext) != BF_OK) {
                     BFWarn("boxd: unable to configure admin runloop");
                     BFRunloopFree(adminRunloop);
                     adminRunloop = NULL;
@@ -431,236 +874,87 @@ int main(int argc, char **argv) {
     }
 #endif // __unix__ || __APPLE__
 
-    // 1) Attente d'un datagram clair pour connaître l'adresse du client
-    struct sockaddr_storage peer       = {0};
-    socklen_t               peerLength = sizeof(peer);
-    uint8_t                 receiveBuffer[BF_MACRO_MAX_DATAGRAM_SIZE];
-
-    memset(receiveBuffer, 0, sizeof(receiveBuffer));
-
-    ssize_t received = BFUdpReceive(udpSocket, receiveBuffer, sizeof(receiveBuffer), (struct sockaddr *)&peer, &peerLength);
-    if (received < 0) {
-        BFFatal("recvfrom (hello)");
-    }
-
-    BFLog("boxd: datagram initial %zd octets reçu", received);
-
-    // 2) Noise transport (optional smoke mode): enter encrypted echo loop if requested
-    // Allow per-operation override for status smoke via config
+    // Noise transport (optional smoke mode): enter encrypted echo loop if requested
     int useNoiseSmoke = (options.transport && strcmp(options.transport, "noise") == 0)
 #if defined(__unix__) || defined(__APPLE__)
                         || (serverConfigurationLoaded.hasTransportStatus && strcmp(serverConfigurationLoaded.transportStatus, "noise") == 0)
 #endif
         ;
-    if (useNoiseSmoke) {
-        BFNetworkSecurity security = {0};
+    runtimeContext.useNoiseTransport = useNoiseSmoke ? 1 : 0;
+    if (runtimeContext.useNoiseTransport) {
+        memset(&runtimeContext.noiseSecurity, 0, sizeof(runtimeContext.noiseSecurity));
+        runtimeContext.hasNoiseSecurity = 1;
         if (options.preShareKeyAscii) {
-            security.preShareKey       = (const unsigned char *)options.preShareKeyAscii;
-            security.preShareKeyLength = (size_t)strlen(options.preShareKeyAscii);
+            runtimeContext.noiseSecurity.preShareKey       = (const unsigned char *)options.preShareKeyAscii;
+            runtimeContext.noiseSecurity.preShareKeyLength = (size_t)strlen(options.preShareKeyAscii);
         }
-        // Map noise pattern from config when present (scaffold)
 #if defined(__unix__) || defined(__APPLE__)
         if (serverConfigurationLoaded.hasNoisePattern) {
-            security.hasNoiseHandshakePattern = 1;
+            runtimeContext.noiseSecurity.hasNoiseHandshakePattern = 1;
             if (strcmp(serverConfigurationLoaded.noisePattern, "nk") == 0) {
-                security.noiseHandshakePattern = BFNoiseHandshakePatternNK;
+                runtimeContext.noiseSecurity.noiseHandshakePattern = BFNoiseHandshakePatternNK;
             } else if (strcmp(serverConfigurationLoaded.noisePattern, "ik") == 0) {
-                security.noiseHandshakePattern = BFNoiseHandshakePatternIK;
+                runtimeContext.noiseSecurity.noiseHandshakePattern = BFNoiseHandshakePatternIK;
             } else {
-                security.hasNoiseHandshakePattern = 0;
+                runtimeContext.noiseSecurity.hasNoiseHandshakePattern = 0;
             }
         }
 #endif
-        BFNetworkConnection *networkConnection = BFNetworkAcceptDatagram(BFNetworkTransportNOISE, udpSocket, &peer, peerLength, &security);
-        if (!networkConnection) {
-            BFFatal("Noise accept failed");
-        }
-        for (;;) {
-            char plaintext[256];
-            int  receivedBytes = BFNetworkReceive(networkConnection, plaintext, (int)sizeof(plaintext));
-            if (receivedBytes <= 0) {
-                BFWarn("boxd(noise): recv error");
-                break;
-            }
-            BFLog("boxd(noise): received %d bytes", receivedBytes);
-            const char *pong = "pong";
-            if (BFNetworkSend(networkConnection, pong, (int)strlen(pong)) <= 0) {
-                BFWarn("boxd(noise): send error");
-                break;
-            }
-        }
-        BFNetworkClose(networkConnection);
-        goto cleanup;
     }
 
-    // 3) Pas de TLS: échanges v1 en UDP clair par défaut
-
-    // Envoyer un HELLO applicatif (v1) en UDP clair avec statut OK et versions supportées
-    BFData   transmitFrame        = BFDataCreate(0U);
-    uint64_t requestId            = 1;
-    uint16_t supportedVersions[1] = {1};
-    if (BFV1PackHelloToData(&transmitFrame, requestId, BFV1_STATUS_OK, supportedVersions, 1) == BF_OK) {
-        (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&peer, peerLength);
+    runtimeContext.mainRunloop        = BFRunloopCreate();
+    runtimeContext.networkInputRunloop = BFRunloopCreate();
+    runtimeContext.networkOutputRunloop = BFRunloopCreate();
+    if (!runtimeContext.mainRunloop || !runtimeContext.networkInputRunloop || !runtimeContext.networkOutputRunloop) {
+        BFFatal("boxd: unable to allocate runloops");
     }
-
-    // 4) Boucle simple: attendre STATUS (ping) et répondre STATUS (pong)
-    int consecutiveErrors = 0;
-    while (globalRunning) {
-        struct sockaddr_storage from       = {0};
-        socklen_t               fromLength = sizeof(from);
-        int                     readCount  = (int)BFUdpReceive(udpSocket, receiveBuffer, sizeof(receiveBuffer), (struct sockaddr *)&from, &fromLength);
-        if (readCount <= 0) {
-            consecutiveErrors++;
-            BFWarn("boxd: lecture UDP en erreur (compteur=%d)", consecutiveErrors);
-            if (consecutiveErrors > 5) {
-                BFError("boxd: trop d'erreurs consécutives en lecture, arrêt de la boucle");
-                break;
-            }
-            continue;
-        }
-        consecutiveErrors            = 0;
-        uint32_t       command       = 0;
-        uint64_t       receivedReqId = 0;
-        const uint8_t *payload       = NULL;
-        uint32_t       payloadLength = 0;
-        int            unpacked      = BFV1Unpack(receiveBuffer, (size_t)readCount, &command, &receivedReqId, &payload, &payloadLength);
-        if (unpacked < 0) {
-            BFLog("boxd: trame v1 invalide");
-            continue;
-        }
-        switch (command) {
-        case BFV1_HELLO: {
-            uint8_t  statusCode   = 0xFF;
-            uint16_t versions[4]  = {0};
-            uint8_t  versionCount = 0;
-            int      ok           = BFV1UnpackHello(payload, payloadLength, &statusCode, versions, (uint8_t)(sizeof(versions) / sizeof(versions[0])), &versionCount);
-            if (ok == 0 && versionCount > 0) {
-                int hasCompatible = 0;
-                for (uint8_t vi = 0; vi < versionCount; ++vi) {
-                    if (versions[vi] == 1) {
-                        hasCompatible = 1;
-                        break;
-                    }
-                }
-                if (hasCompatible) {
-                    uint16_t supported[1] = {1};
-                    if (BFV1PackHelloToData(&transmitFrame, receivedReqId + 1, BFV1_STATUS_OK, supported, 1) == BF_OK) {
-                        (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
-                    }
-                } else {
-                    if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "unsupported-version") == BF_OK) {
-                        (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
-                    }
-                }
-            } else {
-                if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-hello") == BF_OK) {
-                    (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
-                }
-            }
-            break;
-        }
-        case BFV1_STATUS: {
-            BFLog("boxd: STATUS reçu (%u octets)", (unsigned)payloadLength);
-            if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_OK, "pong") == BF_OK) {
-                (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
-            }
-            break;
-        }
-        case BFV1_PUT: {
-            BFLog("boxd: PUT %u octets", (unsigned)payloadLength);
-            const uint8_t *queuePathPointer   = NULL;
-            uint16_t       queuePathLength    = 0;
-            const uint8_t *contentTypePointer = NULL;
-            uint16_t       contentTypeLength  = 0;
-            const uint8_t *dataPointer        = NULL;
-            uint32_t       dataLength         = 0;
-            int            ok                 = BFV1UnpackPut(payload, payloadLength, &queuePathPointer, &queuePathLength, &contentTypePointer, &contentTypeLength, &dataPointer, &dataLength);
-            if (ok == 0) {
-                BFLog("boxd: PUT path=%.*s contentType=%.*s size=%u", (int)queuePathLength, (const char *)queuePathPointer, (int)contentTypeLength, (const char *)contentTypePointer, (unsigned)dataLength);
-                // build in-memory object
-                char *queueKey = (char *)BFMemoryAllocate((size_t)queuePathLength + 1U);
-                if (!queueKey)
-                    break;
-                memcpy(queueKey, queuePathPointer, queuePathLength);
-                queueKey[queuePathLength] = '\0';
-                char *contentTypeStr      = (char *)BFMemoryAllocate((size_t)contentTypeLength + 1U);
-                if (!contentTypeStr) {
-                    BFMemoryRelease(queueKey);
-                    break;
-                }
-                memcpy(contentTypeStr, contentTypePointer, contentTypeLength);
-                contentTypeStr[contentTypeLength] = '\0';
-                StoredObject *object              = (StoredObject *)BFMemoryAllocate(sizeof(StoredObject));
-                if (!object) {
-                    BFMemoryRelease(queueKey);
-                    BFMemoryRelease(contentTypeStr);
-                    break;
-                }
-                object->contentType = contentTypeStr;
-                object->dataLength  = dataLength;
-                object->data        = NULL;
-                if (dataLength > 0) {
-                    object->data = (uint8_t *)BFMemoryAllocate(dataLength);
-                    if (!object->data) {
-                        BFMemoryRelease(queueKey);
-						destroyStoredObjectCallback(object);
-                        break;
-                    }
-                    memcpy(object->data, dataPointer, dataLength);
-                }
-                (void)BFSharedDictionarySet(store, queueKey, object);
-                BFMemoryRelease(queueKey);
-                if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_OK, "stored") == BF_OK) {
-                    (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
-                }
-            } else {
-                if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-put") == BF_OK) {
-                    (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
-                }
-            }
-            break;
-        }
-        case BFV1_GET: {
-            const uint8_t *queuePathPointer = NULL;
-            uint16_t       queuePathLength  = 0;
-            int            ok               = BFV1UnpackGet(payload, payloadLength, &queuePathPointer, &queuePathLength);
-            if (ok == 0) {
-                char *queueKey = (char *)BFMemoryAllocate((size_t)queuePathLength + 1U);
-                if (!queueKey)
-                    break;
-                memcpy(queueKey, queuePathPointer, queuePathLength);
-                queueKey[queuePathLength] = '\0';
-                StoredObject *object      = (StoredObject *)BFSharedDictionaryGet(store, queueKey);
-                if (object) {
-                    if (BFV1PackPutToData(&transmitFrame, receivedReqId + 1, queueKey, object->contentType, object->data, object->dataLength) == BF_OK) {
-                        (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
-                    }
-                } else {
-                    if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "not-found") == BF_OK) {
-                        (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
-                    }
-                }
-                BFMemoryRelease(queueKey);
-            } else {
-                if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "bad-get") == BF_OK) {
-                    (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
-                }
-            }
-            break;
-        }
-        default: {
-            BFLog("boxd: commande inconnue: %u", command);
-            if (BFV1PackStatusToData(&transmitFrame, BFV1_STATUS, receivedReqId + 1, BFV1_STATUS_BAD_REQUEST, "unknown-command") == BF_OK) {
-                (void)BFUdpSend(udpSocket, BFDataGetBytes(&transmitFrame), BFDataGetLength(&transmitFrame), (struct sockaddr *)&from, fromLength);
-            }
-            break;
-        }
-        }
+    if (BFRunloopSetHandler(runtimeContext.mainRunloop, ServerMainHandler, &runtimeContext) != BF_OK) {
+        BFFatal("boxd: unable to configure main runloop");
     }
+    if (BFRunloopSetHandler(runtimeContext.networkInputRunloop, ServerNetworkInputHandler, &runtimeContext) != BF_OK) {
+        BFFatal("boxd: unable to configure network input runloop");
+    }
+    if (BFRunloopSetHandler(runtimeContext.networkOutputRunloop, ServerNetworkOutputHandler, &runtimeContext) != BF_OK) {
+        BFFatal("boxd: unable to configure network output runloop");
+    }
+    if (BFRunloopStart(runtimeContext.networkInputRunloop) != BF_OK) {
+        BFFatal("boxd: unable to start network input runloop");
+    }
+    if (BFRunloopStart(runtimeContext.networkOutputRunloop) != BF_OK) {
+        BFFatal("boxd: unable to start network output runloop");
+    }
+    BFRunloopEvent startEvent = {
+        .type    = ServerEventNetworkInputStart,
+        .payload = NULL,
+        .destroy = NULL,
+    };
+    (void)BFRunloopPost(runtimeContext.networkInputRunloop, &startEvent);
+
+    BFRunloopRun(runtimeContext.mainRunloop);
 
 cleanup:
     close(udpSocket);
-    BFDataReset(&transmitFrame);
+    BFDataReset(&runtimeContext.transmitBuffer);
+    if (runtimeContext.noiseConnection) {
+        BFNetworkClose(runtimeContext.noiseConnection);
+        runtimeContext.noiseConnection = NULL;
+    }
+    if (runtimeContext.networkInputRunloop) {
+        BFRunloopPostStop(runtimeContext.networkInputRunloop);
+        BFRunloopJoin(runtimeContext.networkInputRunloop);
+        BFRunloopFree(runtimeContext.networkInputRunloop);
+        runtimeContext.networkInputRunloop = NULL;
+    }
+    if (runtimeContext.networkOutputRunloop) {
+        BFRunloopPostStop(runtimeContext.networkOutputRunloop);
+        BFRunloopJoin(runtimeContext.networkOutputRunloop);
+        BFRunloopFree(runtimeContext.networkOutputRunloop);
+        runtimeContext.networkOutputRunloop = NULL;
+    }
+    if (runtimeContext.mainRunloop) {
+        BFRunloopFree(runtimeContext.mainRunloop);
+        runtimeContext.mainRunloop = NULL;
+    }
 #if defined(__unix__) || defined(__APPLE__)
     globalRunning = 0;
     if (adminListenSocket >= 0) {
