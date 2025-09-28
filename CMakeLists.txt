@@ -67,6 +67,10 @@ if(NOT BOX_BUILD_MINIMAL)
           sources/lib/BFBoxProtocol.c
           sources/lib/BFVersion.c
           sources/lib/BFFileManager.c
+          sources/lib/BFString.c
+          sources/lib/BFBase64Codec.c
+          sources/lib/BFNumber.c
+          sources/lib/BFPropertyList.c
   )
   # No OpenSSL link required
   if (WIN32)
@@ -273,6 +277,26 @@ if(NOT BOX_BUILD_MINIMAL)
   target_include_directories(test_BFData PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(test_BFData PRIVATE BoxFoundation)
   add_test(NAME test_BFData COMMAND test_BFData)
+
+  add_executable(test_BFString test/test_BFString.c)
+  target_include_directories(test_BFString PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFString PRIVATE BoxFoundation)
+  add_test(NAME test_BFString COMMAND test_BFString)
+
+  add_executable(test_BFBase64Codec test/test_BFBase64Codec.c)
+  target_include_directories(test_BFBase64Codec PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFBase64Codec PRIVATE BoxFoundation)
+  add_test(NAME test_BFBase64Codec COMMAND test_BFBase64Codec)
+
+  add_executable(test_BFNumber test/test_BFNumber.c)
+  target_include_directories(test_BFNumber PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFNumber PRIVATE BoxFoundation)
+  add_test(NAME test_BFNumber COMMAND test_BFNumber)
+
+  add_executable(test_BFPropertyList test/test_BFPropertyList.c)
+  target_include_directories(test_BFPropertyList PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_BFPropertyList PRIVATE BoxFoundation)
+  add_test(NAME test_BFPropertyList COMMAND test_BFPropertyList)
 
   add_executable(test_BFAead test/test_BFAead.c)
   target_include_directories(test_BFAead PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
