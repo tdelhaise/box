@@ -17,22 +17,10 @@
 #include <sys/socket.h>
 #include <string.h>
 
-void ServerNetworkInputHandler(BFRunloop *runloop, BFRunloopEvent *event, void *context) {
-    if (!runloop || !event) {
-        return;
-    }
-    if (event->type == BFRunloopEventStop) {
-        return;
-    }
-    if (event->type != ServerEventNetworkInputStart) {
-        return;
-    }
-
-    ServerRuntimeContext *runtimeContext = (ServerRuntimeContext *)context;
+static void ServerNetworkInputHandleReadable(ServerRuntimeContext *runtimeContext) {
     if (!runtimeContext || runtimeContext->udpSocketDescriptor < 0) {
         return;
     }
-
     if (runtimeContext->useNoiseTransport) {
         if (!runtimeContext->noiseConnection) {
             struct sockaddr_storage peekAddress;
@@ -92,7 +80,7 @@ void ServerNetworkInputHandler(BFRunloop *runloop, BFRunloopEvent *event, void *
                 runtimeContext->noiseConnection = NULL;
             }
         }
-        goto schedule_event;
+        return;
     }
 
     uint8_t                receiveBuffer[BF_MACRO_MAX_DATAGRAM_SIZE];
@@ -110,30 +98,58 @@ void ServerNetworkInputHandler(BFRunloop *runloop, BFRunloopEvent *event, void *
         if (savedErrno != EINTR) {
             BFWarn("boxd: network input receive error (%d)", savedErrno);
         }
-    } else if (receiveCount > 0) {
-        ServerNetworkDatagram *datagram = ServerNetworkDatagramCreate(receiveBuffer,
-                                                                      (size_t)receiveCount,
-                                                                      &peerAddress,
-                                                                      peerAddressLength);
-        if (datagram) {
-            BFRunloopEvent deliverEvent = {
-                .type    = ServerEventNetworkDatagramInbound,
-                .payload = datagram,
-                .destroy = ServerNetworkDatagramDestroy,
-            };
-            if (!runtimeContext->mainRunloop || BFRunloopPost(runtimeContext->mainRunloop, &deliverEvent) != BF_OK) {
-                ServerNetworkDatagramDestroy(datagram);
-            }
-        }
+        return;
+    }
+    if (receiveCount == 0) {
+        return;
     }
 
-schedule_event:
-    if (runtimeContext && runtimeContext->runningFlagPointer && *(runtimeContext->runningFlagPointer)) {
-        BFRunloopEvent continueEvent = {
-            .type    = ServerEventNetworkInputStart,
-            .payload = NULL,
-            .destroy = NULL,
-        };
-        (void)BFRunloopPost(runloop, &continueEvent);
+    ServerNetworkDatagram *datagram = ServerNetworkDatagramCreate(receiveBuffer,
+                                                                  (size_t)receiveCount,
+                                                                  &peerAddress,
+                                                                  peerAddressLength);
+    if (!datagram) {
+        return;
+    }
+
+    BFRunloopEvent deliverEvent = {
+        .type    = ServerEventNetworkDatagramInbound,
+        .payload = datagram,
+        .destroy = ServerNetworkDatagramDestroy,
+    };
+    if (!runtimeContext->mainRunloop || BFRunloopPost(runtimeContext->mainRunloop, &deliverEvent) != BF_OK) {
+        ServerNetworkDatagramDestroy(datagram);
+    }
+}
+
+void ServerNetworkInputHandler(BFRunloop *runloop, BFRunloopEvent *event, void *context) {
+    if (!event || event->type == BFRunloopEventStop) {
+        return;
+    }
+
+    ServerRuntimeContext *runtimeContext = (ServerRuntimeContext *)context;
+    if (!runtimeContext) {
+        return;
+    }
+
+    if (event->type == ServerEventNetworkSocketReadable) {
+        ServerNetworkInputHandleReadable(runtimeContext);
+        return;
+    }
+
+    if (event->type == ServerEventNetworkInputStart) {
+        if (runtimeContext->hasReactor) {
+            return;
+        }
+        ServerNetworkInputHandleReadable(runtimeContext);
+        if (runtimeContext->runningFlagPointer && *(runtimeContext->runningFlagPointer)) {
+            BFRunloopEvent continueEvent = {
+                .type    = ServerEventNetworkInputStart,
+                .payload = NULL,
+                .destroy = NULL,
+            };
+            (void)BFRunloopPost(runloop, &continueEvent);
+        }
+        return;
     }
 }

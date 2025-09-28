@@ -917,18 +917,35 @@ int main(int argc, char **argv) {
     if (BFRunloopSetHandler(runtimeContext.networkOutputRunloop, ServerNetworkOutputHandler, &runtimeContext) != BF_OK) {
         BFFatal("boxd: unable to configure network output runloop");
     }
+
+    BFRunloopEvent socketEvent = {
+        .type    = ServerEventNetworkSocketReadable,
+        .payload = NULL,
+        .destroy = NULL,
+    };
+    if (BFRunloopAddFileDescriptor(runtimeContext.networkInputRunloop,
+                                   runtimeContext.udpSocketDescriptor,
+                                   BFRunloopFdModeRead,
+                                   &socketEvent) == BF_OK) {
+        runtimeContext.hasReactor = 1;
+    } else {
+        runtimeContext.hasReactor = 0;
+        BFWarn("boxd: falling back to threaded receive loop (no reactor backend)");
+    }
     if (BFRunloopStart(runtimeContext.networkInputRunloop) != BF_OK) {
         BFFatal("boxd: unable to start network input runloop");
     }
     if (BFRunloopStart(runtimeContext.networkOutputRunloop) != BF_OK) {
         BFFatal("boxd: unable to start network output runloop");
     }
-    BFRunloopEvent startEvent = {
-        .type    = ServerEventNetworkInputStart,
-        .payload = NULL,
-        .destroy = NULL,
-    };
-    (void)BFRunloopPost(runtimeContext.networkInputRunloop, &startEvent);
+    if (!runtimeContext.hasReactor) {
+        BFRunloopEvent startEvent = {
+            .type    = ServerEventNetworkInputStart,
+            .payload = NULL,
+            .destroy = NULL,
+        };
+        (void)BFRunloopPost(runtimeContext.networkInputRunloop, &startEvent);
+    }
 
     BFRunloopRun(runtimeContext.mainRunloop);
 
@@ -938,6 +955,9 @@ cleanup:
     if (runtimeContext.noiseConnection) {
         BFNetworkClose(runtimeContext.noiseConnection);
         runtimeContext.noiseConnection = NULL;
+    }
+    if (runtimeContext.hasReactor && runtimeContext.networkInputRunloop) {
+        (void)BFRunloopRemoveFileDescriptor(runtimeContext.networkInputRunloop, runtimeContext.udpSocketDescriptor);
     }
     if (runtimeContext.networkInputRunloop) {
         BFRunloopPostStop(runtimeContext.networkInputRunloop);

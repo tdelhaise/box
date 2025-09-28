@@ -11,9 +11,10 @@
 typedef enum ServerEventType {
     ServerEventTick = 1000,
     ServerEventAdminStatus = 1001,
-    ServerEventNetworkInputStart = 1100,
-    ServerEventNetworkDatagramInbound = 1101,
-    ServerEventNoisePlaintext = 1102,
+    ServerEventNetworkInputStart = 1099,
+    ServerEventNetworkDatagramInbound = 1100,
+    ServerEventNoisePlaintext = 1101,
+    ServerEventNetworkSocketReadable = 1102,
     ServerEventNetworkOutputSend = 1200
 } ServerEventType;
 

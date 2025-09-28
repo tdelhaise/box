@@ -17,6 +17,11 @@ typedef enum BFRunloopEventType {
     BFRunloopEventStop = 1,
 } BFRunloopEventType;
 
+typedef enum BFRunloopFdMode {
+    BFRunloopFdModeRead  = 1U << 0,
+    BFRunloopFdModeWrite = 1U << 1,
+} BFRunloopFdMode;
+
 typedef struct BFRunloopEvent {
     uint32_t type;
     void    *payload;               // owned by the run loop
@@ -41,6 +46,13 @@ void BFRunloopPostStop(BFRunloop *runloop);                          // posts a 
 
 // Stop the runloop; if drain is non-zero, the loop drains queued events before stopping (default).
 void BFRunloopStop(BFRunloop *runloop, int drain);
+
+// Reactor integration (platform-specific backends).
+int BFRunloopAddFileDescriptor(BFRunloop *runloop,
+                               int        fileDescriptor,
+                               uint32_t   modes,
+                               const BFRunloopEvent *templateEvent);
+int BFRunloopRemoveFileDescriptor(BFRunloop *runloop, int fileDescriptor);
 
 #ifdef __cplusplus
 }

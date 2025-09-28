@@ -48,6 +48,7 @@ typedef struct ServerRuntimeContext {
     BFNetworkConnection *noiseConnection;
     BFNetworkSecurity    noiseSecurity;
     int                  hasNoiseSecurity;
+    int                  hasReactor;
     BFData               transmitBuffer;
 } ServerRuntimeContext;
 
