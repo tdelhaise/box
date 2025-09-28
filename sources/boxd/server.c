@@ -9,6 +9,8 @@
 #include "BFUdp.h"
 #include "BFUdpServer.h"
 #include "BFVersion.h"
+#include "ServerEventType.h"
+#include "ServerAdmin.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -48,135 +50,8 @@ typedef struct StoredObject {
     uint32_t dataLength;
 } StoredObject;
 
-typedef enum ServerEventType { ServerEventTick = 1000, ServerEventAdminStatus = 1001 } ServerEventType;
 
-#if defined(__unix__) || defined(__APPLE__)
-typedef struct ServerAdminRequest {
-    int    clientSocketDescriptor;
-    size_t requestLength;
-    char   requestBuffer[128];
-} ServerAdminRequest;
-
-typedef struct ServerAdminThreadContext {
-    int           listenSocketDescriptor;
-    BFRunloop    *runloop;
-    volatile int *runningFlagPointer;
-} ServerAdminThreadContext;
-
-static void ServerAdminRequestDestroy(void *pointer) {
-    if (!pointer) {
-        return;
-    }
-    ServerAdminRequest *adminRequest = (ServerAdminRequest *)pointer;
-    if (adminRequest->clientSocketDescriptor >= 0) {
-        close(adminRequest->clientSocketDescriptor);
-        adminRequest->clientSocketDescriptor = -1;
-    }
-    BFMemoryRelease(adminRequest);
-}
-
-static int ServerAdminWriteAll(int socketDescriptor, const char *buffer, size_t length) {
-    size_t totalWritten = 0;
-    while (totalWritten < length) {
-        ssize_t written = write(socketDescriptor, buffer + totalWritten, length - totalWritten);
-        if (written < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return BF_ERR;
-        }
-        if (written == 0) {
-            return BF_ERR;
-        }
-        totalWritten += (size_t)written;
-    }
-    return BF_OK;
-}
-
-static void *ServerAdminListenerThread(void *contextPointer) {
-    ServerAdminThreadContext *threadContext = (ServerAdminThreadContext *)contextPointer;
-    if (!threadContext) {
-        return NULL;
-    }
-    const size_t bufferCapacity = sizeof(((ServerAdminRequest *)0)->requestBuffer);
-    while (threadContext->runningFlagPointer && *(threadContext->runningFlagPointer)) {
-        int clientSocketDescriptor = accept(threadContext->listenSocketDescriptor, NULL, NULL);
-        if (clientSocketDescriptor < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            if (!threadContext->runningFlagPointer || !*(threadContext->runningFlagPointer)) {
-                break;
-            }
-            if (errno == EBADF) {
-                break;
-            }
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                continue;
-            }
-            BFWarn("boxd: admin accept failed (%d)", errno);
-            continue;
-        }
-
-        int existingFlags = fcntl(clientSocketDescriptor, F_GETFL, 0);
-        if (existingFlags >= 0) {
-            (void)fcntl(clientSocketDescriptor, F_SETFL, existingFlags & ~O_NONBLOCK);
-        }
-
-        char   localRequestBuffer[sizeof(((ServerAdminRequest *)0)->requestBuffer)];
-        size_t totalRead = 0;
-        memset(localRequestBuffer, 0, sizeof(localRequestBuffer));
-        while (totalRead < bufferCapacity - 1U) {
-            ssize_t readCount = read(clientSocketDescriptor, localRequestBuffer + totalRead, (bufferCapacity - 1U) - totalRead);
-            if (readCount < 0) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                break;
-            }
-            if (readCount == 0) {
-                break;
-            }
-            totalRead += (size_t)readCount;
-            if (memchr(localRequestBuffer, '\n', totalRead) != NULL) {
-                break;
-            }
-        }
-
-        if (totalRead == 0) {
-            close(clientSocketDescriptor);
-            continue;
-        }
-        if (totalRead >= bufferCapacity) {
-            totalRead = bufferCapacity - 1U;
-        }
-        localRequestBuffer[totalRead] = '\0';
-
-        ServerAdminRequest *adminRequest = (ServerAdminRequest *)BFMemoryAllocate(sizeof(ServerAdminRequest));
-        if (!adminRequest) {
-            BFWarn("boxd: unable to allocate admin request");
-            close(clientSocketDescriptor);
-            continue;
-        }
-        memset(adminRequest, 0, sizeof(ServerAdminRequest));
-        adminRequest->clientSocketDescriptor = clientSocketDescriptor;
-        adminRequest->requestLength          = totalRead;
-        memcpy(adminRequest->requestBuffer, localRequestBuffer, totalRead + 1U);
-
-        BFRunloopEvent adminEvent = {
-            .type    = ServerEventAdminStatus,
-            .payload = adminRequest,
-            .destroy = ServerAdminRequestDestroy,
-        };
-        if (!threadContext->runloop || BFRunloopPost(threadContext->runloop, &adminEvent) != BF_OK) {
-            ServerAdminRequestDestroy(adminRequest);
-        }
-    }
-    return NULL;
-}
-#endif // __unix__ || __APPLE__
-
-static void destroyStoredObject(void *pointer) {
+static void destroyStoredObjectCallback(void *pointer) {
     if (!pointer)
         return;
     StoredObject *object = (StoredObject *)pointer;
@@ -275,13 +150,13 @@ static void ServerParseArgs(int argc, char **argv, ServerNetworkOptions *outOpti
     }
 }
 
-// --- Simple BFRunloop-based threading skeleton (net-in, net-out, main) ---
+// --- Simple BFRunloop-based threading skeleton (network-input, network-output, main) ---
 static BFRunloop *globalRunloopMain   = NULL;
 static BFRunloop *globalRunloopNetIn  = NULL;
 static BFRunloop *globalRunloopNetOut = NULL;
 
 static volatile int globalRunning = 1;
-static void         onInteruptSignal(int signalNumber) {
+static void onInteruptSignal(int signalNumber) {
     (void)signalNumber;
     globalRunning = 0;
     BFLog("boxd: Interupt signal received. Exiting.");
@@ -290,6 +165,7 @@ static void         onInteruptSignal(int signalNumber) {
 
 void installSignalHandler(void) {
     signal(SIGINT, onInteruptSignal);
+	BFLog("boxd: Signal handler installed.");
 }
 
 // Runloop handlers (placeholders for now)
@@ -333,20 +209,6 @@ static void ServerMainHandler(BFRunloop *runloop, BFRunloopEvent *event, void *c
         BFRunloopEvent tick = {.type = ServerEventTick, .payload = NULL, .destroy = NULL};
         (void)BFRunloopPost(runloop, &tick);
     }
-}
-
-static void ServerNetInHandler(BFRunloop *runloop, BFRunloopEvent *event, void *context) {
-    (void)runloop;
-    (void)context;
-    if (event->type == BFRunloopEventStop)
-        return;
-}
-
-static void ServerNetOutHandler(BFRunloop *runloop, BFRunloopEvent *event, void *context) {
-    (void)runloop;
-    (void)context;
-    if (event->type == BFRunloopEventStop)
-        return;
 }
 
 static const char *getHomeDirectory(void) {
@@ -472,15 +334,19 @@ int main(int argc, char **argv) {
           (unsigned)serverPort, portOrigin, levelName, targetName,
           (
 #if defined(__unix__) || defined(__APPLE__)
-              (homeDirectory && *homeDirectory) ? "present" : "absent"
+			(homeDirectory && *homeDirectory) ? "present" : "absent"
 #else
-              "absent"
+            "absent"
 #endif
-              ),
-          options.certificateFile ? options.certificateFile : "(none)", options.keyFile ? options.keyFile : "(none)", options.preShareKeyIdentity ? options.preShareKeyIdentity : "(none)", options.preShareKeyAscii ? "[set]" : "(unset)", options.transport ? options.transport : "(default)", protocolMode);
+		  ),
+          options.certificateFile ? options.certificateFile : "(none)",
+		  options.keyFile ? options.keyFile : "(none)",
+		  options.preShareKeyIdentity ? options.preShareKeyIdentity : "(none)",
+		  options.preShareKeyAscii ? "[set]" : "(unset)",
+		  options.transport ? options.transport : "(default)", protocolMode);
 
     // Create in-memory store for demo
-    BFSharedDictionary *store = BFSharedDictionaryCreate(destroyStoredObject);
+    BFSharedDictionary *store = BFSharedDictionaryCreate(destroyStoredObjectCallback);
     if (!store) {
         BFFatal("cannot allocate store");
     }
@@ -495,7 +361,7 @@ int main(int argc, char **argv) {
     int                      adminListenSocket = -1;
     BFRunloop               *adminRunloop      = NULL;
     ServerAdminThreadContext adminThreadContext;
-    pthread_t                adminThread;
+	pthread_t                adminThread = NULL;
     int                      adminThreadStarted = 0;
     memset(&adminThreadContext, 0, sizeof(adminThreadContext));
     if (homeDirectory && *homeDirectory) {
@@ -737,7 +603,7 @@ int main(int argc, char **argv) {
                     object->data = (uint8_t *)BFMemoryAllocate(dataLength);
                     if (!object->data) {
                         BFMemoryRelease(queueKey);
-                        destroyStoredObject(object);
+						destroyStoredObjectCallback(object);
                         break;
                     }
                     memcpy(object->data, dataPointer, dataLength);

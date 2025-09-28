@@ -71,6 +71,9 @@
 		E4C9DC282E873848008B96E6 /* test_BFStorageManager.c in Sources */ = {isa = PBXBuildFile; fileRef = E4C9DC182E8737CB008B96E6 /* test_BFStorageManager.c */; };
 		E4C9DC362E8738AC008B96E6 /* test_BFFileManager.c in Sources */ = {isa = PBXBuildFile; fileRef = E4C9DC172E8737B7008B96E6 /* test_BFFileManager.c */; };
 		E4C9DC372E8738B4008B96E6 /* libBoxFoundation.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E43B07AD2E76C3C600F4A321 /* libBoxFoundation.a */; };
+		E4DE84622E87C3410050E9C8 /* ServerAdmin.c in Sources */ = {isa = PBXBuildFile; fileRef = E4DE84612E87C3410050E9C8 /* ServerAdmin.c */; };
+		E4DE84662E87C8B70050E9C8 /* ServerNetworkInput.c in Sources */ = {isa = PBXBuildFile; fileRef = E4DE84652E87C8B70050E9C8 /* ServerNetworkInput.c */; };
+		E4DE84692E87C8D60050E9C8 /* ServerNetworkOutput.c in Sources */ = {isa = PBXBuildFile; fileRef = E4DE84682E87C8D60050E9C8 /* ServerNetworkOutput.c */; };
 		E4F1D6EE2E79BC43009A2E75 /* shared_array.c in Sources */ = {isa = PBXBuildFile; fileRef = E43B07942E76BFB400F4A321 /* shared_array.c */; };
 		E4F1D6EF2E79BC4F009A2E75 /* libBoxFoundation.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E43B07AD2E76C3C600F4A321 /* libBoxFoundation.a */; };
 		E4F1D6FD2E79BDBB009A2E75 /* shared_dictionary.c in Sources */ = {isa = PBXBuildFile; fileRef = E43B07952E76BFB400F4A321 /* shared_dictionary.c */; };
@@ -539,6 +542,13 @@
 		E4C9DC182E8737CB008B96E6 /* test_BFStorageManager.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = test_BFStorageManager.c; sourceTree = "<group>"; };
 		E4C9DC1E2E873803008B96E6 /* test_BFStorageManager */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test_BFStorageManager; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4C9DC2D2E873887008B96E6 /* test_BFFileManager */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test_BFFileManager; sourceTree = BUILT_PRODUCTS_DIR; };
+		E4DE84602E87C3410050E9C8 /* ServerAdmin.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ServerAdmin.h; sourceTree = "<group>"; };
+		E4DE84612E87C3410050E9C8 /* ServerAdmin.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ServerAdmin.c; sourceTree = "<group>"; };
+		E4DE84632E87C4FC0050E9C8 /* ServerEventType.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ServerEventType.h; sourceTree = "<group>"; };
+		E4DE84642E87C8B70050E9C8 /* ServerNetworkInput.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ServerNetworkInput.h; sourceTree = "<group>"; };
+		E4DE84652E87C8B70050E9C8 /* ServerNetworkInput.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ServerNetworkInput.c; sourceTree = "<group>"; };
+		E4DE84672E87C8D60050E9C8 /* ServerNetworkOutput.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ServerNetworkOutput.h; sourceTree = "<group>"; };
+		E4DE84682E87C8D60050E9C8 /* ServerNetworkOutput.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ServerNetworkOutput.c; sourceTree = "<group>"; };
 		E4F1D6E52E79BC07009A2E75 /* sharedArray */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = sharedArray; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4F1D6F42E79BD90009A2E75 /* sharedDictionary */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = sharedDictionary; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4F1D7032E79BE0F009A2E75 /* benchSharedDictionary */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = benchSharedDictionary; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -765,6 +775,13 @@
 			isa = PBXGroup;
 			children = (
 				E43B07C72E76C4A900F4A321 /* server.c */,
+				E4DE84602E87C3410050E9C8 /* ServerAdmin.h */,
+				E4DE84612E87C3410050E9C8 /* ServerAdmin.c */,
+				E4DE84632E87C4FC0050E9C8 /* ServerEventType.h */,
+				E4DE84642E87C8B70050E9C8 /* ServerNetworkInput.h */,
+				E4DE84652E87C8B70050E9C8 /* ServerNetworkInput.c */,
+				E4DE84672E87C8D60050E9C8 /* ServerNetworkOutput.h */,
+				E4DE84682E87C8D60050E9C8 /* ServerNetworkOutput.c */,
 			);
 			path = boxd;
 			sourceTree = "<group>";
@@ -1665,7 +1682,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E4DE84692E87C8D60050E9C8 /* ServerNetworkOutput.c in Sources */,
+				E4DE84622E87C3410050E9C8 /* ServerAdmin.c in Sources */,
 				E43B08002E76C50200F4A321 /* server.c in Sources */,
+				E4DE84662E87C8B70050E9C8 /* ServerNetworkInput.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

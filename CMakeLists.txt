@@ -183,7 +183,14 @@ endif()
 
 if(NOT BOX_BUILD_MINIMAL)
   # Executables
-  add_executable(boxd sources/boxd/server.c)
+  add_executable(boxd
+	sources/boxd/ServerAdmin.h
+	sources/boxd/ServerAdmin.c
+	sources/boxd/ServerNetworkInput.h
+	sources/boxd/ServerNetworkInput.c
+	sources/boxd/ServerNetworkOutput.h
+	sources/boxd/ServerNetworkOutput.c
+	sources/boxd/server.c)
   target_link_libraries(boxd PRIVATE BoxFoundation)
 
   add_executable(box sources/box/client.c)

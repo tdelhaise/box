@@ -20,7 +20,8 @@ static const size_t BFGlobalMaxDatagram = BF_MACRO_MAX_DATAGRAM_SIZE; // taille 
 // -----------------------------------------------------------------------------
 // Codes d'erreur génériques
 // -----------------------------------------------------------------------------
-enum { BF_OK = 0, BF_ERR = -1 };
+enum _BFResult { BF_OK = 0, BF_ERR = -1 };
+typedef enum _BFResult BFResult;
 
 // -----------------------------------------------------------------------------
 // Logging / helpers
