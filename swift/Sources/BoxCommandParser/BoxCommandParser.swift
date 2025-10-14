@@ -46,6 +46,10 @@ public struct BoxCommandParser: AsyncParsableCommand {
     @Flag(name: [.long], inversion: .prefixedNo, help: "Enable the local admin channel socket.")
     public var adminChannel: Bool = true
 
+    /// Optional logging target override (`stderr|stdout|file:/path`).
+    @Option(name: .long, help: "Log target (stderr|stdout|file:<path>).")
+    public var logTarget: String?
+
     /// Optional PUT action described as `<queue>[:content-type]`.
     @Option(name: .customLong("put"), help: "PUT queue path (format: /queue[:content-type]).")
     public var putDescriptor: String?
@@ -64,11 +68,8 @@ public struct BoxCommandParser: AsyncParsableCommand {
     /// Parses CLI arguments, configures logging, and dispatches to either the server or the client.
     public mutating func run() async throws {
         let selectedLogLevel = Logger.Level(logLevelString: logLevel)
-        LoggingSystem.bootstrap { label in
-            var handler = StreamLogHandler.standardError(label: label)
-            handler.logLevel = selectedLogLevel
-            return handler
-        }
+        let (resolvedLogTarget, logTargetOrigin) = try resolveLogTarget()
+        BoxLogging.bootstrap(level: selectedLogLevel, target: resolvedLogTarget)
 
         let resolvedMode: BoxRuntimeMode = server ? .server : .client
         let resolvedAddress = address ?? BoxRuntimeOptions.defaultAddress
@@ -88,7 +89,9 @@ public struct BoxCommandParser: AsyncParsableCommand {
             configurationPath: configurationPath,
             adminChannelEnabled: adminChannel,
             logLevel: selectedLogLevel,
+            logTarget: resolvedLogTarget,
             logLevelOrigin: logLevelOrigin,
+            logTargetOrigin: logTargetOrigin,
             clientAction: try resolveClientAction(for: resolvedMode)
         )
 
@@ -133,6 +136,18 @@ public struct BoxCommandParser: AsyncParsableCommand {
         }
 
         return .handshake
+    }
+
+    /// Resolves the logging target based on CLI arguments.
+    /// - Returns: Tuple containing the parsed target and its origin.
+    private func resolveLogTarget() throws -> (BoxLogTarget, BoxRuntimeOptions.LogTargetOrigin) {
+        guard let targetOption = logTarget else {
+            return (BoxRuntimeOptions.defaultLogTarget, .default)
+        }
+        guard let parsed = BoxLogTarget.parse(targetOption) else {
+            throw ValidationError("Invalid --log-target. Expected stderr|stdout|file:<path>.")
+        }
+        return (parsed, .cliFlag)
     }
 }
 

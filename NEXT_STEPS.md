@@ -19,6 +19,7 @@ Immediate TODOs (Swift track)
    - [ ] Charger `~/.box/box.plist` (PropertyListDecoder) avec priorité CLI/env.
    - [x] Recréer le socket Unix `~/.box/run/boxd.socket` et la commande `status`.
    - [x] Renforcer la politique non-root + permissions des répertoires.
+   - [x] Brancher Puppy comme backend swift-log (`--log-target`, `log_target`).
 
 3) Swift S4 — Crypto / libsodium (Issue #21)
    - [ ] Introduire un module libsodium Swift (bindings légers).

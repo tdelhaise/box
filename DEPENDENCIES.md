@@ -10,6 +10,7 @@ Swift Toolchain (rewrite in progress)
   - `swift-argument-parser` (CLI).
   - `swift-log` (structured logging).
   - `swift-nio` (UDP/EventLoop abstractions, concurrency helpers).
+  - `Puppy` (swift-log backend for console/file logging).
 - Build:
   ```bash
   swift build --product box

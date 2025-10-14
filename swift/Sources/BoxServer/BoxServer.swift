@@ -52,10 +52,24 @@ public enum BoxServer {
         }
 
         var effectiveLogLevel = options.logLevel
-        if options.logLevelOrigin == .default, let configLogLevel = configuration?.logLevel {
+        var logLevelOrigin = options.logLevelOrigin
+        if logLevelOrigin == .default, let configLogLevel = configuration?.logLevel {
             effectiveLogLevel = configLogLevel
+            logLevelOrigin = .configuration
         }
         logger.logLevel = effectiveLogLevel
+
+        var effectiveLogTarget = options.logTarget
+        var logTargetOrigin = options.logTargetOrigin
+        if logTargetOrigin == .default, let configTarget = configuration?.logTarget {
+            if let parsedTarget = BoxLogTarget.parse(configTarget) {
+                effectiveLogTarget = parsedTarget
+                logTargetOrigin = .configuration
+            } else {
+                logger.warning("invalid log target in configuration", metadata: ["value": "\(configTarget)"])
+            }
+        }
+        BoxLogging.update(target: effectiveLogTarget)
 
         var adminChannelEnabled = options.adminChannelEnabled
         if let configAdmin = configuration?.adminChannelEnabled {
@@ -69,6 +83,9 @@ public enum BoxServer {
             port: effectivePort,
             portOrigin: portOrigin,
             logLevel: effectiveLogLevel,
+            logLevelOrigin: logLevelOrigin,
+            logTarget: effectiveLogTarget,
+            logTargetOrigin: logTargetOrigin,
             configurationPresent: configuration != nil,
             adminChannelEnabled: adminChannelEnabled,
             transport: selectedTransport
@@ -79,10 +96,11 @@ public enum BoxServer {
         let statusPort = effectivePort
         let statusTransport = selectedTransport
         let statusLogLevel = logger.logLevel
+        let statusTarget = effectiveLogTarget
         let statusProvider: @Sendable () -> String = {
-            var snapshotLogger = Logger(label: "box.server.status")
+            var snapshotLogger = Logging.Logger(label: "box.server.status")
             snapshotLogger.logLevel = statusLogLevel
-            return renderStatus(port: statusPort, store: store, logger: snapshotLogger, transport: statusTransport)
+            return renderStatus(port: statusPort, store: store, logger: snapshotLogger, transport: statusTransport, logTarget: statusTarget)
         }
 
         let adminSocketPath = adminChannelEnabled ? BoxPaths.adminSocketPath() : nil
@@ -125,7 +143,7 @@ public enum BoxServer {
             try await withTaskCancellationHandler {
                 try await channelBox.value.closeFuture.get()
             } onCancel: {
-                var cancellationLogger = Logger(label: "box.server.cancel")
+                var cancellationLogger = Logging.Logger(label: "box.server.cancel")
                 cancellationLogger.logLevel = cancellationLogLevel
                 cancellationLogger.info("server cancellation requested")
                 channelBox.value.close(promise: nil)
@@ -407,13 +425,14 @@ private func startAdminChannel(
 ///   - logger: Logger providing the current log level.
 ///   - transport: Optional transport description.
 /// - Returns: A JSON string summarising the current server state.
-private func renderStatus(port: UInt16, store: BoxServerStore, logger: Logger, transport: String?) -> String {
+private func renderStatus(port: UInt16, store: BoxServerStore, logger: Logger, transport: String?, logTarget: BoxLogTarget) -> String {
     let payload: [String: Any] = [
         "status": "ok",
         "port": Int(port),
         "objects": store.count(),
         "logLevel": logger.logLevel.rawValue,
-        "transport": transport ?? "clear"
+        "transport": transport ?? "clear",
+        "logTarget": logTargetDescription(logTarget)
     ]
     if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
        let string = String(data: data, encoding: .utf8) {
@@ -436,9 +455,35 @@ private func logStartupSummary(
     port: UInt16,
     portOrigin: BoxRuntimeOptions.PortOrigin,
     logLevel: Logger.Level,
+    logLevelOrigin: BoxRuntimeOptions.LogLevelOrigin,
+    logTarget: BoxLogTarget,
+    logTargetOrigin: BoxRuntimeOptions.LogTargetOrigin,
     configurationPresent: Bool,
     adminChannelEnabled: Bool,
     transport: String?
 ) {
-    logger.info("server start")
+    logger.info(
+        "server start",
+        metadata: [
+            "port": "\(port)",
+            "portOrigin": "\(portOrigin)",
+            "logLevel": "\(logLevel.rawValue)",
+            "logLevelOrigin": "\(logLevelOrigin)",
+            "logTarget": "\(logTargetDescription(logTarget))",
+            "config": configurationPresent ? "present" : "absent",
+            "admin": adminChannelEnabled ? "enabled" : "disabled",
+            "transport": .string(transport ?? "clear")
+        ]
+    )
+}
+
+private func logTargetDescription(_ target: BoxLogTarget) -> String {
+    switch target {
+    case .stderr:
+        return "stderr"
+    case .stdout:
+        return "stdout"
+    case .file(let path):
+        return "file:\(path)"
+    }
 }

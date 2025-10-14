@@ -1,6 +1,15 @@
 {
-  "originHash" : "fca90266f32df3e25e3d83e6050f2236b312bf38f5a394ff83cdb7dc3598ed45",
+  "originHash" : "34de34b0ee0c1d842dd2dca5c4b82d2ae5212102aba3eda7949873c2f9893a3b",
   "pins" : [
+    {
+      "identity" : "puppy",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sushichop/Puppy.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "80ebe6ab25fb7050904647cb96f6ad7bee77bad6"
+      }
+    },
     {
       "identity" : "swift-argument-parser",
       "kind" : "remoteSourceControl",

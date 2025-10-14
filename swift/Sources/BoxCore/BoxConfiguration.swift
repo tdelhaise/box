@@ -7,7 +7,7 @@ public struct BoxServerConfiguration: Sendable {
     public var port: UInt16?
     /// Logging level override when present.
     public var logLevel: Logger.Level?
-    /// Log target string (currently informational only).
+    /// Log target string determining the Puppy destination (`stderr|stdout|file:/path`).
     public var logTarget: String?
     /// General transport toggle (`clear` or `noise`).
     public var transportGeneral: String?

@@ -44,10 +44,21 @@ public struct BoxRuntimeOptions: Sendable {
         /// Configuration file override.
         case configuration
     }
+    /// Indicates how the effective log target was determined.
+    public enum LogTargetOrigin: Sendable {
+        /// Default target (stderr).
+        case `default`
+        /// CLI `--log-target` flag.
+        case cliFlag
+        /// Configuration file override.
+        case configuration
+    }
     /// Default client/server address when none is provided.
     public static let defaultAddress = "127.0.0.1"
     /// Default UDP port when none is provided.
     public static let defaultPort: UInt16 = 12567
+    /// Default log target when none is provided.
+    public static let defaultLogTarget: BoxLogTarget = .stderr
 
     /// Indicates whether we should boot the server or the client.
     public var mode: BoxRuntimeMode
@@ -63,8 +74,12 @@ public struct BoxRuntimeOptions: Sendable {
     public var adminChannelEnabled: Bool
     /// Desired logging level for swift-log.
     public var logLevel: Logger.Level
+    /// Desired logging target for Puppy.
+    public var logTarget: BoxLogTarget
     /// Metadata explaining how the log level was resolved.
     public var logLevelOrigin: LogLevelOrigin
+    /// Metadata explaining how the log target was resolved.
+    public var logTargetOrigin: LogTargetOrigin
     /// Optional client action that should be executed after the handshake.
     public var clientAction: BoxClientAction
 
@@ -76,8 +91,10 @@ public struct BoxRuntimeOptions: Sendable {
     ///   - configurationPath: Optional PLIST configuration file.
     ///   - adminChannelEnabled: Whether the server admin channel should be enabled (ignored for client).
     ///   - logLevel: Logging level used by swift-log.
+    ///   - logTarget: Logging destination used by Puppy.
     ///   - portOrigin: Origin of the port value (default, CLI, env, config, positional).
     ///   - logLevelOrigin: Origin of the log level value (default, CLI, config).
+    ///   - logTargetOrigin: Origin of the log target value (default, CLI, config).
     ///   - clientAction: Action executed by the client after the handshake.
     public init(
         mode: BoxRuntimeMode,
@@ -87,7 +104,9 @@ public struct BoxRuntimeOptions: Sendable {
         configurationPath: String?,
         adminChannelEnabled: Bool,
         logLevel: Logger.Level,
+        logTarget: BoxLogTarget,
         logLevelOrigin: LogLevelOrigin,
+        logTargetOrigin: LogTargetOrigin,
         clientAction: BoxClientAction = .handshake
     ) {
         self.mode = mode
@@ -97,7 +116,9 @@ public struct BoxRuntimeOptions: Sendable {
         self.configurationPath = configurationPath
         self.adminChannelEnabled = adminChannelEnabled
         self.logLevel = logLevel
+        self.logTarget = logTarget
         self.logLevelOrigin = logLevelOrigin
+        self.logTargetOrigin = logTargetOrigin
         self.clientAction = clientAction
     }
 }

@@ -13,6 +13,7 @@ final class BoxConfigurationTests: XCTestCase {
         let propertyList: [String: Any] = [
             "port": 15000,
             "log_level": "debug",
+            "log_target": "stdout",
             "transport": "noise",
             "pre_share_key": "secret",
             "admin_channel": false
@@ -23,6 +24,7 @@ final class BoxConfigurationTests: XCTestCase {
         let configuration = try BoxServerConfiguration.load(from: plistURL)
         XCTAssertEqual(configuration?.port, 15000)
         XCTAssertEqual(configuration?.logLevel, Logger.Level.debug)
+        XCTAssertEqual(configuration?.logTarget, "stdout")
         XCTAssertEqual(configuration?.transportGeneral, "noise")
         XCTAssertEqual(configuration?.preShareKey, "secret")
         XCTAssertEqual(configuration?.adminChannelEnabled, false)

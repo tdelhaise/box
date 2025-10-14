@@ -1,4 +1,7 @@
 build/
+.build/
+.swiftpm/
+Package.resolved
 build-debug/
 build-Debug/
 cmake-build-debug/
@@ -27,4 +30,3 @@ DerivedData/
 !default.perspectivev3
 *.xccheckout
 xcuserdata/
-

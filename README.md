@@ -9,7 +9,7 @@
   swift run box --server        # équivalent à --server/-s
   swift run box                 # mode client par défaut
   ```
-- `BoxCommandParser` résout la ligne de commande et délègue à `BoxServer` ou `BoxClient`. Les options actuelles couvrent `--server/-s`, `--port`, `--address`, `--config` (PLIST), `--log-level`, `--put /queue[:type] --data "..."` et `--get /queue`.
+- `BoxCommandParser` résout la ligne de commande et délègue à `BoxServer` ou `BoxClient`. Les options actuelles couvrent `--server/-s`, `--port`, `--address`, `--config` (PLIST), `--log-level`, `--log-target (stderr|stdout|file:<path>)`, `--put /queue[:type] --data "..."` et `--get /queue`.
 - `box admin status` interroge le socket Unix local (`~/.box/run/boxd.socket`) et renvoie un JSON de statut.
 - `BoxCodec` encapsule le framing v1 (HELLO/STATUS/PUT/GET) et peut être réutilisé dans n’importe quel handler SwiftNIO basé sur `ByteBuffer`.
 - Le protocole est pour l’instant implémenté en clair le temps de porter l’ensemble des fonctionnalités. La réintégration Noise/libsodium arrivera une fois le socle Swift stabilisé.
@@ -41,10 +41,10 @@ Les logs indiquent la progression HELLO → STATUS → action. Les réponses GET
 
 ### Configuration (PLIST)
 
-- Serveur: `~/.box/boxd.plist` (CLI `--config` pour personnaliser le chemin). Exemples de clés : `port` (UInt16), `log_level` (`trace|debug|info|warn|error|critical`), `transport`, `pre_share_key`, `noise_pattern`, `admin_channel` (booléen).
+- Serveur: `~/.box/boxd.plist` (CLI `--config` pour personnaliser le chemin). Exemples de clés : `port` (UInt16), `log_level` (`trace|debug|info|warn|error|critical`), `log_target` (`stderr|stdout|file:/chemin`), `transport`, `pre_share_key`, `noise_pattern`, `admin_channel` (booléen).
 - Client: `~/.box/box.plist` (réservation pour les prochaines étapes).
 - Priorité des sources (serveur): CLI `--port` > variable d’environnement `BOXD_PORT` > PLIST > valeur par défaut `12567`.
-- Un répertoire `~/.box` est créé au démarrage avec permissions strictes (`0700`) ainsi que `~/.box/run` (`0700`) pour héberger le socket admin (`0600`).
+- Un répertoire `~/.box` est créé au démarrage avec permissions strictes (`0700`) ainsi que `~/.box/run` (`0700`) pour héberger le socket admin (`0600`). Les journaux utilisent Puppy (`stderr` par défaut, configurable vers `stdout` ou un fichier).
 
 > Les sections suivantes décrivent l'implémentation C historique, conservée comme référence pendant la migration.
 
