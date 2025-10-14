@@ -67,29 +67,63 @@ public struct BoxCommandParser: AsyncParsableCommand {
 
     /// Parses CLI arguments, configures logging, and dispatches to either the server or the client.
     public mutating func run() async throws {
-        let selectedLogLevel = Logger.Level(logLevelString: logLevel)
-        let (resolvedLogTarget, logTargetOrigin) = try resolveLogTarget()
-        BoxLogging.bootstrap(level: selectedLogLevel, target: resolvedLogTarget)
-
+        let cliLogLevel = Logger.Level(logLevelString: logLevel)
+        let cliLogTarget = try resolveLogTarget()
         let resolvedMode: BoxRuntimeMode = server ? .server : .client
-        let resolvedAddress = address ?? BoxRuntimeOptions.defaultAddress
-        let (resolvedPort, portOrigin): (UInt16, BoxRuntimeOptions.PortOrigin) = {
+        let clientConfiguration = (resolvedMode == .client) ? try loadClientConfiguration() : nil
+
+        let (effectiveLogLevel, logLevelOrigin): (Logger.Level, BoxRuntimeOptions.LogLevelOrigin) = {
+            if logLevel != nil {
+                return (cliLogLevel, .cliFlag)
+            }
+            if let configLevel = clientConfiguration?.logLevel {
+                return (configLevel, .configuration)
+            }
+            return (.info, .default)
+        }()
+
+        let (effectiveLogTarget, logTargetOrigin): (BoxLogTarget, BoxRuntimeOptions.LogTargetOrigin) = {
+            if let cliTarget = cliLogTarget {
+                return (cliTarget, .cliFlag)
+            }
+            if let configTarget = clientConfiguration?.logTarget,
+               let parsed = BoxLogTarget.parse(configTarget) {
+                return (parsed, .configuration)
+            }
+            return (BoxRuntimeOptions.defaultLogTarget, .default)
+        }()
+
+        BoxLogging.bootstrap(level: effectiveLogLevel, target: effectiveLogTarget)
+
+        let effectiveAddress: String = {
+            if let cliAddress = address {
+                return cliAddress
+            }
+            if resolvedMode == .client, let configAddress = clientConfiguration?.address, !configAddress.isEmpty {
+                return configAddress
+            }
+            return BoxRuntimeOptions.defaultAddress
+        }()
+
+        let (effectivePort, portOrigin): (UInt16, BoxRuntimeOptions.PortOrigin) = {
             if let cliPort = port {
                 return (cliPort, .cliFlag)
             }
+            if resolvedMode == .client, let configPort = clientConfiguration?.port {
+                return (configPort, .configuration)
+            }
             return (BoxRuntimeOptions.defaultPort, .default)
         }()
-        let logLevelOrigin: BoxRuntimeOptions.LogLevelOrigin = (logLevel != nil) ? .cliFlag : .default
 
         let runtimeOptions = BoxRuntimeOptions(
             mode: resolvedMode,
-            address: resolvedAddress,
-            port: resolvedPort,
+            address: effectiveAddress,
+            port: effectivePort,
             portOrigin: portOrigin,
             configurationPath: configurationPath,
             adminChannelEnabled: adminChannel,
-            logLevel: selectedLogLevel,
-            logTarget: resolvedLogTarget,
+            logLevel: effectiveLogLevel,
+            logTarget: effectiveLogTarget,
             logLevelOrigin: logLevelOrigin,
             logTargetOrigin: logTargetOrigin,
             clientAction: try resolveClientAction(for: resolvedMode)
@@ -138,16 +172,21 @@ public struct BoxCommandParser: AsyncParsableCommand {
         return .handshake
     }
 
+    /// Loads the client configuration from disk (if available).
+    private func loadClientConfiguration() throws -> BoxClientConfiguration? {
+        try BoxClientConfiguration.loadDefault(explicitPath: configurationPath)
+    }
+
     /// Resolves the logging target based on CLI arguments.
-    /// - Returns: Tuple containing the parsed target and its origin.
-    private func resolveLogTarget() throws -> (BoxLogTarget, BoxRuntimeOptions.LogTargetOrigin) {
+    /// - Returns: Parsed target when provided.
+    private func resolveLogTarget() throws -> BoxLogTarget? {
         guard let targetOption = logTarget else {
-            return (BoxRuntimeOptions.defaultLogTarget, .default)
+            return nil
         }
         guard let parsed = BoxLogTarget.parse(targetOption) else {
             throw ValidationError("Invalid --log-target. Expected stderr|stdout|file:<path>.")
         }
-        return (parsed, .cliFlag)
+        return parsed
     }
 }
 

@@ -29,4 +29,26 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration?.preShareKey, "secret")
         XCTAssertEqual(configuration?.adminChannelEnabled, false)
     }
+
+    func testLoadClientConfigurationFromPlist() throws {
+        let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let plistURL = temporaryDirectory.appendingPathComponent("box.plist")
+        let propertyList: [String: Any] = [
+            "log_level": "error",
+            "log_target": "file:/tmp/box.log",
+            "address": "192.0.2.42",
+            "port": 18000
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: propertyList, format: .xml, options: 0)
+        try data.write(to: plistURL)
+
+        let configuration = try BoxClientConfiguration.load(from: plistURL)
+        XCTAssertEqual(configuration?.logLevel, Logger.Level.error)
+        XCTAssertEqual(configuration?.logTarget, "file:/tmp/box.log")
+        XCTAssertEqual(configuration?.address, "192.0.2.42")
+        XCTAssertEqual(configuration?.port, 18000)
+    }
 }

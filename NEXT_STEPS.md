@@ -16,7 +16,7 @@ Immediate TODOs (Swift track)
    - [ ] Ajouter des tests d’intégration end-to-end (Swift) automatisés.
 
 2) Swift S3 — Configuration + canal admin (Issue #14)
-   - [ ] Charger `~/.box/box.plist` (PropertyListDecoder) avec priorité CLI/env.
+   - [x] Charger `~/.box/box.plist` (PropertyListDecoder) avec priorité CLI/env.
    - [x] Recréer le socket Unix `~/.box/run/boxd.socket` et la commande `status`.
    - [x] Renforcer la politique non-root + permissions des répertoires.
    - [x] Brancher Puppy comme backend swift-log (`--log-target`, `log_target`).

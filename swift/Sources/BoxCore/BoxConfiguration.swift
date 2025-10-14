@@ -89,3 +89,59 @@ public struct BoxServerConfiguration: Sendable {
         }
     }
 }
+
+/// Runtime representation of the client configuration loaded from a PLIST file.
+public struct BoxClientConfiguration: Sendable {
+    /// Logging level override when present.
+    public var logLevel: Logger.Level?
+    /// Logging target string.
+    public var logTarget: String?
+    /// Default server address override.
+    public var address: String?
+    /// Default server port override.
+    public var port: UInt16?
+
+    /// Attempts to load the client configuration from a PLIST file.
+    public static func load(from url: URL) throws -> BoxClientConfiguration? {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
+        let data = try Data(contentsOf: url)
+        if data.isEmpty {
+            return nil
+        }
+        let decoder = PropertyListDecoder()
+        let plist = try decoder.decode(ClientConfigPlist.self, from: data)
+        return BoxClientConfiguration(plist: plist)
+    }
+
+    /// Convenience helper loading the default client configuration if present.
+    /// - Parameter explicitPath: Optional CLI `--config` path that should take precedence.
+    public static func loadDefault(explicitPath: String?) throws -> BoxClientConfiguration? {
+        guard let url = BoxPaths.clientConfigurationURL(explicitPath: explicitPath) else {
+            return nil
+        }
+        return try load(from: url)
+    }
+
+    private init(plist: ClientConfigPlist) {
+        self.logLevel = plist.logLevel.flatMap { Logger.Level(logLevelString: $0) }
+        self.logTarget = plist.logTarget
+        self.address = plist.address
+        self.port = plist.port
+    }
+
+    private struct ClientConfigPlist: Decodable {
+        var logLevel: String?
+        var logTarget: String?
+        var address: String?
+        var port: UInt16?
+
+        enum CodingKeys: String, CodingKey {
+            case logLevel = "log_level"
+            case logTarget = "log_target"
+            case address
+            case port
+        }
+    }
+}

@@ -42,7 +42,7 @@ Les logs indiquent la progression HELLO → STATUS → action. Les réponses GET
 ### Configuration (PLIST)
 
 - Serveur: `~/.box/boxd.plist` (CLI `--config` pour personnaliser le chemin). Exemples de clés : `port` (UInt16), `log_level` (`trace|debug|info|warn|error|critical`), `log_target` (`stderr|stdout|file:/chemin`), `transport`, `pre_share_key`, `noise_pattern`, `admin_channel` (booléen).
-- Client: `~/.box/box.plist` (réservation pour les prochaines étapes).
+- Client: `~/.box/box.plist` (chargé si présent). Clés actuelles: `log_level`, `log_target`, `address`, `port`. Priorité des sources: CLI > PLIST > défauts.
 - Priorité des sources (serveur): CLI `--port` > variable d’environnement `BOXD_PORT` > PLIST > valeur par défaut `12567`.
 - Un répertoire `~/.box` est créé au démarrage avec permissions strictes (`0700`) ainsi que `~/.box/run` (`0700`) pour héberger le socket admin (`0600`). Les journaux utilisent Puppy (`stderr` par défaut, configurable vers `stdout` ou un fichier).
 
