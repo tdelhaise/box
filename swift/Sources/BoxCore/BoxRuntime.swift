@@ -43,6 +43,8 @@ public struct BoxRuntimeOptions: Sendable {
         case cliFlag
         /// Configuration file override.
         case configuration
+        /// Runtime override applied dynamically (admin channel).
+        case runtime
     }
     /// Indicates how the effective log target was determined.
     public enum LogTargetOrigin: Sendable {
@@ -52,6 +54,8 @@ public struct BoxRuntimeOptions: Sendable {
         case cliFlag
         /// Configuration file override.
         case configuration
+        /// Runtime override applied dynamically (admin channel).
+        case runtime
     }
     /// Default client/server address when none is provided.
     public static let defaultAddress = "127.0.0.1"

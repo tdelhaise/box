@@ -50,6 +50,10 @@ public enum BoxPaths {
     /// Resolves the default admin socket path (`~/.box/run/boxd.socket`).
     /// - Returns: Absolute path to the admin socket when derivable.
     public static func adminSocketPath() -> String? {
+        #if os(Windows)
+        return #"\\.\pipe\boxd-admin"#
+        #else
         runDirectory()?.appendingPathComponent("boxd.socket").path
+        #endif
     }
 }

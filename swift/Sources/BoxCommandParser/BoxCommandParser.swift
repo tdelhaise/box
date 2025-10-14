@@ -199,7 +199,7 @@ extension BoxCommandParser {
             CommandConfiguration(
                 commandName: "admin",
                 abstract: "Interact with the local admin channel.",
-                subcommands: [Status.self]
+                subcommands: [Status.self, Ping.self, LogTarget.self, ReloadConfig.self, Stats.self]
             )
         }
 
@@ -214,10 +214,7 @@ extension BoxCommandParser {
 
             public mutating func run() throws {
                 let response = try Admin.sendCommand("status", socketOverride: socket)
-                FileHandle.standardOutput.write(response.data(using: .utf8) ?? Data())
-                if !response.hasSuffix("\n") {
-                    FileHandle.standardOutput.write("\n".data(using: .utf8)!)
-                }
+                Admin.writeResponse(response)
             }
         }
 
@@ -230,10 +227,7 @@ extension BoxCommandParser {
 
             public mutating func run() throws {
                 let response = try Admin.sendCommand("ping", socketOverride: socket)
-                FileHandle.standardOutput.write(response.data(using: .utf8) ?? Data())
-                if !response.hasSuffix("\n") {
-                    FileHandle.standardOutput.write("\n".data(using: .utf8)!)
-                }
+                Admin.writeResponse(response)
             }
         }
 
@@ -251,99 +245,61 @@ extension BoxCommandParser {
                 guard BoxLogTarget.parse(target) != nil else {
                     throw ValidationError("Invalid target. Expected stderr|stdout|file:<path>.")
                 }
-                let response = try Admin.sendCommand("log-target \(target)", socketOverride: socket)
-                FileHandle.standardOutput.write(response.data(using: .utf8) ?? Data())
-                if !response.hasSuffix("\n") {
-                    FileHandle.standardOutput.write("\n".data(using: .utf8)!)
+                let payload = try Admin.encodeJSON(["target": target])
+                let response = try Admin.sendCommand("log-target \(payload)", socketOverride: socket)
+                Admin.writeResponse(response)
+            }
+        }
+
+        /// `box admin reload-config` — requests the daemon to reload its configuration file.
+        public struct ReloadConfig: AsyncParsableCommand {
+            /// Custom admin socket path override.
+            @Option(name: .shortAndLong, help: "Admin socket path (defaults to ~/.box/run/boxd.socket).")
+            public var socket: String?
+
+            /// Explicit configuration file to reload.
+            @Option(name: .shortAndLong, help: "Configuration PLIST path (defaults to the runtime path).")
+            public var configuration: String?
+
+            public init() {}
+
+            public mutating func run() throws {
+                let command: String
+                if let configuration, !configuration.isEmpty {
+                    let payload = try Admin.encodeJSON(["path": configuration])
+                    command = "reload-config \(payload)"
+                } else {
+                    command = "reload-config"
                 }
+                let response = try Admin.sendCommand(command, socketOverride: socket)
+                Admin.writeResponse(response)
+            }
+        }
+
+        /// `box admin stats` — retrieves runtime statistics (log level, target, queue count, reload history).
+        public struct Stats: AsyncParsableCommand {
+            /// Custom admin socket path override.
+            @Option(name: .shortAndLong, help: "Admin socket path (defaults to ~/.box/run/boxd.socket).")
+            public var socket: String?
+
+            public init() {}
+
+            public mutating func run() throws {
+                let response = try Admin.sendCommand("stats", socketOverride: socket)
+                Admin.writeResponse(response)
             }
         }
 
         private static func sendCommand(_ command: String, socketOverride: String?) throws -> String {
             let socketPath = try resolveSocketPath(socketOverride)
-            #if os(Linux)
-            let fileDescriptor = Glibc.socket(AF_UNIX, Int32(SOCK_STREAM), 0)
-            #else
-            let fileDescriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
-            #endif
-            guard fileDescriptor >= 0 else {
-                throw ValidationError("Failed to create admin socket.")
+            let transport = BoxAdminTransportFactory.makeTransport(socketPath: socketPath)
+            do {
+                return try transport.send(command: command)
+            } catch let error as BoxAdminTransportError {
+                throw ValidationError("Admin command failed: \(error.readableDescription)")
+            } catch {
+                throw ValidationError("Admin command failed: \(error.localizedDescription)")
             }
-            defer {
-                #if os(Linux)
-                _ = Glibc.close(fileDescriptor)
-                #else
-                _ = Darwin.close(fileDescriptor)
-                #endif
-            }
-
-            var address = sockaddr_un()
-            address.sun_family = sa_family_t(AF_UNIX)
-            var pathBytes = Array(socketPath.utf8)
-            let maxLength = MemoryLayout.size(ofValue: address.sun_path) - 1
-            if pathBytes.count > maxLength {
-                pathBytes = Array(pathBytes.prefix(maxLength))
-            }
-            withUnsafeMutableBytes(of: &address.sun_path) { buffer in
-                buffer.initializeMemory(as: UInt8.self, repeating: 0)
-                pathBytes.withUnsafeBytes { source in
-                    if let dest = buffer.baseAddress, let src = source.baseAddress {
-                        memcpy(dest, src, pathBytes.count)
-                    }
-                }
-            }
-            let sockLen = socklen_t(MemoryLayout.size(ofValue: address) - MemoryLayout.size(ofValue: address.sun_path) + pathBytes.count + 1)
-            let connectResult = withUnsafePointer(to: &address) { pointer -> Int32 in
-                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
-                    #if os(Linux)
-                    return Glibc.connect(fileDescriptor, sockaddrPointer, sockLen)
-                    #else
-                    return Darwin.connect(fileDescriptor, sockaddrPointer, sockLen)
-                    #endif
-                }
-            }
-            guard connectResult == 0 else {
-                throw ValidationError("Unable to connect to admin socket at \(socketPath)")
-            }
-
-            let request = command + "\n"
-            try request.withCString { pointer in
-                let length = strlen(pointer)
-                var totalWritten: size_t = 0
-                while totalWritten < length {
-                    #if os(Linux)
-                    let written = Glibc.write(fileDescriptor, pointer + totalWritten, length - totalWritten)
-                    #else
-                    let written = Darwin.write(fileDescriptor, pointer + totalWritten, length - totalWritten)
-                    #endif
-                    if written <= 0 {
-                        throw ValidationError("Failed to write request to admin socket.")
-                    }
-                    totalWritten += size_t(written)
-                }
-            }
-
-            var buffer = [UInt8](repeating: 0, count: 4096)
-            var response = Data()
-            while true {
-                #if os(Linux)
-                let bytesRead = Glibc.read(fileDescriptor, &buffer, buffer.count)
-                #else
-                let bytesRead = Darwin.read(fileDescriptor, &buffer, buffer.count)
-                #endif
-                if bytesRead < 0 {
-                    throw ValidationError("Failed to read response from admin socket.")
-                }
-                if bytesRead == 0 {
-                    break
-                }
-                response.append(buffer, count: Int(bytesRead))
-            }
-
-            guard let responseString = String(data: response, encoding: .utf8) else {
-                throw ValidationError("Admin response was not valid UTF-8.")
-            }
-            return responseString
         }
 
         private static func resolveSocketPath(_ override: String?) throws -> String {
@@ -354,6 +310,26 @@ extension BoxCommandParser {
                 throw ValidationError("Unable to determine admin socket path. Specify one with --socket.")
             }
             return defaultPath
+        }
+
+        /// Writes the received response to stdout and ensures the trailing newline is present.
+        /// - Parameter response: Raw response string from the admin channel.
+        private static func writeResponse(_ response: String) {
+            FileHandle.standardOutput.write(response.data(using: .utf8) ?? Data())
+            if !response.hasSuffix("\n") {
+                FileHandle.standardOutput.write("\n".data(using: .utf8)!)
+            }
+        }
+
+        /// Encodes a JSON payload used for admin commands (e.g. log-target, reload-config).
+        /// - Parameter payload: Dictionary converted to JSON.
+        /// - Returns: Sorted JSON string representation.
+        private static func encodeJSON(_ payload: [String: String]) throws -> String {
+            let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+            guard let json = String(data: data, encoding: .utf8) else {
+                throw ValidationError("Unable to encode admin command payload.")
+            }
+            return json
         }
     }
 }

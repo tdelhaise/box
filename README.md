@@ -15,6 +15,12 @@
 - Le protocole est pour l’instant implémenté en clair le temps de porter l’ensemble des fonctionnalités. La réintégration Noise/libsodium arrivera une fois le socle Swift stabilisé.
 - Les fichiers de configuration basculent vers le format Property List (PLIST). La lecture TOML existante est gelée et sera réintroduite ultérieurement si nécessaire.
 
+### Avancement 2025-10-14
+
+- Transport d’administration unifié: `box admin` s’appuie désormais sur une abstraction commune (socket Unix `~/.box/run/boxd.socket` ou named pipe Windows `\\.\pipe\boxd-admin`) et prend en charge `status`, `ping`, `log-target`, `reload-config` et `stats`.
+- Rechargement dynamique des configurations PLIST serveur/client avec priorité CLI > env > fichier, mise à jour des cibles Puppy (`stderr|stdout|file:`) et journalisation centralisée via `BoxLogging`.
+- Tests Swift couvrant les commandes d’administration côté répartiteur (`BoxAdminDispatcherTests`). Les prochains jalons porteront sur des tests d’intégration CLI↔️serveur, la vérification des ACL Windows pour le named pipe et la réintégration Noise/libsodium.
+
 ### Exemples (Swift cleartext)
 
 Terminal 1 — serveur:
@@ -51,6 +57,10 @@ Les logs indiquent la progression HELLO → STATUS → action. Les réponses GET
 - `swift run box admin status` : renvoie un JSON avec les métadonnées runtime.
 - `swift run box admin ping` : vérifie la disponibilité du canal d’administration (`{"status":"ok","message":"pong"}`).
 - `swift run box admin log-target <stderr|stdout|file:/chemin>` : met à jour dynamiquement la cible de journalisation Puppy.
+- `swift run box admin reload-config [--configuration <plist>]` : recharge le PLIST serveur, met à jour le niveau/cible de log et rafraîchit les drapeaux d’exécution (CLI > config > valeur par défaut).
+- `swift run box admin stats` : renvoie un instantané JSON (port, transport, cible de log, compte d’objets, compteur de reload et dernier statut).
+
+> Remarque : la communication admin repose sur un socket Unix (`~/.box/run/boxd.socket`) sur Linux/macOS et sur un named pipe Windows (`\\.\pipe\boxd-admin`).
 
 > Les sections suivantes décrivent l'implémentation C historique, conservée comme référence pendant la migration.
 

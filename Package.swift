@@ -74,7 +74,7 @@ let package = Package(
         ),
         .testTarget(
             name: "BoxAppTests",
-            dependencies: ["BoxCore"],
+            dependencies: ["BoxCore", "BoxServer"],
             path: "swift/Tests/BoxAppTests"
         )
     ]

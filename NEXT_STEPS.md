@@ -20,7 +20,21 @@ Immediate TODOs (Swift track)
    - [x] Recréer le socket Unix `~/.box/run/boxd.socket` et la commande `status`.
    - [x] Renforcer la politique non-root + permissions des répertoires.
    - [x] Brancher Puppy comme backend swift-log (`--log-target`, `log_target`).
-   - [ ] Parité Windows (named pipe) et commandes admin additionnelles (reload, stats, etc.).
+   - [x] Étendre l’arbre de commandes `box admin` :
+     - [x] Enregistrer `status|ping|log-target|reload-config|stats` dans `CommandConfiguration` (payload JSON pour les paramètres).
+     - [x] Mettre à jour l’aide CLI et la validation (payload JSON, alias `--configuration` et réponses utilisateur).
+   - [x] Factoriser le handler admin côté serveur :
+     - [x] Créer un répartiteur structuré pour `status`/`ping`/`log-target` (+ analyse JSON optionnelle).
+     - [x] Implémenter `reload-config` (relecture PLIST, état runtime) et `stats` (instantané runtime JSON).
+     - [x] Harmoniser les erreurs (`unknown-command`, `invalid-log-target`, payload JSON mal formé).
+   - [x] Parité Windows :
+     - [x] Abstraire le transport admin (Unix socket vs named pipe) dans BoxCore.
+     - [x] Exposer `--socket` compatible Windows (chemin `\\.\pipe\boxd-admin` par défaut) et documenter le comportement.
+     - [ ] Vérifier/renforcer les permissions (ACL) côté Windows.
+   - [ ] Tests et observabilité :
+     - [x] Ajouter des tests unitaires pour les commandes admin (mock de transport) couvrant `ping`, `log-target`, `reload-config`, `stats`.
+     - [ ] Préparer des tests d’intégration End-to-End (CLI ↔️ serveur) utilisables en CI.
+     - [x] Mettre à jour README, DEVELOPMENT_STRATEGY et SPECS pour refléter les nouvelles commandes et matrices de plateformes.
 
 3) Swift S4 — Crypto / libsodium (Issue #21)
    - [ ] Introduire un module libsodium Swift (bindings légers).

@@ -898,11 +898,12 @@ Safety
 
 - Transport
   - Unix/macOS: Unix domain socket at `~/.box/run/boxd.socket` (directory mode 700; socket mode 600).
-  - Windows: Named pipe `\\.\pipe\boxd` with an ACL restricting access to the owning user.
+  - Windows: Named pipe `\\.\pipe\boxd-admin` with an ACL restricting access to the owning user.
 
 - Authentication/Authorization
   - Access is restricted by OS-level file/pipe permissions to the same non-privileged user that owns `boxd`.
   - `boxd` refuses admin-channel requests if the caller is not the same user.
+  - Swift rewrite (MVP 2025): admin commands are invoked as plain text lines (`status`, `ping`, `log-target <target|json>`, `reload-config [json]`, `stats`) returning newline-delimited JSON responses.
 
 - Message Format
   - Framing: newline-delimited JSON (NDJSON) or CBOR frames; implementation MAY choose CBOR for efficiency.

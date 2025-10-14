@@ -7,6 +7,8 @@ import NIOPosix
 
 #if os(Linux)
 import Glibc
+#elseif os(Windows)
+import WinSDK
 #else
 import Darwin
 #endif
@@ -35,11 +37,12 @@ public enum BoxServer {
             portOrigin = .environment
         }
 
+        let configurationURL = BoxPaths.serverConfigurationURL(explicitPath: options.configurationPath)
         let configuration: BoxServerConfiguration?
         do {
             configuration = try BoxServerConfiguration.loadDefault(explicitPath: options.configurationPath)
         } catch {
-            if let configURL = BoxPaths.serverConfigurationURL(explicitPath: options.configurationPath) {
+            if let configURL = configurationURL {
                 throw BoxRuntimeError.configurationLoadFailed(configURL)
             } else {
                 throw error
@@ -78,6 +81,24 @@ public enum BoxServer {
 
         let selectedTransport = configuration?.transportGeneral
 
+        let initialRuntimeState = BoxServerRuntimeState(
+            configurationPath: configurationURL?.path,
+            configuration: configuration,
+            logLevel: effectiveLogLevel,
+            logLevelOrigin: logLevelOrigin,
+            logTarget: effectiveLogTarget,
+            logTargetOrigin: logTargetOrigin,
+            adminChannelEnabled: adminChannelEnabled,
+            port: effectivePort,
+            portOrigin: portOrigin,
+            transport: selectedTransport,
+            reloadCount: 0,
+            lastReloadTimestamp: nil,
+            lastReloadStatus: "never",
+            lastReloadError: nil
+        )
+        let runtimeStateBox = NIOLockedValueBox(initialRuntimeState)
+
         logStartupSummary(
             logger: logger,
             port: effectivePort,
@@ -93,14 +114,10 @@ public enum BoxServer {
 
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
         let store = BoxServerStore()
-        let statusPort = effectivePort
-        let statusTransport = selectedTransport
-        let statusLogLevel = logger.logLevel
         let statusProvider: @Sendable () -> String = {
-            var snapshotLogger = Logging.Logger(label: "box.server.status")
-            snapshotLogger.logLevel = statusLogLevel
+            let snapshot = runtimeStateBox.withLockedValue { $0 }
             let currentTarget = BoxLogging.currentTarget()
-            return renderStatus(port: statusPort, store: store, logger: snapshotLogger, transport: statusTransport, logTarget: currentTarget)
+            return renderStatus(state: snapshot, store: store, logTarget: currentTarget)
         }
         let logTargetUpdater: @Sendable (String) -> String = { candidate in
             let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -108,32 +125,167 @@ public enum BoxServer {
                 return adminResponse(["status": "error", "message": "invalid-log-target"])
             }
             BoxLogging.update(target: parsed)
-            return adminResponse(["status": "ok", "logTarget": logTargetDescription(parsed)])
+            var originDescription = ""
+            runtimeStateBox.withLockedValue { state in
+                state.logTarget = parsed
+                state.logTargetOrigin = .runtime
+                originDescription = "\(state.logTargetOrigin)"
+            }
+            return adminResponse(["status": "ok", "logTarget": logTargetDescription(parsed), "logTargetOrigin": originDescription])
+        }
+        let defaultConfigurationPath = configurationURL?.path
+        let reloadConfigurationHandler: @Sendable (String?) -> String = { path in
+            let expandedOverride: String?
+            if let path, !path.isEmpty {
+                expandedOverride = NSString(string: path).expandingTildeInPath
+            } else {
+                expandedOverride = nil
+            }
+            var candidatePath = expandedOverride
+            if candidatePath == nil {
+                candidatePath = runtimeStateBox.withLockedValue { state in
+                    state.configurationPath ?? defaultConfigurationPath
+                }
+            }
+            guard let configPath = candidatePath else {
+                let timestamp = Date()
+                runtimeStateBox.withLockedValue { state in
+                    state.reloadCount += 1
+                    state.lastReloadTimestamp = timestamp
+                    state.lastReloadStatus = "error"
+                    state.lastReloadError = "missing-configuration-path"
+                }
+                return adminResponse(["status": "error", "message": "missing-configuration-path"])
+            }
+
+            let url = URL(fileURLWithPath: configPath)
+            do {
+                guard let loaded = try BoxServerConfiguration.load(from: url) else {
+                    let timestamp = Date()
+                    runtimeStateBox.withLockedValue { state in
+                        state.reloadCount += 1
+                        state.lastReloadTimestamp = timestamp
+                        state.lastReloadStatus = "error"
+                        state.lastReloadError = "configuration-not-found"
+                    }
+                    return adminResponse(["status": "error", "message": "configuration-not-found", "path": configPath])
+                }
+
+                let timestamp = Date()
+                let targetAdjustment = runtimeStateBox.withLockedValue { state -> BoxLogTarget? in
+                    state.reloadCount += 1
+                    state.lastReloadTimestamp = timestamp
+                    state.configurationPath = configPath
+                    state.configuration = loaded
+                    state.lastReloadStatus = "ok"
+                    state.lastReloadError = nil
+
+                    var targetCandidate: BoxLogTarget?
+
+                    if state.logTargetOrigin != .cliFlag {
+                        if let targetString = loaded.logTarget, let parsed = BoxLogTarget.parse(targetString) {
+                            if state.logTarget != parsed {
+                                targetCandidate = parsed
+                            }
+                            state.logTarget = parsed
+                            state.logTargetOrigin = .configuration
+                        } else if loaded.logTarget != nil {
+                            state.lastReloadStatus = "partial"
+                            state.lastReloadError = "invalid-log-target"
+                        }
+                    }
+
+                    if state.logLevelOrigin != .cliFlag {
+                        if let level = loaded.logLevel {
+                            state.logLevel = level
+                            state.logLevelOrigin = .configuration
+                        } else if state.logLevelOrigin == .configuration {
+                            state.logLevelOrigin = .default
+                        }
+                    }
+
+                    if let transport = loaded.transportGeneral {
+                        state.transport = transport
+                    }
+                    if let adminEnabled = loaded.adminChannelEnabled {
+                        state.adminChannelEnabled = adminEnabled
+                    }
+
+                    return targetCandidate
+                }
+
+                if let newTarget = targetAdjustment {
+                    BoxLogging.update(target: newTarget)
+                }
+
+                let snapshot = runtimeStateBox.withLockedValue { $0 }
+                var response: [String: Any] = [
+                    "status": snapshot.lastReloadStatus,
+                    "path": configPath,
+                    "logLevel": snapshot.logLevel.rawValue,
+                    "logLevelOrigin": "\(snapshot.logLevelOrigin)",
+                    "logTarget": logTargetDescription(snapshot.logTarget),
+                    "logTargetOrigin": "\(snapshot.logTargetOrigin)",
+                    "reloadCount": snapshot.reloadCount
+                ]
+                if let timestamp = snapshot.lastReloadTimestamp {
+                    response["timestamp"] = iso8601String(timestamp)
+                }
+                if let error = snapshot.lastReloadError {
+                    response["message"] = error
+                }
+                return adminResponse(response)
+            } catch {
+                let timestamp = Date()
+                runtimeStateBox.withLockedValue { state in
+                    state.reloadCount += 1
+                    state.lastReloadTimestamp = timestamp
+                    state.lastReloadStatus = "error"
+                    state.lastReloadError = "configuration-load-failed"
+                }
+                return adminResponse([
+                    "status": "error",
+                    "message": "configuration-load-failed",
+                    "path": configPath,
+                    "reason": "\(error)"
+                ])
+            }
+        }
+        let statsProvider: @Sendable () -> String = {
+            let snapshot = runtimeStateBox.withLockedValue { $0 }
+            let currentTarget = BoxLogging.currentTarget()
+            return renderStats(state: snapshot, store: store, logTarget: currentTarget)
         }
 
         let adminSocketPath = adminChannelEnabled ? BoxPaths.adminSocketPath() : nil
-        let adminChannelBox = NIOLockedValueBox<Channel?>(nil)
+        let adminChannelBox = NIOLockedValueBox<BoxAdminChannelHandle?>(nil)
         if let adminSocketPath {
             do {
-                let channel = try await startAdminChannel(
+                let handle = try await startAdminChannel(
                     on: eventLoopGroup,
                     socketPath: adminSocketPath,
                     logger: logger,
                     statusProvider: statusProvider,
-                    logTargetUpdater: logTargetUpdater
+                    logTargetUpdater: logTargetUpdater,
+                    reloadConfiguration: reloadConfigurationHandler,
+                    statsProvider: statsProvider
                 )
-                adminChannelBox.withLockedValue { $0 = channel }
+                adminChannelBox.withLockedValue { $0 = handle }
                 logger.info("admin channel ready", metadata: ["socket": "\(adminSocketPath)"])
             } catch {
                 logger.warning("unable to start admin channel", metadata: ["error": "\(error)"])
             }
         }
 
+        #if !os(Windows)
         defer {
             if let adminSocketPath {
                 try? FileManager.default.removeItem(atPath: adminSocketPath)
             }
         }
+        #else
+        defer {}
+        #endif
 
         let pipelineLogger = logger
 
@@ -156,23 +308,22 @@ public enum BoxServer {
                 cancellationLogger.logLevel = cancellationLogLevel
                 cancellationLogger.info("server cancellation requested")
                 channelBox.value.close(promise: nil)
-                if let channel = adminChannelBox.withLockedValue({ $0 }) {
-                    channel.close(promise: nil)
+                if let handle = adminChannelBox.withLockedValue({ $0 }) {
+                    initiateAdminChannelShutdown(handle)
                 }
             }
 
-            if let channel = adminChannelBox.withLockedValue({ $0 }) {
-                channel.close(promise: nil)
-                try? await channel.closeFuture.get()
+            if let handle = adminChannelBox.withLockedValue({ $0 }) {
+                await waitForAdminChannelShutdown(handle)
             }
 
             logger.info("server stopped")
             try await eventLoopGroup.shutdownGracefully()
         } catch {
             logger.error("server failed", metadata: ["error": "\(error)"])
-            if let channel = adminChannelBox.withLockedValue({ $0 }) {
-                channel.close(promise: nil)
-                try? await channel.closeFuture.get()
+            if let handle = adminChannelBox.withLockedValue({ $0 }) {
+                initiateAdminChannelShutdown(handle)
+                await waitForAdminChannelShutdown(handle)
             }
             try? await eventLoopGroup.shutdownGracefully()
             throw error
@@ -209,6 +360,34 @@ private final class BoxServerStore: @unchecked Sendable {
         storage.withLockedValue { $0.count }
     }
 }
+
+/// Captures mutable runtime state exposed over the admin channel and used for reload decisions.
+private struct BoxServerRuntimeState: Sendable {
+    var configurationPath: String?
+    var configuration: BoxServerConfiguration?
+    var logLevel: Logger.Level
+    var logLevelOrigin: BoxRuntimeOptions.LogLevelOrigin
+    var logTarget: BoxLogTarget
+    var logTargetOrigin: BoxRuntimeOptions.LogTargetOrigin
+    var adminChannelEnabled: Bool
+    var port: UInt16
+    var portOrigin: BoxRuntimeOptions.PortOrigin
+    var transport: String?
+    var reloadCount: Int
+    var lastReloadTimestamp: Date?
+    var lastReloadStatus: String
+    var lastReloadError: String?
+}
+
+/// Represents an active admin channel implementation (NIO channel or Windows named pipe).
+private enum BoxAdminChannelHandle {
+    case nio(Channel)
+    #if os(Windows)
+    case pipe(BoxAdminNamedPipeServer)
+    #endif
+}
+
+extension BoxAdminChannelHandle: @unchecked Sendable {}
 
 /// Channel handler that decodes incoming datagrams and produces responses.
 private final class BoxServerHandler: ChannelInboundHandler {
@@ -313,19 +492,139 @@ private final class BoxServerHandler: ChannelInboundHandler {
 
 extension BoxServerHandler: @unchecked Sendable {}
 
-/// Handler responding to admin channel requests (currently supports the `status` command).
+/// Dispatches admin commands to the appropriate runtime closures.
+struct BoxAdminCommandDispatcher: Sendable {
+    private let statusProvider: @Sendable () -> String
+    private let logTargetUpdater: @Sendable (String) -> String
+    private let reloadConfiguration: @Sendable (String?) -> String
+    private let statsProvider: @Sendable () -> String
+
+    init(
+        statusProvider: @escaping @Sendable () -> String,
+        logTargetUpdater: @escaping @Sendable (String) -> String,
+        reloadConfiguration: @escaping @Sendable (String?) -> String,
+        statsProvider: @escaping @Sendable () -> String
+    ) {
+        self.statusProvider = statusProvider
+        self.logTargetUpdater = logTargetUpdater
+        self.reloadConfiguration = reloadConfiguration
+        self.statsProvider = statsProvider
+    }
+
+    /// Processes a raw admin command string and returns the JSON response payload.
+    /// - Parameter rawValue: Command string as received on the transport.
+    /// - Returns: JSON response (without trailing newline).
+    func process(_ rawValue: String) -> String {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return adminResponse(["status": "error", "message": "empty-command"])
+        }
+        let command = parse(trimmed)
+        switch command {
+        case .status:
+            return statusProvider()
+        case .ping:
+            return adminResponse(["status": "ok", "message": "pong"])
+        case .logTarget(let target):
+            return logTargetUpdater(target)
+        case .reloadConfig(let path):
+            return reloadConfiguration(path)
+        case .stats:
+            return statsProvider()
+        case .invalid(let message):
+            return adminResponse(["status": "error", "message": message])
+        case .unknown(let value):
+            return adminResponse(["status": "error", "message": "unknown-command", "command": value])
+        }
+    }
+
+    private func parse(_ command: String) -> BoxAdminParsedCommand {
+        if command == "status" {
+            return .status
+        }
+        if command == "ping" {
+            return .ping
+        }
+        if command.hasPrefix("log-target") {
+            let remainder = command.dropFirst("log-target".count).trimmingCharacters(in: .whitespaces)
+            if remainder.isEmpty {
+                return .invalid("missing-log-target")
+            }
+            if remainder.hasPrefix("{") {
+                guard let target = extractStringField(from: String(remainder), field: "target") else {
+                    return .invalid("invalid-log-target-payload")
+                }
+                return .logTarget(target)
+            }
+            return .logTarget(String(remainder))
+        }
+        if command.hasPrefix("reload-config") {
+            let remainder = command.dropFirst("reload-config".count).trimmingCharacters(in: .whitespaces)
+            if remainder.isEmpty {
+                return .reloadConfig(nil)
+            }
+            if remainder.hasPrefix("{") {
+                guard let path = extractStringField(from: String(remainder), field: "path") else {
+                    return .invalid("invalid-reload-config-payload")
+                }
+                return .reloadConfig(path)
+            }
+            return .reloadConfig(String(remainder))
+        }
+        if command == "stats" {
+            return .stats
+        }
+        return .unknown(command)
+    }
+
+    /// Attempts to extract a string field from a JSON object encoded after the command verb.
+    /// - Parameters:
+    ///   - jsonString: JSON payload appended to the command.
+    ///   - field: Expected key within the JSON object.
+    /// - Returns: String value when present and valid, otherwise `nil`.
+    private func extractStringField(from jsonString: String, field: String) -> String? {
+        guard let data = jsonString.data(using: .utf8) else {
+            return nil
+        }
+        guard
+            let object = try? JSONSerialization.jsonObject(with: data, options: []),
+            let dictionary = object as? [String: Any],
+            let value = dictionary[field] as? String,
+            !value.isEmpty
+        else {
+            return nil
+        }
+        return value
+    }
+}
+
+/// Handler responding to admin channel requests (status, ping, log target updates and future commands).
 private final class BoxAdminChannelHandler: ChannelInboundHandler {
     typealias InboundIn = ByteBuffer
     typealias OutboundOut = ByteBuffer
 
     private let logger: Logger
-    private let statusProvider: () -> String
-    private let logTargetUpdater: (String) -> String
+    private let dispatcher: BoxAdminCommandDispatcher
 
-    init(logger: Logger, statusProvider: @escaping () -> String, logTargetUpdater: @escaping (String) -> String) {
+    init(logger: Logger, dispatcher: BoxAdminCommandDispatcher) {
         self.logger = logger
-        self.statusProvider = statusProvider
-        self.logTargetUpdater = logTargetUpdater
+        self.dispatcher = dispatcher
+    }
+
+    convenience init(
+        logger: Logger,
+        statusProvider: @escaping @Sendable () -> String,
+        logTargetUpdater: @escaping @Sendable (String) -> String,
+        reloadConfiguration: @escaping @Sendable (String?) -> String,
+        statsProvider: @escaping @Sendable () -> String
+    ) {
+        let dispatcher = BoxAdminCommandDispatcher(
+            statusProvider: statusProvider,
+            logTargetUpdater: logTargetUpdater,
+            reloadConfiguration: reloadConfiguration,
+            statsProvider: statsProvider
+        )
+        self.init(logger: logger, dispatcher: dispatcher)
     }
 
     func channelActive(context: ChannelHandlerContext) {
@@ -334,29 +633,11 @@ private final class BoxAdminChannelHandler: ChannelInboundHandler {
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         var buffer = unwrapInboundIn(data)
-        guard let command = buffer.readString(length: buffer.readableBytes)?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !command.isEmpty else {
+        guard let command = buffer.readString(length: buffer.readableBytes), !command.isEmpty else {
             context.close(promise: nil)
             return
         }
-
-        let response: String
-        if command == "status" {
-            response = statusProvider()
-        } else if command == "ping" {
-            response = adminResponse(["status": "ok", "message": "pong"])
-        } else if command.hasPrefix("log-target") {
-            let targetString = command.dropFirst("log-target".count).trimmingCharacters(in: .whitespaces)
-            guard !targetString.isEmpty else {
-                response = adminResponse(["status": "error", "message": "missing-log-target"])
-                write(response: response, context: context)
-                return
-            }
-            response = logTargetUpdater(String(targetString))
-        } else {
-            response = adminResponse(["status": "error", "message": "unknown-command"])
-        }
-
+        let response = dispatcher.process(command)
         write(response: response, context: context)
     }
 
@@ -375,6 +656,125 @@ private final class BoxAdminChannelHandler: ChannelInboundHandler {
 }
 
 extension BoxAdminChannelHandler: @unchecked Sendable {}
+
+/// Enumerates the supported admin commands once parsed.
+private enum BoxAdminParsedCommand {
+    case status
+    case ping
+    case logTarget(String)
+    case reloadConfig(String?)
+    case stats
+    case invalid(String)
+    case unknown(String)
+}
+
+#if os(Windows)
+/// Minimal named-pipe based admin channel implementation for Windows.
+private final class BoxAdminNamedPipeServer: @unchecked Sendable {
+    private let path: String
+    private let logger: Logger
+    private let dispatcher: BoxAdminCommandDispatcher
+    private let shouldStop = NIOLockedValueBox(false)
+    private var task: Task<Void, Never>?
+
+    init(path: String, logger: Logger, dispatcher: BoxAdminCommandDispatcher) {
+        self.path = path
+        self.logger = logger
+        self.dispatcher = dispatcher
+    }
+
+    /// Starts the background listener loop on a detached task.
+    func start() {
+        guard task == nil else { return }
+        let pipePath = path
+        task = Task.detached { [weak self] in
+            guard let self else { return }
+            pipePath.withCString(encodedAs: UTF16.self) { pointer in
+                self.runLoop(pipeName: pointer)
+            }
+        }
+    }
+
+    /// Signals the listener loop to terminate.
+    func requestStop() {
+        shouldStop.withLockedValue { $0 = true }
+        Self.poke(path: path)
+    }
+
+    /// Waits for the background loop to finish.
+    func waitUntilStopped() async {
+        if let task = task {
+            await task.value
+        }
+    }
+
+    private func runLoop(pipeName: UnsafePointer<WCHAR>) {
+        let bufferSize: DWORD = 4096
+        while !shouldStop.withLockedValue({ $0 }) {
+            let handle = CreateNamedPipeW(
+                pipeName,
+                DWORD(PIPE_ACCESS_DUPLEX),
+                DWORD(PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT),
+                DWORD(1),
+                bufferSize,
+                bufferSize,
+                DWORD(0),
+                nil
+            )
+
+            if handle == INVALID_HANDLE_VALUE {
+                let error = GetLastError()
+                logger.error("admin pipe creation failed", metadata: ["error": "\(error)"])
+                return
+            }
+
+            defer { CloseHandle(handle) }
+
+            let connected = ConnectNamedPipe(handle, nil)
+            if !connected {
+                let error = GetLastError()
+                if error != ERROR_PIPE_CONNECTED {
+                    logger.warning("admin pipe connect failed", metadata: ["error": "\(error)"])
+                    continue
+                }
+            }
+
+            if shouldStop.withLockedValue({ $0 }) {
+                DisconnectNamedPipe(handle)
+                break
+            }
+
+            var buffer = [UInt8](repeating: 0, count: Int(bufferSize))
+            var bytesRead: DWORD = 0
+            let readResult = ReadFile(handle, &buffer, DWORD(buffer.count), &bytesRead, nil)
+            if !readResult || bytesRead == 0 {
+                DisconnectNamedPipe(handle)
+                continue
+            }
+
+            let commandData = buffer.prefix(Int(bytesRead))
+            let command = String(bytes: commandData, encoding: .utf8) ?? ""
+            let responsePayload = dispatcher.process(command)
+            let response = responsePayload.hasSuffix("\n") ? responsePayload : responsePayload + "\n"
+            let responseBytes = Array(response.utf8)
+            var bytesWritten: DWORD = 0
+            _ = WriteFile(handle, responseBytes, DWORD(responseBytes.count), &bytesWritten, nil)
+            FlushFileBuffers(handle)
+            DisconnectNamedPipe(handle)
+        }
+    }
+
+    /// Connects to the pipe once to unblock any pending `ConnectNamedPipe` call during shutdown.
+    private static func poke(path: String) {
+        path.withCString(encodedAs: UTF16.self) { pointer in
+            let handle = CreateFileW(pointer, DWORD(GENERIC_READ | GENERIC_WRITE), DWORD(0), nil, DWORD(OPEN_EXISTING), DWORD(0), nil)
+            if handle != INVALID_HANDLE_VALUE {
+                CloseHandle(handle)
+            }
+        }
+    }
+}
+#endif
 
 // MARK: - Helpers
 
@@ -409,10 +809,17 @@ private func ensureBoxDirectories(home: URL, logger: Logger) throws {
 private func createDirectoryIfNeeded(at url: URL) throws {
     var isDirectory: ObjCBool = false
     let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+    #if !os(Windows)
+    let attributes: [FileAttributeKey: Any]? = [.posixPermissions: NSNumber(value: Int(S_IRWXU))]
+    #else
+    let attributes: [FileAttributeKey: Any]? = nil
+    #endif
     if !exists {
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: [.posixPermissions: NSNumber(value: Int(S_IRWXU))])
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: attributes)
     }
+#if !os(Windows)
     chmod(url.path, S_IRWXU)
+#endif
 }
 
 /// Binds the admin channel on the provided UNIX domain socket path.
@@ -421,14 +828,31 @@ private func createDirectoryIfNeeded(at url: URL) throws {
 ///   - socketPath: Filesystem path of the admin socket.
 ///   - logger: Logger used for diagnostics.
 ///   - statusProvider: Closure producing the JSON payload returned for `status`.
+///   - logTargetUpdater: Closure handling runtime log-target updates.
+///   - reloadConfiguration: Closure invoked when a configuration reload is requested.
+///   - statsProvider: Closure providing runtime statistics (stub until implemented).
 /// - Returns: The bound channel ready to accept admin connections.
 private func startAdminChannel(
     on eventLoopGroup: EventLoopGroup,
     socketPath: String,
     logger: Logger,
     statusProvider: @escaping @Sendable () -> String,
-    logTargetUpdater: @escaping @Sendable (String) -> String
-) async throws -> Channel {
+    logTargetUpdater: @escaping @Sendable (String) -> String,
+    reloadConfiguration: @escaping @Sendable (String?) -> String,
+    statsProvider: @escaping @Sendable () -> String
+) async throws -> BoxAdminChannelHandle {
+    let dispatcher = BoxAdminCommandDispatcher(
+        statusProvider: statusProvider,
+        logTargetUpdater: logTargetUpdater,
+        reloadConfiguration: reloadConfiguration,
+        statsProvider: statsProvider
+    )
+
+    #if os(Windows)
+    let server = BoxAdminNamedPipeServer(path: socketPath, logger: logger, dispatcher: dispatcher)
+    server.start()
+    return .pipe(server)
+    #else
     if FileManager.default.fileExists(atPath: socketPath) {
         try FileManager.default.removeItem(atPath: socketPath)
     }
@@ -436,30 +860,79 @@ private func startAdminChannel(
     let bootstrap = ServerBootstrap(group: eventLoopGroup)
         .serverChannelOption(ChannelOptions.backlog, value: 4)
         .childChannelInitializer { channel in
-            channel.pipeline.addHandler(BoxAdminChannelHandler(logger: logger, statusProvider: statusProvider, logTargetUpdater: logTargetUpdater))
+            channel.pipeline.addHandler(BoxAdminChannelHandler(logger: logger, dispatcher: dispatcher))
         }
 
     let channel = try await bootstrap.bind(unixDomainSocketPath: socketPath).get()
     chmod(socketPath, S_IRUSR | S_IWUSR)
-    return channel
+    return .nio(channel)
+    #endif
 }
 
 /// Builds a JSON status payload for the admin channel.
 /// - Parameters:
-///   - port: Effective UDP port used by the server.
+///   - state: Current runtime state snapshot.
 ///   - store: Shared object store (used to expose queue count).
-///   - logger: Logger providing the current log level.
-///   - transport: Optional transport description.
+///   - logTarget: Active log target reported by the logging subsystem.
 /// - Returns: A JSON string summarising the current server state.
-private func renderStatus(port: UInt16, store: BoxServerStore, logger: Logger, transport: String?, logTarget: BoxLogTarget) -> String {
-    let payload: [String: Any] = [
+private func renderStatus(state: BoxServerRuntimeState, store: BoxServerStore, logTarget: BoxLogTarget) -> String {
+    var payload: [String: Any] = [
         "status": "ok",
-        "port": Int(port),
+        "port": Int(state.port),
+        "portOrigin": "\(state.portOrigin)",
         "objects": store.count(),
-        "logLevel": logger.logLevel.rawValue,
-        "transport": transport ?? "clear",
-        "logTarget": logTargetDescription(logTarget)
+        "logLevel": state.logLevel.rawValue,
+        "logLevelOrigin": "\(state.logLevelOrigin)",
+        "logTarget": logTargetDescription(logTarget),
+        "logTargetOrigin": "\(state.logTargetOrigin)",
+        "adminChannel": state.adminChannelEnabled ? "enabled" : "disabled",
+        "transport": state.transport ?? "clear",
+        "reloadCount": state.reloadCount
     ]
+    if let path = state.configurationPath {
+        payload["configPath"] = path
+    }
+    if let timestamp = state.lastReloadTimestamp {
+        payload["lastReload"] = iso8601String(timestamp)
+    }
+    if state.lastReloadStatus != "never" {
+        payload["lastReloadStatus"] = state.lastReloadStatus
+    }
+    if let error = state.lastReloadError {
+        payload["lastReloadMessage"] = error
+    }
+    return adminResponse(payload)
+}
+
+/// Produces a JSON payload summarising runtime metrics for the admin `stats` command.
+/// - Parameters:
+///   - state: Current runtime state snapshot.
+///   - store: Shared object store exposing queue counters.
+///   - logTarget: Active log target reported by the logging subsystem.
+/// - Returns: A JSON string describing runtime metrics.
+private func renderStats(state: BoxServerRuntimeState, store: BoxServerStore, logTarget: BoxLogTarget) -> String {
+    var payload: [String: Any] = [
+        "status": "ok",
+        "timestamp": iso8601String(Date()),
+        "port": Int(state.port),
+        "logLevel": state.logLevel.rawValue,
+        "logLevelOrigin": "\(state.logLevelOrigin)",
+        "logTarget": logTargetDescription(logTarget),
+        "logTargetOrigin": "\(state.logTargetOrigin)",
+        "transport": state.transport ?? "clear",
+        "adminChannel": state.adminChannelEnabled ? "enabled" : "disabled",
+        "queues": store.count(),
+        "reloadCount": state.reloadCount
+    ]
+    if let path = state.configurationPath {
+        payload["configPath"] = path
+    }
+    if let lastReload = state.lastReloadTimestamp {
+        payload["lastReload"] = iso8601String(lastReload)
+    }
+    if let error = state.lastReloadError {
+        payload["message"] = error
+    }
     return adminResponse(payload)
 }
 
@@ -508,6 +981,38 @@ private func logTargetDescription(_ target: BoxLogTarget) -> String {
     case .file(let path):
         return "file:\(path)"
     }
+}
+
+/// Requests the admin channel to begin shutting down.
+private func initiateAdminChannelShutdown(_ handle: BoxAdminChannelHandle) {
+    switch handle {
+    case .nio(let channel):
+        channel.close(promise: nil)
+    #if os(Windows)
+    case .pipe(let server):
+        server.requestStop()
+    #endif
+    }
+}
+
+/// Waits for the admin channel to terminate.
+private func waitForAdminChannelShutdown(_ handle: BoxAdminChannelHandle) async {
+    switch handle {
+    case .nio(let channel):
+        try? await channel.closeFuture.get()
+    #if os(Windows)
+    case .pipe(let server):
+        await server.waitUntilStopped()
+    #endif
+    }
+}
+
+/// Formats a date using ISO8601 representation (UTC).
+/// - Parameter date: Date to format.
+/// - Returns: ISO8601 string.
+private func iso8601String(_ date: Date) -> String {
+    let formatter = ISO8601DateFormatter()
+    return formatter.string(from: date)
 }
 
 private func adminResponse(_ payload: [String: Any]) -> String {
