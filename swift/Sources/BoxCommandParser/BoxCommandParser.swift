@@ -207,7 +207,7 @@ extension BoxCommandParser {
                     pathBytes = Array(pathBytes.prefix(maxLength))
                 }
                 withUnsafeMutableBytes(of: &address.sun_path) { buffer in
-                    buffer.initializeMemory(as: UInt8.self, repeating: 0, count: buffer.count)
+                    buffer.initializeMemory(as: UInt8.self, repeating: 0)
                     pathBytes.withUnsafeBytes { source in
                         if let dest = buffer.baseAddress, let src = source.baseAddress {
                             memcpy(dest, src, pathBytes.count)

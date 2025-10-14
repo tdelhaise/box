@@ -16,7 +16,7 @@ public enum BoxServer {
     /// Boots the UDP server and keeps running until the channel is closed or the task is cancelled.
     /// - Parameter options: Runtime options resolved from the CLI or configuration file.
     public static func run(with options: BoxRuntimeOptions) async throws {
-        let logger = Logger(label: "box.server")
+        var logger = Logger(label: "box.server")
         try enforceNonRoot(logger: logger)
 
         let homeDirectory = BoxPaths.homeDirectory()
@@ -76,20 +76,26 @@ public enum BoxServer {
 
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
         let store = BoxServerStore()
-        let statusProvider = {
-            renderStatus(port: effectivePort, store: store, logger: logger, transport: selectedTransport)
+        let statusPort = effectivePort
+        let statusTransport = selectedTransport
+        let statusLogLevel = logger.logLevel
+        let statusProvider: @Sendable () -> String = {
+            var snapshotLogger = Logger(label: "box.server.status")
+            snapshotLogger.logLevel = statusLogLevel
+            return renderStatus(port: statusPort, store: store, logger: snapshotLogger, transport: statusTransport)
         }
 
         let adminSocketPath = adminChannelEnabled ? BoxPaths.adminSocketPath() : nil
-        var adminChannel: Channel?
+        let adminChannelBox = NIOLockedValueBox<Channel?>(nil)
         if let adminSocketPath {
             do {
-                adminChannel = try await startAdminChannel(
+                let channel = try await startAdminChannel(
                     on: eventLoopGroup,
                     socketPath: adminSocketPath,
                     logger: logger,
                     statusProvider: statusProvider
                 )
+                adminChannelBox.withLockedValue { $0 = channel }
                 logger.info("admin channel ready", metadata: ["socket": "\(adminSocketPath)"])
             } catch {
                 logger.warning("unable to start admin channel", metadata: ["error": "\(error)"])
@@ -102,10 +108,12 @@ public enum BoxServer {
             }
         }
 
+        let pipelineLogger = logger
+
         let bootstrap = DatagramBootstrap(group: eventLoopGroup)
             .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .channelInitializer { channel in
-                channel.pipeline.addHandler(BoxServerHandler(logger: logger, allocator: channel.allocator, store: store))
+                channel.pipeline.addHandler(BoxServerHandler(logger: pipelineLogger, allocator: channel.allocator, store: store))
             }
 
         do {
@@ -113,25 +121,32 @@ public enum BoxServer {
             let channelBox = UncheckedSendableBox(channel)
             logger.info("server listening", metadata: ["address": "\(options.address)", "port": "\(effectivePort)"])
 
+            let cancellationLogLevel = logger.logLevel
             try await withTaskCancellationHandler {
                 try await channelBox.value.closeFuture.get()
             } onCancel: {
-                logger.info("server cancellation requested")
+                var cancellationLogger = Logger(label: "box.server.cancel")
+                cancellationLogger.logLevel = cancellationLogLevel
+                cancellationLogger.info("server cancellation requested")
                 channelBox.value.close(promise: nil)
-                adminChannel?.close(promise: nil)
+                if let channel = adminChannelBox.withLockedValue({ $0 }) {
+                    channel.close(promise: nil)
+                }
             }
 
-            if let adminChannel {
-                adminChannel.close(promise: nil)
-                try? await adminChannel.closeFuture.get()
+            if let channel = adminChannelBox.withLockedValue({ $0 }) {
+                channel.close(promise: nil)
+                try? await channel.closeFuture.get()
             }
 
             logger.info("server stopped")
             try await eventLoopGroup.shutdownGracefully()
         } catch {
             logger.error("server failed", metadata: ["error": "\(error)"])
-            adminChannel?.close(promise: nil)
-            try? await adminChannel?.closeFuture.get()
+            if let channel = adminChannelBox.withLockedValue({ $0 }) {
+                channel.close(promise: nil)
+                try? await channel.closeFuture.get()
+            }
             try? await eventLoopGroup.shutdownGracefully()
             throw error
         }
@@ -368,7 +383,7 @@ private func startAdminChannel(
     on eventLoopGroup: EventLoopGroup,
     socketPath: String,
     logger: Logger,
-    statusProvider: @escaping () -> String
+    statusProvider: @escaping @Sendable () -> String
 ) async throws -> Channel {
     if FileManager.default.fileExists(atPath: socketPath) {
         try FileManager.default.removeItem(atPath: socketPath)
@@ -425,15 +440,5 @@ private func logStartupSummary(
     adminChannelEnabled: Bool,
     transport: String?
 ) {
-    logger.info(
-        "server start",
-        metadata: [
-            "port": "\(port)",
-            "portOrigin": "\(portOrigin)",
-            "logLevel": "\(logLevel.rawValue)",
-            "config": configurationPresent ? "present" : "absent",
-            "admin": adminChannelEnabled ? "enabled" : "disabled",
-            "transport": transport ?? "clear"
-        ]
-    )
+    logger.info("server start")
 }
