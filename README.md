@@ -1,9 +1,48 @@
-## Some usefull comments
+## Réécriture Swift (en cours)
 
+- Objectif : migrer `box` vers Swift 6.2 (async/await) avec SwiftNIO, swift-argument-parser et swift-log, tout en conservant un binaire unique capable de jouer le rôle client ou serveur.
+- Structure SwiftPM : `Package.swift` à la racine, sources dans `swift/Sources/…`, tests dans `swift/Tests/…`. Le projet Xcode historique a été retiré; utilisez Xcode via SwiftPM (`xed .` ou `open Package.swift`).
+- Compilation rapide :
+  ```bash
+  swift build --product box
+  swift run box --help
+  swift run box --server        # équivalent à --server/-s
+  swift run box                 # mode client par défaut
+  ```
+- `BoxCommandParser` résout la ligne de commande et délègue à `BoxServer` ou `BoxClient`. Les options actuelles couvrent `--server/-s`, `--port`, `--address`, `--config` (PLIST), `--log-level`, `--put /queue[:type] --data "..."` et `--get /queue`.
+- `BoxCodec` encapsule le framing v1 (HELLO/STATUS/PUT/GET) et peut être réutilisé dans n’importe quel handler SwiftNIO basé sur `ByteBuffer`.
+- Le protocole est pour l’instant implémenté en clair le temps de porter l’ensemble des fonctionnalités. La réintégration Noise/libsodium arrivera une fois le socle Swift stabilisé.
+- Les fichiers de configuration basculent vers le format Property List (PLIST). La lecture TOML existante est gelée et sera réintroduite ultérieurement si nécessaire.
 
-## Notes / Status
+### Exemples (Swift cleartext)
 
-- Chiffrement: en cours d’intégration — transport basé sur libsodium (Noise + XChaCha20‑Poly1305).
+Terminal 1 — serveur:
+```bash
+swift run box --server --port 12567
+```
+
+Terminal 2 — client (handshake uniquement):
+```bash
+swift run box --address 127.0.0.1 --port 12567
+```
+
+Terminal 2 — client PUT:
+```bash
+swift run box --address 127.0.0.1 --port 12567 --put /demo:text/plain --data "Hello SwiftNIO"
+```
+
+Terminal 2 — client GET:
+```bash
+swift run box --address 127.0.0.1 --port 12567 --get /demo
+```
+
+Les logs indiquent la progression HELLO → STATUS → action. Les réponses GET affichent la taille et le type du contenu stocké en mémoire.
+
+> Les sections suivantes décrivent l'implémentation C historique, conservée comme référence pendant la migration.
+
+## Notes / Status (chemin C historique – gelé)
+
+- Chiffrement (implémentation C) : en cours d’intégration — transport basé sur libsodium (Noise + XChaCha20‑Poly1305).
   - AEAD (XChaCha20‑Poly1305) présent et testé; le transport Noise encapsule les messages (`NZ v1` + nonce + ciphertext) avec protection de rejeu côté réception.
   - Chemin de démonstration: `--transport noise` sur box/boxd avec `--pre-share-key` (temporaire en attendant NK/IK).
 - DTLS/OpenSSL: supprimés.

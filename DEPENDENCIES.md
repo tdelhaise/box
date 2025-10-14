@@ -4,6 +4,25 @@ Overview
 - This document lists build-time and optional runtime dependencies for the Box project (box/boxd) across Linux, macOS, and Windows, and provides quick setup guidance.
 - The codebase targets Noise (Ed25519/X25519) + XChaCha20‑Poly1305 via libsodium for encryption in upcoming milestones. DTLS has been removed.
 
+Swift Toolchain (rewrite in progress)
+- Swift >= 6.2 toolchain with SwiftPM (Linux, macOS; Android via cross-compilation later).
+- Swift packages (resolved automatically via SwiftPM):
+  - `swift-argument-parser` (CLI).
+  - `swift-log` (structured logging).
+  - `swift-nio` (UDP/EventLoop abstractions).
+- Build:
+  ```bash
+  swift build --product box
+  swift test
+  ```
+- Run (examples):
+  ```bash
+  swift run box --help
+  swift run box --server
+  swift run box --address 127.0.0.1 --port 12567
+  ```
+- PLIST configuration files live under `~/.box/` (new Swift path). TOML loaders from the C implementation are frozen and will return later if required.
+
 libsodium (Noise transport groundwork)
 - Optional (enabled via `-DBOX_USE_NOISE=ON`, default ON).
 - Discovery: via pkg-config as `libsodium`.

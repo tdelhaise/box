@@ -1,15 +1,32 @@
 Next Steps and Status
 
 Status (high level)
-- [x] Spec complete for v0.1 (SPECS.md): protocol framing, LS, queues, ACLs, NAT, connectivity CLI, threat model, examples.
-- [x] Conventions and dependencies documented; CI in place (native, dockerized, Android minimal + JNI build).
-- [x] Baseline C code builds/tests. DTLS and OpenSSL have been removed (Issue #21 complete).
-- [x] Libsodium groundwork present: AEAD helpers (XChaCha20‑Poly1305) and Noise transport skeleton compiled/linked when available.
-- [x] Non‑root enforcement active on Unix/macOS; admin channel skeleton is live on `~/.box/run/boxd.socket` with a `status` command; `box admin status` CLI added.
-- [x] Minimal config parser loads `~/.box/boxd.toml` (port/log settings) with CLI/env precedence.
+- [x] SwiftPM bootstrap: `Package.swift`, modules (`BoxCommandParser`, `BoxServer`, `BoxClient`, `BoxCore`) et tests initiaux.
+- [x] CLI Swift: `BoxCommandParser` bascule entre client et serveur (`--server`/`-s`), journalisation configurée.
+- [x] Swift UDP parity: porter HELLO/STATUS/PUT/GET en clair avec SwiftNIO et un stockage mémoire temporaire (tests d’intégration à ajouter).
+- [ ] Swift configuration/admin: lecture PLIST, non-root, socket admin.
+- [ ] Swift crypto: réintégrer Noise/XChaCha via libsodium une fois le chemin clair stabilisé.
+- [x] Spec v0.1, dépendances et CI historique restent disponibles; l’implémentation C est gelée comme référence.
 
-Immediate TODOs (near-term)
-1) Protocol framing v1 in C (Issue #13)
+Immediate TODOs (Swift track)
+1) Swift S2 — Parité réseau clair
+   - [x] Implémenter le serveur UDP SwiftNIO pour HELLO/STATUS/PUT/GET.
+   - [x] Implémenter le client UDP SwiftNIO équivalent et tests unitaires du codec.
+   - [x] Resynchroniser README/DEVELOPMENT_STRATEGY après validation.
+   - [ ] Ajouter des tests d’intégration end-to-end (Swift) automatisés.
+
+2) Swift S3 — Configuration + canal admin
+   - [ ] Charger `~/.box/box.plist` (PropertyListDecoder) avec priorité CLI/env.
+   - [ ] Recréer le socket Unix `~/.box/run/boxd.socket` et la commande `status`.
+   - [ ] Renforcer la politique non-root + permissions des répertoires.
+
+3) Swift S4 — Crypto / libsodium
+   - [ ] Introduire un module libsodium Swift (bindings légers).
+   - [ ] Rebrancher Noise NK/IK, AEAD XChaCha20-Poly1305, fenêtre anti-rejeu.
+   - [ ] Ajouter les tests de transport chiffré et documenter le framing mis à jour.
+
+Legacy backlog (C – référence)
+1) Protocol framing v1 en C (Issue #13)
    - [x] Add v1 header (magic 'B', version, length, command, request_id) alongside current simple header.
    - [x] Gate via feature flag; update tests in `test/test_BFBoxProtocol.c`.
    - [x] Exit: round‑trip HELLO over UDP (unencrypted, temporary) using the new frame; tests green (cli/server `--protocol v1` validés, doc mise à jour).

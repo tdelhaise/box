@@ -1,8 +1,8 @@
 Development Strategy and Milestones
 
 Assumptions
-- Codebase language: C, existing modules under `include/box` and `src/lib` (UDP, runloop, protocol). Legacy DTLS is being removed.
-- Targets: `box` (CLI) and `boxd` (daemon) in `src/box` and `src/boxd`.
+- Codebase language: transition en cours vers Swift 6.2 (async/await) avec SwiftNIO, swift-argument-parser et swift-log. L’implémentation C historique (`sources/…`) reste disponible à titre de référence pendant la migration.
+- Targets: binaire unique `box` (client ou serveur via `--server/-s`) géré par SwiftPM (`BoxCommandParser` orchestre `BoxServer` et `BoxClient`).
 - Platform: Linux/macOS first; Windows later. IPv6 preferred; IPv4 supported.
 - Spec reference: current `SPECS.md` (protocol v1 framing, Noise/XChaCha AEAD, embedded self‑hosted LS, queues, ACLs, NAT section).
 
@@ -10,8 +10,41 @@ Guiding Approach
 - Prioritize a working vertical slice early: local IPv6 on LAN, minimal HELLO/PUT/GET.
 - Use libsodium‑based Noise/XChaCha transport for encryption (Issue #16). No DTLS fallback.
 - Small, verifiable steps with tests and demo commands per milestone.
+- Réécrire progressivement les composants C en Swift tout en gardant des jalons incrémentaux et la parité fonctionnelle.
+
+Swift Migration Track
+
+S0 — Swift Toolchain Bootstrap
+- Supprimer le projet Xcode historique, ajouter `Package.swift`, structurer `swift/Sources`/`swift/Tests`.
+- Dépendances: swift-argument-parser, swift-log, swift-nio.
+- Exit: `swift build --product box` produit le binaire; tests Swift (`swift test`) exécutés sur Linux/macOS CI.
+
+S1 — Command Parser + Stubs
+- Implémenter `BoxCommandParser` (swift-argument-parser, async/await) avec le mode serveur (`--server/-s`) et client par défaut.
+- Créer `BoxServer`/`BoxClient` stubs, initialiser la journalisation via swift-log.
+- Exit: `swift run box` (client) et `swift run box --server` (serveur) se lancent et consomment les options de base.
+
+S2 — Networking Parity (Cleartext)
+- Porter les flux UDP HELLO/STATUS/PUT/GET de l’implémentation C vers SwiftNIO.
+- Implémenter un stockage mémoire temporaire (équivalent C) et conserver le protocole en clair jusqu’à stabilisation.
+- Exit: échanges HELLO/PUT/GET fonctionnels en Swift avec tests d’intégration.
+  Progress: `BoxCodec` fournit le framing réutilisable; `BoxServer` et `BoxClient` gèrent HELLO → STATUS → PUT/GET en SwiftNIO avec stockage mémoire.
+
+S3 — Configuration & Admin Channel
+- Lire les fichiers PLIST (`~/.box/box.plist` / `~/.box/boxd.plist`) avec `PropertyListDecoder`, conserver la priorité CLI/env.
+- Recréer le socket d’administration Unix, refuser l’exécution en root et gérer les répertoires `~/.box`.
+- Exit: `box --server` expose `status` sur le canal admin; non-root enforcement vérifié.
+
+S4 — Crypto Reintegration
+- Intégrer libsodium via un module Swift (bindings) et rétablir le transport Noise NK/IK.
+- Couvrir XChaCha20-Poly1305, BLAKE2 et la fenêtre anti-rejeu dans les tests Swift.
+- Exit: chemin chiffré par défaut avec parité fonctionnelle sur HELLO/STATUS/PUT/GET.
+
+Legacy C Milestones (référence pendant la migration)
 
 Milestones
+
+> Remarque : les jalons M0–M11 décrivent l’implémentation C existante et servent de référence tant que la migration Swift n’a pas repris chaque fonctionnalité.
 
 M0 — Build, Tests, Hygiene (Baseline)
 - Ensure clean builds on Linux/macOS via `Makefile`/`CMakeLists.txt` (both if used).

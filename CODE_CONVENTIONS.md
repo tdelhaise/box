@@ -5,7 +5,7 @@ Purpose
 - When in doubt, the specification in `SPECS.md` is the source of truth for protocol and behavior.
 
 Architecture Conventions
-- Components: `box` (CLI) and `boxd` (daemon). The Location Service (LS) is embedded within `boxd` and is strictly self‑hosted per user.
+- Components: un exécutable unique `box` qui agit en mode client par défaut et en mode serveur via `--server`/`-s`. Le service LS reste embarqué côté serveur.
 - Transport: UDP over IPv6 preferred; IPv4 supported. A single configurable UDP port per node.
 - Protocol: Binary framing with magic 'B', version, length, command, request_id. Commands: HELLO, PUT, GET, DELETE, STATUS, SEARCH, BYE.
 - Queues: Logical destinations under a user’s server (e.g., `/message`, `/photos`, `/uuid`, `/location`).
@@ -30,14 +30,14 @@ Storage and Data
 - Data at rest: optional encryption with a server‑managed key (future enhancement).
 
 Configuration and Paths
-- Format: TOML for human‑editable configs.
+- Format: PLIST (Property List) pour la voie Swift (`~/.box/box.plist`, `~/.box/boxd.plist`). Le parseur TOML historique est gelé et sera réintroduit si nécessaire pour compatibilité ascendante.
 - Unix/macOS
-  - Config: `~/.box/box.toml` (CLI), `~/.box/boxd.toml` (daemon)
+  - Config: `~/.box/box.plist` (CLI), `~/.box/boxd.plist` (daemon) — anciens fichiers TOML toujours acceptés par l’ancienne implémentation C.
   - Data: `~/.box/data`
   - Keys: `~/.box/keys/identity.ed25519`, `~/.box/keys/client.ed25519` (optional)
   - Admin socket: `~/.box/run/boxd.sock`
 - Windows
-  - Config: `%USERPROFILE%\.box\box.toml`, `%USERPROFILE%\.box\boxd.toml`
+  - Config: `%USERPROFILE%\.box\box.plist`, `%USERPROFILE%\.box\boxd.plist`
   - Data: `%USERPROFILE%\.box\data`
   - Keys: `%USERPROFILE%\.box\keys\identity.ed25519`
   - Admin pipe: `\\.\pipe\boxd`
@@ -46,7 +46,17 @@ Configuration and Paths
 Dependencies
 - Crypto: `libsodium` for Ed25519/X25519 and XChaCha20‑Poly1305 (Noise transport).
 - Storage: portable B‑tree (in‑tree) with optional BSD libdb or LMDB backends.
-- Build: Make/CMake; scripts for formatting and naming exist under `scripts/`.
+- Build:
+  - Swift rewrite: SwiftPM (Swift ≥ 6.2) + packages `swift-argument-parser`, `swift-log`, `swift-nio`.
+  - Legacy C: Make/CMake; scripts for formatting and naming exist under `scripts/`.
+
+Swift Coding Style
+- Modules: `BoxCore`, `BoxServer`, `BoxClient`, `BoxCommandParser`, etc. Pas de préfixe `BF`; utiliser des noms explicites en `PascalCase`.
+- API publique: types en `PascalCase`, méthodes/fonctions en `camelCase`. Les énumérations utilisent des cases explicites (`case server`, `case client`).
+- Documentation: commenter les types, méthodes et propriétés exposés avec `///` pour faciliter la revue et la génération automatique.
+- Concurrence: privilégier async/await et les primitives SwiftNIO (`EventLoopGroup`, `ChannelPipeline`). Éviter la création manuelle de threads.
+- Logging: utiliser swift-log (`Logger`) et configurer la sortie via `BoxCommandParser`. Pas d’appel direct à `print` pour les logs structurés.
+- Tests: `XCTest` avec des cibles sous `swift/Tests`. Couvrir la logique de parsing, les services réseau et les intégrations crypto.
 
 C Coding Style
 - Standard: C11 (or C99 if required by toolchain). No compiler extensions unless guarded.
