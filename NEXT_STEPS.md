@@ -9,24 +9,24 @@ Status (high level)
 - [x] Spec v0.1, dépendances et CI historique restent disponibles; l’implémentation C est gelée comme référence.
 
 Immediate TODOs (Swift track)
-1) Swift S2 — Parité réseau clair
+1) Swift S2 — Parité réseau clair (Issue #25)
    - [x] Implémenter le serveur UDP SwiftNIO pour HELLO/STATUS/PUT/GET.
    - [x] Implémenter le client UDP SwiftNIO équivalent et tests unitaires du codec.
    - [x] Resynchroniser README/DEVELOPMENT_STRATEGY après validation.
    - [ ] Ajouter des tests d’intégration end-to-end (Swift) automatisés.
 
-2) Swift S3 — Configuration + canal admin
+2) Swift S3 — Configuration + canal admin (Issue #14)
    - [ ] Charger `~/.box/box.plist` (PropertyListDecoder) avec priorité CLI/env.
    - [ ] Recréer le socket Unix `~/.box/run/boxd.socket` et la commande `status`.
    - [ ] Renforcer la politique non-root + permissions des répertoires.
 
-3) Swift S4 — Crypto / libsodium
+3) Swift S4 — Crypto / libsodium (Issue #21)
    - [ ] Introduire un module libsodium Swift (bindings légers).
    - [ ] Rebrancher Noise NK/IK, AEAD XChaCha20-Poly1305, fenêtre anti-rejeu.
    - [ ] Ajouter les tests de transport chiffré et documenter le framing mis à jour.
 
 Legacy backlog (C – référence)
-1) Protocol framing v1 en C (Issue #13)
+1) Protocol framing v1 en C (Issue #25)
    - [x] Add v1 header (magic 'B', version, length, command, request_id) alongside current simple header.
    - [x] Gate via feature flag; update tests in `test/test_BFBoxProtocol.c`.
    - [x] Exit: round‑trip HELLO over UDP (unencrypted, temporary) using the new frame; tests green (cli/server `--protocol v1` validés, doc mise à jour).
