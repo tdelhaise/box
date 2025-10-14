@@ -34,6 +34,7 @@ S3 — Configuration & Admin Channel
 - Lire les fichiers PLIST (`~/.box/box.plist` / `~/.box/boxd.plist`) avec `PropertyListDecoder`, conserver la priorité CLI/env.
 - Recréer le socket d’administration Unix, refuser l’exécution en root et gérer les répertoires `~/.box`.
 - Exit: `box --server` expose `status` sur le canal admin; non-root enforcement vérifié.
+  Progress: chargement PLIST serveur avec priorité CLI/env, enforcement non-root, création des répertoires `~/.box`/`run`, socket admin `status` opérationnel et commande `box admin status` côté client.
 
 S4 — Crypto Reintegration
 - Intégrer libsodium via un module Swift (bindings) et rétablir le transport Noise NK/IK.

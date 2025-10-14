@@ -4,7 +4,7 @@ Status (high level)
 - [x] SwiftPM bootstrap: `Package.swift`, modules (`BoxCommandParser`, `BoxServer`, `BoxClient`, `BoxCore`) et tests initiaux.
 - [x] CLI Swift: `BoxCommandParser` bascule entre client et serveur (`--server`/`-s`), journalisation configurée.
 - [x] Swift UDP parity: porter HELLO/STATUS/PUT/GET en clair avec SwiftNIO et un stockage mémoire temporaire (tests d’intégration à ajouter).
-- [ ] Swift configuration/admin: lecture PLIST, non-root, socket admin.
+- [ ] Swift configuration/admin: lecture PLIST (client), finalisation socket admin/Windows.
 - [ ] Swift crypto: réintégrer Noise/XChaCha via libsodium une fois le chemin clair stabilisé.
 - [x] Spec v0.1, dépendances et CI historique restent disponibles; l’implémentation C est gelée comme référence.
 
@@ -17,8 +17,8 @@ Immediate TODOs (Swift track)
 
 2) Swift S3 — Configuration + canal admin (Issue #14)
    - [ ] Charger `~/.box/box.plist` (PropertyListDecoder) avec priorité CLI/env.
-   - [ ] Recréer le socket Unix `~/.box/run/boxd.socket` et la commande `status`.
-   - [ ] Renforcer la politique non-root + permissions des répertoires.
+   - [x] Recréer le socket Unix `~/.box/run/boxd.socket` et la commande `status`.
+   - [x] Renforcer la politique non-root + permissions des répertoires.
 
 3) Swift S4 — Crypto / libsodium (Issue #21)
    - [ ] Introduire un module libsodium Swift (bindings légers).

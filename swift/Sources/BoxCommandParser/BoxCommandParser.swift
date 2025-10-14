@@ -2,7 +2,14 @@ import ArgumentParser
 import BoxClient
 import BoxCore
 import BoxServer
+import Foundation
 import Logging
+
+#if os(Linux)
+import Glibc
+#else
+import Darwin
+#endif
 
 /// Swift Argument Parser entry point that validates CLI options before delegating to the runtime.
 public struct BoxCommandParser: AsyncParsableCommand {
@@ -10,7 +17,8 @@ public struct BoxCommandParser: AsyncParsableCommand {
     public static var configuration: CommandConfiguration {
         CommandConfiguration(
             commandName: "box",
-            abstract: "Box messaging toolkit (Swift rewrite)."
+            abstract: "Box messaging toolkit (Swift rewrite).",
+            subcommands: [Admin.self]
         )
     }
 
@@ -63,13 +71,24 @@ public struct BoxCommandParser: AsyncParsableCommand {
         }
 
         let resolvedMode: BoxRuntimeMode = server ? .server : .client
+        let resolvedAddress = address ?? BoxRuntimeOptions.defaultAddress
+        let (resolvedPort, portOrigin): (UInt16, BoxRuntimeOptions.PortOrigin) = {
+            if let cliPort = port {
+                return (cliPort, .cliFlag)
+            }
+            return (BoxRuntimeOptions.defaultPort, .default)
+        }()
+        let logLevelOrigin: BoxRuntimeOptions.LogLevelOrigin = (logLevel != nil) ? .cliFlag : .default
+
         let runtimeOptions = BoxRuntimeOptions(
             mode: resolvedMode,
-            address: address ?? BoxRuntimeOptions.defaultAddress,
-            port: port ?? BoxRuntimeOptions.defaultPort,
+            address: resolvedAddress,
+            port: resolvedPort,
+            portOrigin: portOrigin,
             configurationPath: configurationPath,
             adminChannelEnabled: adminChannel,
             logLevel: selectedLogLevel,
+            logLevelOrigin: logLevelOrigin,
             clientAction: try resolveClientAction(for: resolvedMode)
         )
 
@@ -114,5 +133,140 @@ public struct BoxCommandParser: AsyncParsableCommand {
         }
 
         return .handshake
+    }
+}
+
+// MARK: - Admin Subcommands
+
+extension BoxCommandParser {
+    /// `box admin` namespace handling administrative commands.
+    public struct Admin: AsyncParsableCommand {
+        public static var configuration: CommandConfiguration {
+            CommandConfiguration(
+                commandName: "admin",
+                abstract: "Interact with the local admin channel.",
+                subcommands: [Status.self]
+            )
+        }
+
+        public init() {}
+
+        /// `box admin status` — fetches the daemon status over the local socket.
+        public struct Status: AsyncParsableCommand {
+            @Option(name: .shortAndLong, help: "Admin socket path (defaults to ~/.box/run/boxd.socket).")
+            public var socket: String?
+
+            public init() {}
+
+            public mutating func run() throws {
+                guard let path = resolveSocketPath() else {
+                    throw ValidationError("Unable to determine admin socket path. Specify one with --socket.")
+                }
+                let response = try queryStatus(socketPath: path)
+                FileHandle.standardOutput.write(response.data(using: .utf8) ?? Data())
+                if !response.hasSuffix("\n") {
+                    FileHandle.standardOutput.write("\n".data(using: .utf8)!)
+                }
+            }
+
+            /// Determines the socket path to use, applying defaulting rules.
+            /// - Returns: Expanded socket path or `nil` when it cannot be determined.
+            private func resolveSocketPath() -> String? {
+                if let socket, !socket.isEmpty {
+                    return NSString(string: socket).expandingTildeInPath
+                }
+                return BoxPaths.adminSocketPath()
+            }
+
+            /// Sends the `status` command to the admin channel and returns the raw response.
+            /// - Parameter socketPath: Filesystem path to the admin socket.
+            /// - Returns: Response string from the daemon.
+            /// - Throws: `ValidationError` when the socket cannot be contacted or the payload cannot be read.
+            private func queryStatus(socketPath: String) throws -> String {
+                #if os(Linux)
+                let fileDescriptor = Glibc.socket(AF_UNIX, Int32(SOCK_STREAM), 0)
+                #else
+                let fileDescriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+                #endif
+                guard fileDescriptor >= 0 else {
+                    throw ValidationError("Failed to create admin socket.")
+                }
+                defer {
+                    #if os(Linux)
+                    _ = Glibc.close(fileDescriptor)
+                    #else
+                    _ = Darwin.close(fileDescriptor)
+                    #endif
+                }
+
+                var address = sockaddr_un()
+                address.sun_family = sa_family_t(AF_UNIX)
+                var pathBytes = Array(socketPath.utf8)
+                let maxLength = MemoryLayout.size(ofValue: address.sun_path) - 1
+                if pathBytes.count > maxLength {
+                    pathBytes = Array(pathBytes.prefix(maxLength))
+                }
+                withUnsafeMutableBytes(of: &address.sun_path) { buffer in
+                    buffer.initializeMemory(as: UInt8.self, repeating: 0, count: buffer.count)
+                    pathBytes.withUnsafeBytes { source in
+                        if let dest = buffer.baseAddress, let src = source.baseAddress {
+                            memcpy(dest, src, pathBytes.count)
+                        }
+                    }
+                }
+                let sockLen = socklen_t(MemoryLayout.size(ofValue: address) - MemoryLayout.size(ofValue: address.sun_path) + pathBytes.count + 1)
+                let connectResult = withUnsafePointer(to: &address) { pointer -> Int32 in
+                    pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                        #if os(Linux)
+                        return Glibc.connect(fileDescriptor, sockaddrPointer, sockLen)
+                        #else
+                        return Darwin.connect(fileDescriptor, sockaddrPointer, sockLen)
+                        #endif
+                    }
+                }
+                guard connectResult == 0 else {
+                    throw ValidationError("Unable to connect to admin socket at \(socketPath)")
+                }
+
+                let request = "status\n"
+                try request.withCString { pointer in
+                    let length = strlen(pointer)
+                    var totalWritten: size_t = 0
+                    while totalWritten < length {
+                        #if os(Linux)
+                        let written = Glibc.write(fileDescriptor, pointer + totalWritten, length - totalWritten)
+                        #else
+                        let written = Darwin.write(fileDescriptor, pointer + totalWritten, length - totalWritten)
+                        #endif
+                        if written <= 0 {
+                            throw ValidationError("Failed to write request to admin socket.")
+                        }
+                        totalWritten += size_t(written)
+                    }
+                }
+
+                var buffer = [UInt8](repeating: 0, count: 4096)
+                var response = Data()
+                while true {
+                    #if os(Linux)
+                    let bytesRead = Glibc.read(fileDescriptor, &buffer, buffer.count)
+                    #else
+                    let bytesRead = Darwin.read(fileDescriptor, &buffer, buffer.count)
+                    #endif
+                    if bytesRead < 0 {
+                        throw ValidationError("Failed to read response from admin socket.")
+                    }
+                    if bytesRead == 0 {
+                        break
+                    }
+                    response.append(buffer, count: Int(bytesRead))
+                }
+
+                guard let responseString = String(data: response, encoding: .utf8) else {
+                    throw ValidationError("Admin response was not valid UTF-8.")
+                }
+                return responseString
+            }
+        }
     }
 }

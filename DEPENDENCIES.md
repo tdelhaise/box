@@ -9,7 +9,7 @@ Swift Toolchain (rewrite in progress)
 - Swift packages (resolved automatically via SwiftPM):
   - `swift-argument-parser` (CLI).
   - `swift-log` (structured logging).
-  - `swift-nio` (UDP/EventLoop abstractions).
+  - `swift-nio` (UDP/EventLoop abstractions, concurrency helpers).
 - Build:
   ```bash
   swift build --product box
