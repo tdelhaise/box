@@ -96,11 +96,19 @@ public enum BoxServer {
         let statusPort = effectivePort
         let statusTransport = selectedTransport
         let statusLogLevel = logger.logLevel
-        let statusTarget = effectiveLogTarget
         let statusProvider: @Sendable () -> String = {
             var snapshotLogger = Logging.Logger(label: "box.server.status")
             snapshotLogger.logLevel = statusLogLevel
-            return renderStatus(port: statusPort, store: store, logger: snapshotLogger, transport: statusTransport, logTarget: statusTarget)
+            let currentTarget = BoxLogging.currentTarget()
+            return renderStatus(port: statusPort, store: store, logger: snapshotLogger, transport: statusTransport, logTarget: currentTarget)
+        }
+        let logTargetUpdater: @Sendable (String) -> String = { candidate in
+            let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let parsed = BoxLogTarget.parse(trimmed) else {
+                return adminResponse(["status": "error", "message": "invalid-log-target"])
+            }
+            BoxLogging.update(target: parsed)
+            return adminResponse(["status": "ok", "logTarget": logTargetDescription(parsed)])
         }
 
         let adminSocketPath = adminChannelEnabled ? BoxPaths.adminSocketPath() : nil
@@ -111,7 +119,8 @@ public enum BoxServer {
                     on: eventLoopGroup,
                     socketPath: adminSocketPath,
                     logger: logger,
-                    statusProvider: statusProvider
+                    statusProvider: statusProvider,
+                    logTargetUpdater: logTargetUpdater
                 )
                 adminChannelBox.withLockedValue { $0 = channel }
                 logger.info("admin channel ready", metadata: ["socket": "\(adminSocketPath)"])
@@ -311,10 +320,12 @@ private final class BoxAdminChannelHandler: ChannelInboundHandler {
 
     private let logger: Logger
     private let statusProvider: () -> String
+    private let logTargetUpdater: (String) -> String
 
-    init(logger: Logger, statusProvider: @escaping () -> String) {
+    init(logger: Logger, statusProvider: @escaping () -> String, logTargetUpdater: @escaping (String) -> String) {
         self.logger = logger
         self.statusProvider = statusProvider
+        self.logTargetUpdater = logTargetUpdater
     }
 
     func channelActive(context: ChannelHandlerContext) {
@@ -332,19 +343,33 @@ private final class BoxAdminChannelHandler: ChannelInboundHandler {
         let response: String
         if command == "status" {
             response = statusProvider()
+        } else if command == "ping" {
+            response = adminResponse(["status": "ok", "message": "pong"])
+        } else if command.hasPrefix("log-target") {
+            let targetString = command.dropFirst("log-target".count).trimmingCharacters(in: .whitespaces)
+            guard !targetString.isEmpty else {
+                response = adminResponse(["status": "error", "message": "missing-log-target"])
+                write(response: response, context: context)
+                return
+            }
+            response = logTargetUpdater(String(targetString))
         } else {
-            response = "{\"status\":\"error\",\"message\":\"unknown-command\"}"
+            response = adminResponse(["status": "error", "message": "unknown-command"])
         }
 
-        var outBuffer = context.channel.allocator.buffer(capacity: response.utf8.count + 1)
-        outBuffer.writeString(response)
-        outBuffer.writeString("\n")
-        context.writeAndFlush(wrapOutboundOut(outBuffer), promise: nil)
-        context.close(promise: nil)
+        write(response: response, context: context)
     }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {
         logger.warning("admin channel error", metadata: ["error": "\(error)"])
+        context.close(promise: nil)
+    }
+
+    private func write(response: String, context: ChannelHandlerContext) {
+        var outBuffer = context.channel.allocator.buffer(capacity: response.utf8.count + 1)
+        outBuffer.writeString(response)
+        outBuffer.writeString("\n")
+        context.writeAndFlush(wrapOutboundOut(outBuffer), promise: nil)
         context.close(promise: nil)
     }
 }
@@ -401,7 +426,8 @@ private func startAdminChannel(
     on eventLoopGroup: EventLoopGroup,
     socketPath: String,
     logger: Logger,
-    statusProvider: @escaping @Sendable () -> String
+    statusProvider: @escaping @Sendable () -> String,
+    logTargetUpdater: @escaping @Sendable (String) -> String
 ) async throws -> Channel {
     if FileManager.default.fileExists(atPath: socketPath) {
         try FileManager.default.removeItem(atPath: socketPath)
@@ -410,7 +436,7 @@ private func startAdminChannel(
     let bootstrap = ServerBootstrap(group: eventLoopGroup)
         .serverChannelOption(ChannelOptions.backlog, value: 4)
         .childChannelInitializer { channel in
-            channel.pipeline.addHandler(BoxAdminChannelHandler(logger: logger, statusProvider: statusProvider))
+            channel.pipeline.addHandler(BoxAdminChannelHandler(logger: logger, statusProvider: statusProvider, logTargetUpdater: logTargetUpdater))
         }
 
     let channel = try await bootstrap.bind(unixDomainSocketPath: socketPath).get()
@@ -434,11 +460,7 @@ private func renderStatus(port: UInt16, store: BoxServerStore, logger: Logger, t
         "transport": transport ?? "clear",
         "logTarget": logTargetDescription(logTarget)
     ]
-    if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
-       let string = String(data: data, encoding: .utf8) {
-        return string
-    }
-    return "{\"status\":\"ok\"}"
+    return adminResponse(payload)
 }
 
 /// Emits a structured log entry summarising the effective runtime configuration.
@@ -486,4 +508,12 @@ private func logTargetDescription(_ target: BoxLogTarget) -> String {
     case .file(let path):
         return "file:\(path)"
     }
+}
+
+private func adminResponse(_ payload: [String: Any]) -> String {
+    if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+       let string = String(data: data, encoding: .utf8) {
+        return string
+    }
+    return "{\"status\":\"error\",\"message\":\"encoding-failure\"}"
 }

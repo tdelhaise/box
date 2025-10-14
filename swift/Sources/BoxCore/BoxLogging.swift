@@ -36,6 +36,10 @@ public enum BoxLogging {
     public static func update(target: BoxLogTarget) {
         BoxLoggingState.shared.updateTarget(target)
     }
+
+    public static func currentTarget() -> BoxLogTarget {
+        BoxLoggingState.shared.currentTargetValue()
+    }
 }
 
 /// Internal shared state used to manage the Puppy backend.
@@ -83,6 +87,12 @@ private final class BoxLoggingState: @unchecked Sendable {
         guard target != currentTarget else { return }
         currentTarget = target
         configureDestinations(for: target)
+    }
+
+    func currentTargetValue() -> BoxLogTarget {
+        lock.lock()
+        defer { lock.unlock() }
+        return currentTarget
     }
 
     private func configureDestinations(for target: BoxLogTarget) {

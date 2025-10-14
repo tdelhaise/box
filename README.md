@@ -46,6 +46,12 @@ Les logs indiquent la progression HELLO → STATUS → action. Les réponses GET
 - Priorité des sources (serveur): CLI `--port` > variable d’environnement `BOXD_PORT` > PLIST > valeur par défaut `12567`.
 - Un répertoire `~/.box` est créé au démarrage avec permissions strictes (`0700`) ainsi que `~/.box/run` (`0700`) pour héberger le socket admin (`0600`). Les journaux utilisent Puppy (`stderr` par défaut, configurable vers `stdout` ou un fichier).
 
+### Commandes d’administration
+
+- `swift run box admin status` : renvoie un JSON avec les métadonnées runtime.
+- `swift run box admin ping` : vérifie la disponibilité du canal d’administration (`{"status":"ok","message":"pong"}`).
+- `swift run box admin log-target <stderr|stdout|file:/chemin>` : met à jour dynamiquement la cible de journalisation Puppy.
+
 > Les sections suivantes décrivent l'implémentation C historique, conservée comme référence pendant la migration.
 
 ## Notes / Status (chemin C historique – gelé)

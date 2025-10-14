@@ -20,6 +20,7 @@ Immediate TODOs (Swift track)
    - [x] Recréer le socket Unix `~/.box/run/boxd.socket` et la commande `status`.
    - [x] Renforcer la politique non-root + permissions des répertoires.
    - [x] Brancher Puppy comme backend swift-log (`--log-target`, `log_target`).
+   - [ ] Parité Windows (named pipe) et commandes admin additionnelles (reload, stats, etc.).
 
 3) Swift S4 — Crypto / libsodium (Issue #21)
    - [ ] Introduire un module libsodium Swift (bindings légers).
