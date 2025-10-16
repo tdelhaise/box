@@ -306,7 +306,40 @@ public enum BoxServer {
         do {
             let channel = try await bootstrap.bind(host: options.address, port: Int(effectivePort)).get()
             let channelBox = UncheckedSendableBox(channel)
-            logger.info("server listening", metadata: ["address": "\(options.address)", "port": "\(effectivePort)"])
+            let localAddress = channel.localAddress
+            var resolvedHost = options.address
+            var resolvedPort = Int(effectivePort)
+            if let observedPort = localAddress?.port, observedPort > 0 {
+                resolvedPort = observedPort
+            }
+            if let observedHost = localAddress?.ipAddress {
+                resolvedHost = observedHost
+            }
+            if resolvedPort > 0 {
+                let finalPort = UInt16(resolvedPort)
+                effectivePort = finalPort
+                runtimeStateBox.withLockedValue { state in
+                    state.port = finalPort
+                }
+            }
+            var metadata: Logger.Metadata = [
+                "address": .string(resolvedHost),
+                "port": .string("\(effectivePort)")
+            ]
+            if let localAddress {
+                metadata["localAddress"] = .string(localAddress.description)
+            }
+            let listenDescription: String
+            if let localAddress {
+                if let ip = localAddress.ipAddress {
+                    listenDescription = "\(ip):\(effectivePort)"
+                } else {
+                    listenDescription = localAddress.description
+                }
+            } else {
+                listenDescription = "\(resolvedHost):\(effectivePort)"
+            }
+            logger.info("server listening on \(listenDescription)", metadata: metadata)
 
             let cancellationLogLevel = logger.logLevel
             try await withTaskCancellationHandler {
