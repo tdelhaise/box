@@ -206,7 +206,7 @@ public struct BoxClientConfiguration: Sendable {
         let defaultPlist = ClientConfigPlist(
             logLevel: Logger.Level.info.rawValue,
             logTarget: "stderr",
-            address: BoxRuntimeOptions.defaultAddress,
+            address: BoxRuntimeOptions.defaultClientAddress,
             port: BoxRuntimeOptions.defaultPort,
             nodeUUID: UUID().uuidString
         )

@@ -57,8 +57,12 @@ public struct BoxRuntimeOptions: Sendable {
         /// Runtime override applied dynamically (admin channel).
         case runtime
     }
-    /// Default client/server address when none is provided.
-    public static let defaultAddress = "127.0.0.1"
+    /// Default client address when none is provided.
+    public static let defaultClientAddress = "127.0.0.1"
+    /// Default server bind address when none is provided.
+    public static let defaultServerBindAddress = "0.0.0.0"
+    /// Backward compatibility alias for the historic default (client) address.
+    public static let defaultAddress = BoxRuntimeOptions.defaultClientAddress
     /// Default UDP port when none is provided.
     public static let defaultPort: UInt16 = 12567
     /// Default log target when none is provided.

@@ -32,7 +32,7 @@ public struct BoxCommandParser: AsyncParsableCommand {
     public var port: UInt16?
 
     /// Optional remote address used when the client initiates a connection.
-    @Option(name: [.short, .long], help: "Target address (client mode).")
+    @Option(name: [.short, .long], help: "Target address (client) or bind address (server).")
     public var address: String?
 
     /// Optional configuration PLIST file.
@@ -100,10 +100,12 @@ public struct BoxCommandParser: AsyncParsableCommand {
             if let cliAddress = address {
                 return cliAddress
             }
-            if resolvedMode == .client, let configAddress = clientConfiguration?.address, !configAddress.isEmpty {
+            if resolvedMode == .client,
+               let configAddress = clientConfiguration?.address,
+               !configAddress.isEmpty {
                 return configAddress
             }
-            return BoxRuntimeOptions.defaultAddress
+            return resolvedMode == .server ? BoxRuntimeOptions.defaultServerBindAddress : BoxRuntimeOptions.defaultClientAddress
         }()
 
         let (effectivePort, portOrigin): (UInt16, BoxRuntimeOptions.PortOrigin) = {

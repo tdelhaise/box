@@ -87,7 +87,7 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertNotNil(configuration)
         XCTAssertEqual(configuration?.logLevel, .info)
         XCTAssertEqual(configuration?.logTarget, "stderr")
-        XCTAssertEqual(configuration?.address, BoxRuntimeOptions.defaultAddress)
+        XCTAssertEqual(configuration?.address, BoxRuntimeOptions.defaultClientAddress)
         XCTAssertEqual(configuration?.port, BoxRuntimeOptions.defaultPort)
         XCTAssertNotNil(configuration?.nodeUUID)
 

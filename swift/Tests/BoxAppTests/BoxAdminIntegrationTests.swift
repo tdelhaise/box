@@ -168,7 +168,7 @@ private func startServer(configurationData: Data? = nil) async throws -> ServerC
         mode: .server,
         address: "127.0.0.1",
         port: 0,
-        portOrigin: .default,
+        portOrigin: .cliFlag,
         configurationPath: configurationData == nil ? nil : configurationURL.path,
         adminChannelEnabled: true,
         logLevel: .info,

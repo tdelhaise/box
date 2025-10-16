@@ -7,9 +7,10 @@
   ```bash
   swift build --product box
   swift run box --help
-  swift run box --server        # équivalent à --server/-s
-  swift run box                 # mode client par défaut
-  ```
+swift run box --server        # équivalent à --server/-s
+swift run box                 # mode client par défaut
+```
+- Par défaut, le serveur se lie à toutes les interfaces (`0.0.0.0`). Utilisez `--address <ip>` pour restreindre l'écoute.
 - `BoxCommandParser` résout la ligne de commande et délègue à `BoxServer` ou `BoxClient`. Les options actuelles couvrent `--server/-s`, `--port`, `--address`, `--config` (PLIST), `--log-level`, `--log-target (stderr|stdout|file:<path>)`, `--put /queue[:type] --data "..."` et `--get /queue`.
 - `box admin status` interroge le socket Unix local (`~/.box/run/boxd.socket`) et renvoie un JSON de statut.
 - `BoxCodec` encapsule le framing v1 (HELLO/STATUS/PUT/GET) et peut être réutilisé dans n’importe quel handler SwiftNIO basé sur `ByteBuffer`.
