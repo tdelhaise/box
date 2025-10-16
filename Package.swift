@@ -11,7 +11,7 @@ let package = Package(
     products: [
         .executable(
             name: "box",
-            targets: ["BoxApp"]
+            targets: ["BoxCommandParser"]
         )
     ],
     dependencies: [
@@ -22,17 +22,6 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "BoxApp",
-            dependencies: [
-                "BoxCommandParser",
-                "BoxServer",
-                "BoxClient",
-                .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                .product(name: "Logging", package: "swift-log")
-            ],
-            path: "swift/Sources/BoxApp"
-        ),
-        .target(
             name: "BoxCommandParser",
             dependencies: [
                 "BoxServer",

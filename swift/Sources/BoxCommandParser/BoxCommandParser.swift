@@ -12,6 +12,7 @@ import Darwin
 #endif
 
 /// Swift Argument Parser entry point that validates CLI options before delegating to the runtime.
+@main
 public struct BoxCommandParser: AsyncParsableCommand {
     /// Static configuration used by swift-argument-parser (command name and abstract description).
     public static var configuration: CommandConfiguration {
