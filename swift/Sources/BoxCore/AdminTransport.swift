@@ -77,7 +77,8 @@ public struct UnixDomainAdminTransport: BoxAdminTransport {
 
     public func send(command: String) throws -> String {
         #if canImport(Glibc)
-        let fileDescriptor = Glibc.socket(AF_UNIX, Int32(SOCK_STREAM), 0)
+        let streamType = Int32(SOCK_STREAM.rawValue)
+        let fileDescriptor = Glibc.socket(AF_UNIX, streamType, 0)
         #elseif canImport(Darwin)
         let fileDescriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
         #else
