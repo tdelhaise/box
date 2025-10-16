@@ -1,7 +1,8 @@
 ## Réécriture Swift (en cours)
 
-- Objectif : migrer `box` vers Swift 6.2 (async/await) avec SwiftNIO, swift-argument-parser et swift-log, tout en conservant un binaire unique capable de jouer le rôle client ou serveur.
+- Objectif : migrer `box` vers Swift 6.2 (async/await) avec SwiftNIO, swift-argument-parser et swift-log, tout en conservant un binaire unique capable de jouer le rôle client ou serveur. La CI installe manuellement la toolchain Swift 6.2 (Ubuntu 22.04) en attendant un support natif des runners.
 - Structure SwiftPM : `Package.swift` à la racine, sources dans `swift/Sources/…`, tests dans `swift/Tests/…`. Le projet Xcode historique a été retiré; utilisez Xcode via SwiftPM (`xed .` ou `open Package.swift`).
+- Toolchain recommandée : installez Swift 6.2 via [Swiftly](https://www.swift.org/install/linux/#swiftly) (`swiftly install 6.2.0` puis `swiftly use 6.2.0`) ou récupérez l’archive officielle `swift-6.2-RELEASE` si vous préférez l’installation manuelle.
 - Compilation rapide :
   ```bash
   swift build --product box

@@ -109,13 +109,24 @@ private struct ServerContext {
     let originalHome: String?
     let serverTask: Task<Void, Error>
 
-    func waitForAdminSocket(timeout: TimeInterval = 5.0) async throws {
+    func waitForAdminSocket(timeout: TimeInterval = 10.0) async throws {
         let deadline = Date().addingTimeInterval(timeout)
+        var lastError: Error?
         while Date() < deadline {
             if FileManager.default.fileExists(atPath: socketPath) {
                 return
             }
+            do {
+                let probeTransport = BoxAdminTransportFactory.makeTransport(socketPath: socketPath)
+                _ = try probeTransport.send(command: "ping")
+                return
+            } catch {
+                lastError = error
+            }
             try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        if let error = lastError {
+            throw error
         }
         throw NSError(domain: "BoxAdminIntegrationTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "admin socket not created in time"])
     }

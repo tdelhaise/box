@@ -5,12 +5,17 @@ public enum BoxPaths {
     /// Resolves the current user's home directory.
     /// - Returns: URL pointing to the home directory when discoverable.
     public static func homeDirectory() -> URL? {
-        if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty {
+        if let pointer = getenv("HOME"), pointer.pointee != 0 {
+            let home = String(cString: pointer)
+            if !home.isEmpty {
+                return URL(fileURLWithPath: home, isDirectory: true)
+            }
+        } else if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty {
             return URL(fileURLWithPath: home, isDirectory: true)
         }
-        #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
+#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
         return FileManager.default.homeDirectoryForCurrentUser
-        #else
+#else
         return nil
         #endif
     }

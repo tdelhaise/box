@@ -1,7 +1,7 @@
 Development Strategy and Milestones
 
 Assumptions
-- Codebase language: transition en cours vers Swift 6.2 (async/await) avec SwiftNIO, swift-argument-parser et swift-log. L’implémentation C historique (`sources/…`) reste disponible à titre de référence pendant la migration.
+- Codebase language: transition en cours vers Swift 6.2 (async/await) avec SwiftNIO, swift-argument-parser et swift-log. L’implémentation C historique (`sources/…`) reste disponible à titre de référence pendant la migration. La CI télécharge aujourd’hui la toolchain Swift 6.2 pour Ubuntu 22.04 en attendant un support officiel côté runners.
 - Targets: binaire unique `box` (client ou serveur via `--server/-s`) géré par SwiftPM (`BoxCommandParser` orchestre `BoxServer` et `BoxClient`).
 - Platform: Linux/macOS first; Windows later. IPv6 preferred; IPv4 supported.
 - Spec reference: current `SPECS.md` (protocol v1 framing, Noise/XChaCha AEAD, embedded self‑hosted LS, queues, ACLs, NAT section).

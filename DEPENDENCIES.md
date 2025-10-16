@@ -5,7 +5,17 @@ Overview
 - The codebase targets Noise (Ed25519/X25519) + XChaCha20‑Poly1305 via libsodium for encryption in upcoming milestones. DTLS has been removed.
 
 Swift Toolchain (rewrite in progress)
-- Swift >= 6.2 toolchain with SwiftPM (Linux, macOS; Android via cross-compilation later).
+- Swift >= 6.2 toolchain with SwiftPM (Linux, macOS; Android via cross-compilation later). La CI Linux télécharge actuellement la release Swift 6.2 pour Ubuntu 22.04 dans l’attente d’un support natif.
+  - Recommandé : installer et gérer les toolchains via [Swiftly](https://www.swift.org/install/linux/#swiftly)
+    ```bash
+    curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
+    tar zxf swiftly-$(uname -m).tar.gz
+    ./swiftly init --quiet-shell-followup
+    . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
+    swiftly install 6.2.0
+    swiftly use 6.2.0
+    ```
+  - Installation manuelle : télécharger l’archive `swift-6.2-RELEASE-ubuntu22.04.tar.gz`, l’extraire sous `/opt`, et ajouter `/opt/swift-6.2/usr/bin` au `PATH`.
 - Swift packages (resolved automatically via SwiftPM):
   - `swift-argument-parser` (CLI).
   - `swift-log` (structured logging).

@@ -328,7 +328,7 @@ public enum BoxServer {
             logger.info("server stopped")
             try await eventLoopGroup.shutdownGracefully()
         } catch {
-            logger.error("server failed", metadata: ["error": "\(error)"])
+            logger.error("server failed: \(error)")
             if let handle = adminChannelBox.withLockedValue({ $0 }) {
                 initiateAdminChannelShutdown(handle)
                 await waitForAdminChannelShutdown(handle)

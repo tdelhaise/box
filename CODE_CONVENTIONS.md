@@ -47,7 +47,7 @@ Dependencies
 - Crypto: `libsodium` for Ed25519/X25519 and XChaCha20‑Poly1305 (Noise transport).
 - Storage: portable B‑tree (in‑tree) with optional BSD libdb or LMDB backends.
 - Build:
-  - Swift rewrite: SwiftPM (Swift ≥ 6.2) + packages `swift-argument-parser`, `swift-log`, `swift-nio`.
+  - Swift rewrite: SwiftPM (Swift ≥ 6.2; la CI télécharge la release Swift 6.2 pour Ubuntu 22.04) + packages `swift-argument-parser`, `swift-log`, `swift-nio`.
   - Legacy C: Make/CMake; scripts for formatting and naming exist under `scripts/`.
 
 Swift Coding Style

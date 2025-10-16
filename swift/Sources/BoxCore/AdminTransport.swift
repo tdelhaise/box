@@ -112,6 +112,9 @@ public struct UnixDomainAdminTransport: BoxAdminTransport {
         }
 
         let socketLength = socklen_t(MemoryLayout.size(ofValue: address) - MemoryLayout.size(ofValue: address.sun_path) + pathBytes.count + 1)
+        #if canImport(Darwin)
+        address.sun_len = UInt8(socketLength)
+        #endif
         let connectResult = withUnsafePointer(to: &address) { pointer -> Int32 in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
                 #if canImport(Glibc)

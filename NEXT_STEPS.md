@@ -33,9 +33,9 @@ Immediate TODOs (Swift track)
      - [x] Vérifier/renforcer les permissions (ACL) côté Windows.
    - [ ] Tests et observabilité :
      - [x] Ajouter des tests unitaires pour les commandes admin (mock de transport) couvrant `ping`, `log-target`, `reload-config`, `stats`.
-     - [ ] Préparer des tests d’intégration End-to-End (CLI ↔️ serveur) utilisables en CI (les nouveaux `BoxAdminIntegrationTests` couvrent le transport; reste à piloter via la CLI).
+   - [x] Stabiliser les tests d’intégration `BoxAdminIntegrationTests` (transport Swift) et les exécuter en CI; un futur travail couvrira l’orchestration complète via la CLI.
      - [ ] Couvrir la génération automatique des PLIST de configuration côté CLI (vérifier la présence du `node_uuid`).
-     - [ ] Implémenter la hiérarchie de stockage `~/.box/queues/` avec la file `INBOX` obligatoire et exposer `queueCount`/`freeSpace` via `box admin status`.
+   - [x] Implémenter la hiérarchie de stockage `~/.box/queues/` avec la file `INBOX` obligatoire et exposer `queueCount`/`freeSpace` via `box admin status`.
      - [x] Mettre à jour README, DEVELOPMENT_STRATEGY et SPECS pour refléter les nouvelles commandes et matrices de plateformes.
 
 3) Swift S4 — Crypto / libsodium (Issue #21)
