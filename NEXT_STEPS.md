@@ -4,7 +4,7 @@ Status (high level)
 - [x] SwiftPM bootstrap: `Package.swift`, modules (`BoxCommandParser`, `BoxServer`, `BoxClient`, `BoxCore`) et tests initiaux.
 - [x] CLI Swift: `BoxCommandParser` bascule entre client et serveur (`--server`/`-s`), journalisation configurée.
 - [x] Swift UDP parity: porter HELLO/STATUS/PUT/GET en clair avec SwiftNIO et un stockage mémoire temporaire (tests d’intégration à ajouter).
-- [ ] Swift configuration/admin: lecture PLIST (client), finalisation socket admin/Windows.
+- [x] Swift configuration/admin: lecture PLIST (client), canal d’administration multiplateforme (`status|ping|log-target|reload-config|stats`). Reste à livrer les tests d’intégration CLI↔️serveur.
 - [ ] Swift crypto: réintégrer Noise/XChaCha via libsodium une fois le chemin clair stabilisé.
 - [x] Spec v0.1, dépendances et CI historique restent disponibles; l’implémentation C est gelée comme référence.
 
@@ -30,10 +30,12 @@ Immediate TODOs (Swift track)
    - [x] Parité Windows :
      - [x] Abstraire le transport admin (Unix socket vs named pipe) dans BoxCore.
      - [x] Exposer `--socket` compatible Windows (chemin `\\.\pipe\boxd-admin` par défaut) et documenter le comportement.
-     - [ ] Vérifier/renforcer les permissions (ACL) côté Windows.
+     - [x] Vérifier/renforcer les permissions (ACL) côté Windows.
    - [ ] Tests et observabilité :
      - [x] Ajouter des tests unitaires pour les commandes admin (mock de transport) couvrant `ping`, `log-target`, `reload-config`, `stats`.
-     - [ ] Préparer des tests d’intégration End-to-End (CLI ↔️ serveur) utilisables en CI.
+     - [ ] Préparer des tests d’intégration End-to-End (CLI ↔️ serveur) utilisables en CI (les nouveaux `BoxAdminIntegrationTests` couvrent le transport; reste à piloter via la CLI).
+     - [ ] Couvrir la génération automatique des PLIST de configuration côté CLI (vérifier la présence du `node_uuid`).
+     - [ ] Implémenter la hiérarchie de stockage `~/.box/queues/` avec la file `INBOX` obligatoire et exposer `queueCount`/`freeSpace` via `box admin status`.
      - [x] Mettre à jour README, DEVELOPMENT_STRATEGY et SPECS pour refléter les nouvelles commandes et matrices de plateformes.
 
 3) Swift S4 — Crypto / libsodium (Issue #21)

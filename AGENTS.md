@@ -32,7 +32,9 @@ Coding Conventions (highlights)
 - Executables: `sources/box/` (client), `sources/boxd/` (daemon). Do not run `boxd` as root/admin.
 - Naming: `BF` prefix for library symbols; explicit variable/parameter names (avoid abbreviations like `buffer`, `address`, `pointer`, `index`, etc. are required; abbreviations like `buf`, `addr`, `ptr`, `idx` are forbidden). See CODE_CONVENTIONS.md.
 - Security posture: default‑deny ACLs, adhere to Noise + XChaCha crypto roadmap, and follow non‑root policy.
-- Admin channel (Unix): local socket `~/.box/run/boxd.socket` with a `status` command; client supports `box admin status`.
+- Admin channel (Unix/Windows): socket `~/.box/run/boxd.socket` ou named pipe `\\.\pipe\boxd-admin`, commandes `status|ping|log-target|reload-config|stats` via `box admin …`.
+- Config PLIST defaults: le client et le serveur créent automatiquement `~/.box/box.plist` et `~/.box/boxd.plist` avec un `node_uuid` dédié s’ils n’existent pas (ne supprimez jamais ces fichiers côté agent).
+- Stockage: les files résident dans `~/.box/queues/`; assurez-vous que `INBOX/` reste présent (les tests/implémentations doivent échouer si la création échoue).
 
 Platform Notes
 - Linux/macOS/Windows are primary; Android and AOSP supported via NDK; STM32 targeted later (reason to keep core lean C).

@@ -128,30 +128,34 @@ public struct BoxRuntimeOptions: Sendable {
 }
 
 /// Errors thrown while bootstrapping the runtime.
-public enum BoxRuntimeError: Error, CustomStringConvertible {
-    /// Raised when the current platform is unsupported.
-    case unsupportedPlatform(String)
-    /// Raised when a configuration file could not be parsed.
-    case configurationLoadFailed(URL)
-    /// Raised when the admin channel cannot be initialised.
-    case adminChannelUnavailable(String)
-    /// Raised when an operation is not permitted (e.g. running as root).
-    case forbiddenOperation(String)
+ public enum BoxRuntimeError: Error, CustomStringConvertible {
+     /// Raised when the current platform is unsupported.
+     case unsupportedPlatform(String)
+     /// Raised when a configuration file could not be parsed.
+     case configurationLoadFailed(URL)
+     /// Raised when the admin channel cannot be initialised.
+     case adminChannelUnavailable(String)
+     /// Raised when an operation is not permitted (e.g. running as root).
+     case forbiddenOperation(String)
+    /// Raised when storage prerequisites (queues, directories) are not met.
+    case storageUnavailable(String)
 
-    /// Human readable description used for CLI diagnostics.
-    public var description: String {
-        switch self {
-        case .unsupportedPlatform(let reason):
-            return "unsupported platform: \(reason)"
-        case .configurationLoadFailed(let url):
-            return "failed to load configuration at \(url.path)"
-        case .adminChannelUnavailable(let reason):
-            return "admin channel unavailable: \(reason)"
-        case .forbiddenOperation(let reason):
-            return "forbidden operation: \(reason)"
-        }
-    }
-}
+     /// Human readable description used for CLI diagnostics.
+     public var description: String {
+         switch self {
+         case .unsupportedPlatform(let reason):
+             return "unsupported platform: \(reason)"
+         case .configurationLoadFailed(let url):
+             return "failed to load configuration at \(url.path)"
+         case .adminChannelUnavailable(let reason):
+             return "admin channel unavailable: \(reason)"
+         case .forbiddenOperation(let reason):
+             return "forbidden operation: \(reason)"
+        case .storageUnavailable(let reason):
+            return "storage unavailable: \(reason)"
+         }
+     }
+ }
 
 public extension Logger.Level {
     /// Parses a log level string coming from the CLI into a swift-log level.

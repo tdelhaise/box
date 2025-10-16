@@ -33,6 +33,10 @@ public enum BoxLogging {
         BoxLoggingState.shared.bootstrap(level: level, target: target)
     }
 
+    public static func update(level: Logger.Level) {
+        BoxLoggingState.shared.updateLevel(level)
+    }
+
     public static func update(target: BoxLogTarget) {
         BoxLoggingState.shared.updateTarget(target)
     }
@@ -81,6 +85,12 @@ private final class BoxLoggingState: @unchecked Sendable {
             return
         }
         updateTargetLocked(target)
+    }
+
+    func updateLevel(_ level: Logger.Level) {
+        lock.lock()
+        defer { lock.unlock() }
+        currentLevel = level
     }
 
     private func updateTargetLocked(_ target: BoxLogTarget) {

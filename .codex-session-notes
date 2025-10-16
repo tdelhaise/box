@@ -1,0 +1,3 @@
+2025-10-14 – Session snapshot
+- Canal admin étendu (status/ping/log-target/reload-config/stats) avec transports Unix et Windows (ACL restreintes) et tests d’intégration transport (`BoxAdminIntegrationTests`).
+- Prochaines tâches : tests d’intégration admin via CLI, préparation réintégration Noise/libsodium.

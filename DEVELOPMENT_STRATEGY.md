@@ -34,7 +34,8 @@ S3 — Configuration & Admin Channel
 - Lire les fichiers PLIST (`~/.box/box.plist` / `~/.box/boxd.plist`) avec `PropertyListDecoder`, conserver la priorité CLI/env.
 - Recréer le socket d’administration Unix, refuser l’exécution en root et gérer les répertoires `~/.box`.
 - Exit: `box --server` expose `status` sur le canal admin; non-root enforcement vérifié.
-  Progress: chargement PLIST serveur avec priorité CLI/env, enforcement non-root, création des répertoires `~/.box`/`run`, socket admin `status` opérationnel, commandes `box admin status|ping|log-target|reload-config|stats` effectives (reload relit le PLIST et met à jour log level/target; stats expose un instantané runtime), bascule de la journalisation sur Puppy (stderr|stdout|file) et lecture `~/.box/box.plist` côté client (log level/target + address/port). Transport admin abstrait (Unix socket ou named pipe Windows) avec CLI/serveur alignés.
+  Progress: chargement PLIST serveur avec priorité CLI/env, enforcement non-root, création des répertoires `~/.box`/`run`, socket admin `status` opérationnel, commandes `box admin status|ping|log-target|reload-config|stats` effectives (reload relit le PLIST, met à jour log level/target et persiste la configuration), bascule de la journalisation sur Puppy (`stderr|stdout|file`) et lecture/écriture automatique des PLIST client/serveur (`~/.box/box.plist`, `~/.box/boxd.plist`) avec génération d’un `node_uuid` unique par rôle. Transport admin abstrait (socket Unix ou named pipe Windows) avec CLI/serveur alignés et ACL restreintes côté Windows. Restent à couvrir : tests d’intégration CLI↔️serveur.
+  Next: initialiser le répertoire `~/.box/queues/`, créer la file `INBOX` au premier démarrage et exposer via l’admin channel la capacité disque disponible et le nombre de files.
 
 S4 — Crypto Reintegration
 - Intégrer libsodium via un module Swift (bindings) et rétablir le transport Noise NK/IK.

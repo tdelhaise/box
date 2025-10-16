@@ -22,11 +22,11 @@ public enum BoxServer {
         try enforceNonRoot(logger: logger)
 
         let homeDirectory = BoxPaths.homeDirectory()
-        if let homeDirectory {
-            try ensureBoxDirectories(home: homeDirectory, logger: logger)
-        } else {
-            logger.warning("HOME not set; configuration and admin channel features may be unavailable")
+        guard let homeDirectory else {
+            throw BoxRuntimeError.storageUnavailable("HOME not set; unable to resolve ~/.box")
         }
+        try ensureBoxDirectories(home: homeDirectory, logger: logger)
+        let queueRoot = try ensureQueueInfrastructure(logger: logger)
 
         var effectivePort = options.port
         var portOrigin = options.portOrigin
@@ -61,6 +61,7 @@ public enum BoxServer {
             logLevelOrigin = .configuration
         }
         logger.logLevel = effectiveLogLevel
+        BoxLogging.update(level: effectiveLogLevel)
 
         var effectiveLogTarget = options.logTarget
         var logTargetOrigin = options.logTargetOrigin
@@ -92,6 +93,7 @@ public enum BoxServer {
             port: effectivePort,
             portOrigin: portOrigin,
             transport: selectedTransport,
+            queueRootPath: queueRoot.path,
             reloadCount: 0,
             lastReloadTimestamp: nil,
             lastReloadStatus: "never",
@@ -201,6 +203,8 @@ public enum BoxServer {
                             state.logLevelOrigin = .configuration
                         } else if state.logLevelOrigin == .configuration {
                             state.logLevelOrigin = .default
+                            let defaultLevel: Logger.Level = .info
+                            state.logLevel = defaultLevel
                         }
                     }
 
@@ -219,6 +223,7 @@ public enum BoxServer {
                 }
 
                 let snapshot = runtimeStateBox.withLockedValue { $0 }
+                BoxLogging.update(level: snapshot.logLevel)
                 var response: [String: Any] = [
                     "status": snapshot.lastReloadStatus,
                     "path": configPath,
@@ -228,6 +233,9 @@ public enum BoxServer {
                     "logTargetOrigin": "\(snapshot.logTargetOrigin)",
                     "reloadCount": snapshot.reloadCount
                 ]
+                if let nodeUUID = snapshot.configuration?.nodeUUID.uuidString {
+                    response["nodeUUID"] = nodeUUID
+                }
                 if let timestamp = snapshot.lastReloadTimestamp {
                     response["timestamp"] = iso8601String(timestamp)
                 }
@@ -373,6 +381,7 @@ private struct BoxServerRuntimeState: Sendable {
     var port: UInt16
     var portOrigin: BoxRuntimeOptions.PortOrigin
     var transport: String?
+    var queueRootPath: String?
     var reloadCount: Int
     var lastReloadTimestamp: Date?
     var lastReloadStatus: String
@@ -676,11 +685,16 @@ private final class BoxAdminNamedPipeServer: @unchecked Sendable {
     private let dispatcher: BoxAdminCommandDispatcher
     private let shouldStop = NIOLockedValueBox(false)
     private var task: Task<Void, Never>?
+    private let securityAttributes: UnsafeMutablePointer<SECURITY_ATTRIBUTES>?
+    private let securityDescriptor: PSECURITY_DESCRIPTOR?
 
     init(path: String, logger: Logger, dispatcher: BoxAdminCommandDispatcher) {
         self.path = path
         self.logger = logger
         self.dispatcher = dispatcher
+        let securityContext = Self.makeSecurityAttributes(logger: logger)
+        self.securityAttributes = securityContext?.attributes
+        self.securityDescriptor = securityContext?.descriptor
     }
 
     /// Starts the background listener loop on a detached task.
@@ -710,6 +724,9 @@ private final class BoxAdminNamedPipeServer: @unchecked Sendable {
 
     private func runLoop(pipeName: UnsafePointer<WCHAR>) {
         let bufferSize: DWORD = 4096
+        if securityAttributes == nil {
+            logger.warning("admin pipe security: using default ACL (Windows descriptor creation failed)")
+        }
         while !shouldStop.withLockedValue({ $0 }) {
             let handle = CreateNamedPipeW(
                 pipeName,
@@ -719,7 +736,7 @@ private final class BoxAdminNamedPipeServer: @unchecked Sendable {
                 bufferSize,
                 bufferSize,
                 DWORD(0),
-                nil
+                securityAttributes
             )
 
             if handle == INVALID_HANDLE_VALUE {
@@ -773,6 +790,44 @@ private final class BoxAdminNamedPipeServer: @unchecked Sendable {
             }
         }
     }
+
+    deinit {
+        if let descriptor = securityDescriptor {
+            _ = LocalFree(descriptor)
+        }
+        if let pointer = securityAttributes {
+            pointer.deinitialize(count: 1)
+            pointer.deallocate()
+        }
+    }
+
+    private static func makeSecurityAttributes(
+        logger: Logger
+    ) -> (attributes: UnsafeMutablePointer<SECURITY_ATTRIBUTES>, descriptor: PSECURITY_DESCRIPTOR)? {
+        let sddl = "D:P(A;;FA;;;SY)(A;;FA;;;OW)"
+        return sddl.withCString(encodedAs: UTF16.self) { pointer -> (UnsafeMutablePointer<SECURITY_ATTRIBUTES>, PSECURITY_DESCRIPTOR)? in
+            var securityDescriptor: PSECURITY_DESCRIPTOR?
+            let conversionResult = ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                pointer,
+                DWORD(SDDL_REVISION_1),
+                &securityDescriptor,
+                nil
+            )
+            guard conversionResult != 0, let descriptor = securityDescriptor else {
+                let error = GetLastError()
+                logger.warning("admin pipe security descriptor creation failed", metadata: ["error": "\(error)"])
+                return nil
+            }
+
+            let attributes = UnsafeMutablePointer<SECURITY_ATTRIBUTES>.allocate(capacity: 1)
+            attributes.initialize(to: SECURITY_ATTRIBUTES(
+                nLength: DWORD(MemoryLayout<SECURITY_ATTRIBUTES>.size),
+                lpSecurityDescriptor: descriptor,
+                bInheritHandle: FALSE
+            ))
+            return (attributes, descriptor)
+        }
+    }
 }
 #endif
 
@@ -822,6 +877,58 @@ private func createDirectoryIfNeeded(at url: URL) throws {
 #endif
 }
 
+/// Ensures the queue storage hierarchy exists and that the mandatory `INBOX` queue is present.
+/// - Parameter logger: Logger used to emit diagnostics before failure.
+/// - Returns: URL pointing to the queue root directory.
+private func ensureQueueInfrastructure(logger: Logger) throws -> URL {
+    guard let queueRoot = BoxPaths.queuesDirectory() else {
+        throw BoxRuntimeError.storageUnavailable("unable to resolve ~/.box/queues directory")
+    }
+
+    try createDirectoryIfNeeded(at: queueRoot)
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: queueRoot.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+        throw BoxRuntimeError.storageUnavailable("queue root path \(queueRoot.path) is not a directory")
+    }
+
+    let inboxDirectory = queueRoot.appendingPathComponent("INBOX", isDirectory: true)
+    try createDirectoryIfNeeded(at: inboxDirectory)
+    guard FileManager.default.fileExists(atPath: inboxDirectory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+        throw BoxRuntimeError.storageUnavailable("failed to create mandatory INBOX queue at \(inboxDirectory.path)")
+    }
+
+    return queueRoot
+}
+
+/// Captures file-system metrics derived from the queue storage root.
+private struct QueueMetrics {
+    var count: Int
+    var freeBytes: UInt64?
+}
+
+/// Computes the number of queues (directories) and free disk space under the queue root.
+private func queueMetrics(at root: URL) -> QueueMetrics {
+    let fileManager = FileManager.default
+    var queueCount = 0
+
+    if let contents = try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
+        queueCount = contents.reduce(0) { partialResult, url in
+            (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true ? partialResult + 1 : partialResult
+        }
+    }
+
+    var freeBytes: UInt64?
+    if let attributes = try? fileManager.attributesOfFileSystem(forPath: root.path),
+       let freeSize = attributes[.systemFreeSize] as? NSNumber {
+        freeBytes = freeSize.uint64Value
+    }
+
+    if queueCount < 1 {
+        queueCount = 1
+    }
+    return QueueMetrics(count: queueCount, freeBytes: freeBytes)
+}
+
 /// Binds the admin channel on the provided UNIX domain socket path.
 /// - Parameters:
 ///   - eventLoopGroup: Event loop group used for the server bootstrap.
@@ -852,9 +959,17 @@ private func startAdminChannel(
     let server = BoxAdminNamedPipeServer(path: socketPath, logger: logger, dispatcher: dispatcher)
     server.start()
     return .pipe(server)
-    #else
+#else
     if FileManager.default.fileExists(atPath: socketPath) {
-        try FileManager.default.removeItem(atPath: socketPath)
+        do {
+            try FileManager.default.removeItem(atPath: socketPath)
+        } catch {
+            let nsError = error as NSError
+            let isMissingFile = nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileNoSuchFileError
+            if !isMissingFile {
+                throw error
+            }
+        }
     }
 
     let bootstrap = ServerBootstrap(group: eventLoopGroup)
@@ -891,6 +1006,19 @@ private func renderStatus(state: BoxServerRuntimeState, store: BoxServerStore, l
     ]
     if let path = state.configurationPath {
         payload["configPath"] = path
+    }
+    if let nodeUUID = state.configuration?.nodeUUID.uuidString {
+        payload["nodeUUID"] = nodeUUID
+    }
+    if let queueRootPath = state.queueRootPath {
+        payload["queueRoot"] = queueRootPath
+        let metrics = queueMetrics(at: URL(fileURLWithPath: queueRootPath, isDirectory: true))
+        payload["queueCount"] = metrics.count
+        if let freeBytes = metrics.freeBytes {
+            payload["queueFreeBytes"] = freeBytes
+        }
+    } else {
+        payload["queueCount"] = 1
     }
     if let timestamp = state.lastReloadTimestamp {
         payload["lastReload"] = iso8601String(timestamp)
@@ -929,6 +1057,19 @@ private func renderStats(state: BoxServerRuntimeState, store: BoxServerStore, lo
     }
     if let lastReload = state.lastReloadTimestamp {
         payload["lastReload"] = iso8601String(lastReload)
+    }
+    if let nodeUUID = state.configuration?.nodeUUID.uuidString {
+        payload["nodeUUID"] = nodeUUID
+    }
+    if let queueRootPath = state.queueRootPath {
+        payload["queueRoot"] = queueRootPath
+        let metrics = queueMetrics(at: URL(fileURLWithPath: queueRootPath, isDirectory: true))
+        payload["queueCount"] = metrics.count
+        if let freeBytes = metrics.freeBytes {
+            payload["queueFreeBytes"] = freeBytes
+        }
+    } else {
+        payload["queueCount"] = 1
     }
     if let error = state.lastReloadError {
         payload["message"] = error

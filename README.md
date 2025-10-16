@@ -19,7 +19,9 @@
 
 - Transport d’administration unifié: `box admin` s’appuie désormais sur une abstraction commune (socket Unix `~/.box/run/boxd.socket` ou named pipe Windows `\\.\pipe\boxd-admin`) et prend en charge `status`, `ping`, `log-target`, `reload-config` et `stats`.
 - Rechargement dynamique des configurations PLIST serveur/client avec priorité CLI > env > fichier, mise à jour des cibles Puppy (`stderr|stdout|file:`) et journalisation centralisée via `BoxLogging`.
-- Tests Swift couvrant les commandes d’administration côté répartiteur (`BoxAdminDispatcherTests`). Les prochains jalons porteront sur des tests d’intégration CLI↔️serveur, la vérification des ACL Windows pour le named pipe et la réintégration Noise/libsodium.
+- Les configurations PLIST par défaut sont générées automatiquement (`~/.box/box.plist`, `~/.box/boxd.plist`) lors du premier lancement avec des valeurs par défaut et un `node_uuid` unique (UUID) propre au client et au serveur; le daemon expose son UUID via `box admin status`.
+- Stockage par défaut: le serveur initialise une hiérarchie `~/.box/queues/` dès le premier démarrage et garantit la présence d’une file `INBOX`; l’appel `box admin status` devra refléter la capacité disque disponible et le nombre de files (minimum 1 grâce à `INBOX`).
+- Tests Swift couvrant les commandes d’administration côté répartiteur (`BoxAdminDispatcherTests`) et les parcours ping/log-target/reload-config via socket Unix (`BoxAdminIntegrationTests`). Les prochains jalons porteront sur des tests d’intégration CLI↔️serveur et la réintégration Noise/libsodium.
 
 ### Exemples (Swift cleartext)
 

@@ -41,6 +41,7 @@ Unlike traditional cloud offerings, Box is designed to run on user-controlled ha
 - Identity: Users and nodes are identified by UUIDs. Cryptographic keys bind to these identities (see Security).
 - Authorization: Servers only accept requests from clients that appear in the Location Service as registered for the relevant User UUID.
 - Storage: Server persists objects per queue, keyed by metadata (time, content digest, optional IDs). Storage is pluggable (filesystem by default).
+  - Filesystem default: `~/.box/queues/<queue_name>/` with a mandatory `INBOX` queue created at first boot; server startup aborts if `INBOX` cannot be provisioned.
 
 4.1 Daemon Execution Model
 
@@ -584,6 +585,7 @@ PUT example
 - Register/update presence in embedded LS on start and periodically (keep‑alive with last_seen). Presence is also published into `/uuid`.
 - Enforce ACLs per queue and per user/node.
 - Persist objects under a storage root: default filesystem layout: `<root>/<user_uuid>/<queue>/<digest>` with metadata sidecar. LS data is also persisted via `/uuid` and `/location` queues.
+- Swift rewrite default root: `~/.box/queues/` (configurable later). The daemon MUST provision this directory on first boot and ensure a writable `INBOX/` queue exists before accepting traffic; failure is fatal.
 - Optional at‑rest encryption with a server‑managed key.
 - Rate limiting and DoS protection per source.
 
@@ -904,6 +906,7 @@ Safety
   - Access is restricted by OS-level file/pipe permissions to the same non-privileged user that owns `boxd`.
   - `boxd` refuses admin-channel requests if the caller is not the same user.
   - Swift rewrite (MVP 2025): admin commands are invoked as plain text lines (`status`, `ping`, `log-target <target|json>`, `reload-config [json]`, `stats`) returning newline-delimited JSON responses.
+  - Implementation status (2025-10): socket Unix et named pipe Windows disponibles avec ACL restreintes; `log-target` pilote Puppy (`stderr|stdout|file:`) et `reload-config` relit les PLIST. Restent à intégrer: tests d’intégration CLI↔️serveur et les commandes NAT/LS décrites ci-dessous.
 
 - Message Format
   - Framing: newline-delimited JSON (NDJSON) or CBOR frames; implementation MAY choose CBOR for efficiency.
@@ -911,7 +914,7 @@ Safety
   - Response: `{ "id": "uuid", "ok": true|false, "result": { ... } | "error": { "code": "...", "msg": "..." } }`
 
 - Actions (initial)
-  - `status`: returns node/user UUIDs, listen addrs, protocol versions, and current external endpoints (if known).
+  - `status`: returns node/user UUIDs (`node_uuid` now persisté), listen addrs, protocol versions, filesystem metrics (free bytes available under `~/.box/queues/`), and queue statistics (`queueCount` où `INBOX` garantit un minimum de 1).
   - `nat_probe`: inspects gateway capabilities (PCP/NAT-PMP/UPnP) and returns supported methods.
   - `map_create { method, port, ttl }`: attempts to create a UDP mapping/pinhole; returns external endpoint and lifetime.
   - `map_delete { method, external }`: removes a previously created mapping.

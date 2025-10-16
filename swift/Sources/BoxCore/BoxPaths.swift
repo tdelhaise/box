@@ -47,6 +47,11 @@ public enum BoxPaths {
         return boxDirectory()?.appendingPathComponent("box.plist", isDirectory: false)
     }
 
+    /// Resolves the root directory storing queue data (`~/.box/queues`).
+    public static func queuesDirectory() -> URL? {
+        boxDirectory()?.appendingPathComponent("queues", isDirectory: true)
+    }
+
     /// Resolves the default admin socket path (`~/.box/run/boxd.socket`).
     /// - Returns: Absolute path to the admin socket when derivable.
     public static func adminSocketPath() -> String? {
