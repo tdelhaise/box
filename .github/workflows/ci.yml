@@ -48,6 +48,7 @@ jobs:
           curl -fL "https://download.swift.org/swift-${SWIFT_VERSION}-release/ubuntu$(echo ${UBUNTU_VERSION} | tr -d '.')/swift-${SWIFT_VERSION}-RELEASE/${ARCHIVE}.tar.gz" -o swift.tar.gz
           tar -xzf swift.tar.gz
           sudo mv "${ARCHIVE}" "/opt/swift-${SWIFT_VERSION}"
+          sudo ln -sf /usr/bin/ld "/opt/swift-${SWIFT_VERSION}/usr/bin/ld"
           echo "/opt/swift-${SWIFT_VERSION}/usr/bin" >> "$GITHUB_PATH"
           {
             echo "SWIFT_HOME=/opt/swift-${SWIFT_VERSION}"
