@@ -29,10 +29,9 @@ static int BFStorageManagerQueuePath(char *buffer, size_t bufferLength, const ch
 }
 
 static void BFStorageManagerGenerateMessageId(char *buffer, size_t bufferLength) {
-    struct timespec ts;
-    (void)clock_gettime(CLOCK_REALTIME, &ts);
+    time_t now = time(NULL);
     unsigned int randomValue = (unsigned int)rand();
-    (void)snprintf(buffer, bufferLength, "%lld-%u", (long long)ts.tv_sec, randomValue);
+    (void)snprintf(buffer, bufferLength, "%lld-%u", (long long)now, randomValue);
 }
 
 BFStorageManager *BFStorageManagerCreate(BFFileManager *fileManager) {

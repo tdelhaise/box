@@ -186,8 +186,11 @@ int BFFileManagerWriteFile(BFFileManager *fileManager, const char *relativePath,
         }
     }
 
-    char tempPath[PATH_MAX];
-    snprintf(tempPath, sizeof(tempPath), "%s.tmp", fullPath);
+    char tempPath[PATH_MAX + 5];
+    int written = snprintf(tempPath, sizeof(tempPath), "%s.tmp", fullPath);
+    if (written < 0 || written >= (int)sizeof(tempPath)) {
+        return BF_ERR;
+    }
 
     FILE *f = fopen(tempPath, "wb");
     if (!f) {
