@@ -34,6 +34,7 @@ jobs:
             libstdc++6 \
             libxml2 \
             libz3-dev \
+            ca-certificates \
             tzdata \
             unzip \
             zlib1g-dev \
@@ -55,7 +56,13 @@ jobs:
             echo "LD_LIBRARY_PATH=/opt/swift-${SWIFT_VERSION}/usr/lib/swift/linux:\$LD_LIBRARY_PATH"
             echo "LIBRARY_PATH=/opt/swift-${SWIFT_VERSION}/usr/lib/swift/linux:\$LIBRARY_PATH"
             echo "PATH=/opt/swift-${SWIFT_VERSION}/usr/bin:\$PATH"
+            echo "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"
+            echo "SSL_CERT_DIR=/etc/ssl/certs"
           } >> "$GITHUB_ENV"
+
+      - name: Probe package mirrors
+        run: |
+          git ls-remote https://github.com/sushichop/Puppy.git
 
       - name: Resolve dependencies
         run: swift package resolve
