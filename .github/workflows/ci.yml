@@ -53,9 +53,8 @@ jobs:
           echo "/opt/swift-${SWIFT_VERSION}/usr/bin" >> "$GITHUB_PATH"
           {
             echo "SWIFT_HOME=/opt/swift-${SWIFT_VERSION}"
-            echo "LD_LIBRARY_PATH=/opt/swift-${SWIFT_VERSION}/usr/lib/swift/linux:\$LD_LIBRARY_PATH"
-            echo "LIBRARY_PATH=/opt/swift-${SWIFT_VERSION}/usr/lib/swift/linux:\$LIBRARY_PATH"
-            echo "PATH=/opt/swift-${SWIFT_VERSION}/usr/bin:\$PATH"
+            echo "LD_LIBRARY_PATH=/opt/swift-${SWIFT_VERSION}/usr/lib/swift/linux:${LD_LIBRARY_PATH:-}"
+            echo "LIBRARY_PATH=/opt/swift-${SWIFT_VERSION}/usr/lib/swift/linux:${LIBRARY_PATH:-}"
             echo "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"
             echo "SSL_CERT_DIR=/etc/ssl/certs"
           } >> "$GITHUB_ENV"
