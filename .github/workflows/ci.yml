@@ -7,90 +7,22 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-test:
+  swift-build-and-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake build-essential ninja-build libssl-dev libsodium-dev pkg-config ripgrep clang-format
-
-      - name: Configure (Debug)
-        run: make configure BUILD_TYPE=Debug
-
-      - name: Build
-        run: make build
-
-      - name: Format check
-        run: scripts/check_format.sh
-
-      - name: Naming + Abbreviation checks (warn-only for abbreviations)
-        run: make check
-
-      - name: Run tests
-        run: make test
-
-  dockerized-build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build dev image
-        run: docker build -f Dockerfile.dev -t box-dev .
-
-      - name: Build and test inside container
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}":/work \
-            -w /work \
-            --user root \
-            box-dev bash -lc '
-              git config --global --add safe.directory /work || true && \
-              make configure BUILD_TYPE=Debug && \
-              make build && \
-              scripts/check_format.sh && \
-              make check-strict && \
-              make test
-            '
-
-  android-build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Android NDK
-        id: setup-ndk
-        uses: nttld/setup-ndk@v1
+      - name: Set up Swift toolchain
+        uses: swift-actions/setup-swift@v1
         with:
-          ndk-version: r26d
+          swift-version: "6.0.1"
 
-      - name: Configure (Android arm64-v8a, minimal core)
-        env:
-          ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
-        run: |
-          cmake -S . -B build-android-arm64 \
-            -D CMAKE_TOOLCHAIN_FILE="${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake" \
-            -D ANDROID_ABI=arm64-v8a \
-            -D ANDROID_PLATFORM=android-24 \
-            -D BOX_BUILD_MINIMAL=ON \
-            -D CMAKE_BUILD_TYPE=Release
+      - name: Resolve dependencies
+        run: swift package resolve
 
-      - name: Build (Android minimal core)
-        run: cmake --build build-android-arm64 -j
+      - name: Build Swift package
+        run: swift build --product box
 
-      - name: Build JNI wrapper (boxjni)
-        env:
-          ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
-        run: |
-          cmake -S android/jni -B build-android-jni \
-            -D CMAKE_TOOLCHAIN_FILE="${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake" \
-            -D ANDROID_ABI=arm64-v8a \
-            -D ANDROID_PLATFORM=android-24 \
-            -D BOX_BUILD_MINIMAL=ON \
-            -D CMAKE_BUILD_TYPE=Release
-          cmake --build build-android-jni -j
+      - name: Run Swift tests
+        run: swift test --parallel
