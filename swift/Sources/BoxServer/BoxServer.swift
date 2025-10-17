@@ -992,7 +992,7 @@ private func startAdminChannel(
     let server = BoxAdminNamedPipeServer(path: socketPath, logger: logger, dispatcher: dispatcher)
     server.start()
     return .pipe(server)
-#else
+	#else
     if FileManager.default.fileExists(atPath: socketPath) {
         do {
             try FileManager.default.removeItem(atPath: socketPath)
