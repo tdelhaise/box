@@ -506,7 +506,7 @@ private final class BoxServerHandler: ChannelInboundHandler {
     private func handlePut(payload: inout ByteBuffer, frame: BoxCodec.Frame, remote: SocketAddress, context: ChannelHandlerContext) throws {
         let putPayload = try BoxCodec.decodePutPayload(from: &payload)
         store.set(object: BoxStoredObject(contentType: putPayload.contentType, data: putPayload.data), for: putPayload.queuePath)
-        logger.info("stored object", metadata: ["queue": "\(putPayload.queuePath)", "bytes": "\(putPayload.data.count)"])
+		logger.info("stored object on queue \(putPayload.queuePath), contentType \(putPayload.contentType) bytes: \(putPayload.data.count)", metadata: ["queue": "\(putPayload.queuePath)", "bytes": "\(putPayload.data.count)"])
         let statusPayload = BoxCodec.encodeStatusPayload(status: .ok, message: "stored", allocator: allocator)
         send(frame: BoxCodec.Frame(command: .status, requestId: frame.requestId + 1, payload: statusPayload), to: remote, context: context)
     }
