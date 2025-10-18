@@ -115,6 +115,7 @@ public enum BoxServer {
         let effectiveNodeId = commonConfiguration?.nodeUUID ?? options.nodeId
         let effectiveUserId = commonConfiguration?.userUUID ?? options.userId
 
+        let startupTimestamp = Date()
         let initialRuntimeState = BoxServerRuntimeState(
             configurationPath: configurationURL?.path,
             configuration: configuration,
@@ -137,7 +138,9 @@ public enum BoxServer {
             globalIPv6Addresses: connectivity.globalIPv6Addresses,
             ipv6DetectionError: connectivity.detectionErrorDescription,
             portMappingRequested: portMappingRequested,
-            portMappingOrigin: portMappingOrigin
+            portMappingOrigin: portMappingOrigin,
+            onlineSince: startupTimestamp,
+            lastPresenceUpdate: nil
         )
         let runtimeStateBox = NIOLockedValueBox(initialRuntimeState)
 
@@ -160,11 +163,26 @@ public enum BoxServer {
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
         var portMappingCoordinator: PortMappingCoordinator?
         let store = try await BoxServerStore(root: queueRoot)
+        let locationService = LocationServiceCoordinator(store: store, logger: logger)
+        try await locationService.bootstrap()
         let statusProvider: @Sendable () -> String = {
             let snapshot = runtimeStateBox.withLockedValue { $0 }
             let currentTarget = BoxLogging.currentTarget()
             return renderStatus(state: snapshot, logTarget: currentTarget)
         }
+        let locationLogger = Logger(label: "box.server.location")
+        let publishLocationSnapshot: @Sendable (String) -> LocationServiceNodeRecord = { trigger in
+            let record = runtimeStateBox.withLockedValue { state -> LocationServiceNodeRecord in
+                state.lastPresenceUpdate = Date()
+                return locationServiceRecord(from: state)
+            }
+            locationLogger.debug("location service snapshot updated", metadata: ["reason": .string(trigger)])
+            Task {
+                await locationService.publish(record: record)
+            }
+            return record
+        }
+        _ = publishLocationSnapshot("startup")
         let identityProvider: @Sendable () -> (UUID, UUID) = {
             runtimeStateBox.withLockedValue { state in
                 (state.nodeIdentifier, state.userIdentifier)
@@ -277,6 +295,7 @@ public enum BoxServer {
                     BoxLogging.update(target: newTarget)
                 }
 
+            let locationRecord = publishLocationSnapshot("reload-config")
             let snapshot = runtimeStateBox.withLockedValue { $0 }
             BoxLogging.update(level: snapshot.logLevel)
             var response: [String: Any] = [
@@ -297,7 +316,6 @@ public enum BoxServer {
             if let errorDescription = snapshot.ipv6DetectionError {
                 response["ipv6ProbeError"] = errorDescription
             }
-            let locationRecord = locationServiceRecord(from: snapshot)
             response["addresses"] = adminAddressesPayload(from: locationRecord)
             response["connectivity"] = adminConnectivityPayload(from: locationRecord)
             if let timestamp = snapshot.lastReloadTimestamp {
@@ -389,8 +407,13 @@ public enum BoxServer {
             if resolvedPort > 0 {
                 let finalPort = UInt16(resolvedPort)
                 effectivePort = finalPort
-                runtimeStateBox.withLockedValue { state in
+                let portChanged = runtimeStateBox.withLockedValue { state -> Bool in
+                    let changed = state.port != finalPort
                     state.port = finalPort
+                    return changed
+                }
+                if portChanged {
+                    _ = publishLocationSnapshot("port-change")
                 }
             }
             if portMappingRequested && portMappingCoordinator == nil {
@@ -474,6 +497,8 @@ private struct BoxServerRuntimeState: Sendable {
     var ipv6DetectionError: String?
     var portMappingRequested: Bool
     var portMappingOrigin: BoxRuntimeOptions.PortMappingOrigin
+    var onlineSince: Date
+    var lastPresenceUpdate: Date?
 }
 
 /// Represents an active admin channel implementation (NIO channel or Windows named pipe).
@@ -1211,6 +1236,9 @@ private func renderStatus(state: BoxServerRuntimeState, logTarget: BoxLogTarget)
     let locationRecord = locationServiceRecord(from: state)
     payload["addresses"] = adminAddressesPayload(from: locationRecord)
     payload["connectivity"] = adminConnectivityPayload(from: locationRecord)
+    if let presenceTimestamp = state.lastPresenceUpdate {
+        payload["lastPresenceUpdate"] = iso8601String(presenceTimestamp)
+    }
     if let timestamp = state.lastReloadTimestamp {
         payload["lastReload"] = iso8601String(timestamp)
     }
@@ -1274,6 +1302,9 @@ private func renderStats(state: BoxServerRuntimeState, logTarget: BoxLogTarget) 
     let locationRecord = locationServiceRecord(from: state)
     payload["addresses"] = adminAddressesPayload(from: locationRecord)
     payload["connectivity"] = adminConnectivityPayload(from: locationRecord)
+    if let presenceTimestamp = state.lastPresenceUpdate {
+        payload["lastPresenceUpdate"] = iso8601String(presenceTimestamp)
+    }
     if let error = state.lastReloadError {
         payload["message"] = error
     }
@@ -1284,14 +1315,18 @@ private func renderStats(state: BoxServerRuntimeState, logTarget: BoxLogTarget) 
 /// - Parameter state: Runtime state used to populate the record.
 /// - Returns: A `LocationServiceNodeRecord` mirroring the runtime connectivity data.
 private func locationServiceRecord(from state: BoxServerRuntimeState) -> LocationServiceNodeRecord {
-    LocationServiceNodeRecord.make(
+    let sinceTimestamp = millisecondsSince1970(state.onlineSince)
+    let lastSeenDate = state.lastPresenceUpdate ?? Date()
+    return LocationServiceNodeRecord.make(
         userUUID: state.userIdentifier,
         nodeUUID: state.nodeIdentifier,
         port: state.port,
         probedGlobalIPv6: state.globalIPv6Addresses,
         ipv6Error: state.ipv6DetectionError,
         portMappingEnabled: state.portMappingRequested,
-        portMappingOrigin: state.portMappingOrigin
+        portMappingOrigin: state.portMappingOrigin,
+        since: sinceTimestamp,
+        lastSeen: millisecondsSince1970(lastSeenDate)
     )
 }
 
@@ -1325,6 +1360,11 @@ private func adminConnectivityPayload(from record: LocationServiceNodeRecord) ->
         payload["ipv6ProbeError"] = error
     }
     return payload
+}
+
+/// Converts `Date` instances into millisecond timestamps.
+private func millisecondsSince1970(_ date: Date) -> UInt64 {
+    UInt64((date.timeIntervalSince1970 * 1_000.0).rounded(.down))
 }
 
 /// Emits a structured log entry summarising the effective runtime configuration.

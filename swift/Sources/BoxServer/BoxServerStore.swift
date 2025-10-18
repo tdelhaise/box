@@ -231,6 +231,19 @@ public actor BoxServerStore {
 		for u in urls { try? fm.removeItem(at: u) }
 	}
 	
+	public func read(reference: BoxMessageRef) async throws -> BoxStoredObject {
+		try readObject(from: reference.url)
+	}
+	
+	public func read(queue: String, id: UUID) async throws -> BoxStoredObject {
+		let qurl = root.appendingPathComponent(try sanitizeQueueName(queue), isDirectory: true)
+		guard fm.fileExists(atPath: qurl.path) else {
+			throw BoxStoreError.queueNotFound(queue)
+		}
+		let fileURL = try findFileURL(for: id, in: qurl)
+		return try readObject(from: fileURL)
+	}
+	
 	public func list(queue: String, limit: Int? = nil, offset: Int? = nil) async throws -> [BoxMessageRef] {
 		let qurl = root.appendingPathComponent(try sanitizeQueueName(queue), isDirectory: true)
 		guard fm.fileExists(atPath: qurl.path) else { throw BoxStoreError.queueNotFound(queue) }

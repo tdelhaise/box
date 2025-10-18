@@ -94,6 +94,8 @@ M5 — Embedded Location Service (LS) and Presence
 - CLI: resolution step using bootstrap bundle; display node key fingerprint; verify during HELLO.
 - Exit criteria: client discovers server via LS; presence updates visible; admission control only for registered clients.
 
+Status: The Swift server now persists the connectivity snapshot into `/uuid` via the `LocationServiceCoordinator` actor. Each publish reuses the same `LocationServiceNodeRecord` that feeds admin responses, keeping addresses/connectivity consistent. Resolve helpers are available for upcoming CLI/handshake wiring; geo `/location` records, client bootstrap plumbing, and admission gating remain to be completed.
+
 M6 — Authorization and ACLs
 - Implement ACL engine with global and per‑queue rules as per SPECS.
 - Load from `boxd.toml` (example defaults included in spec) and enforce on PUT/GET/DELETE/LIST.

@@ -197,6 +197,7 @@ Future work:
 
 - Transport: Payloads are carried over the Box protocol (UDP) and protected by session encryption after HELLO. JSON here illustrates field semantics; CBOR/JSON encodings are acceptable.
 - Authentication: Requests are authenticated at the transport layer; sensitive fields may be signed by the node identity key where indicated.
+- Implementation note (Swift prototype): records are serialised as JSON and persisted in the `/uuid` queue via the `LocationServiceCoordinator`, reusing the same builder that powers `box admin status|stats` so `addresses[]` and `connectivity` remain consistent across surfaces.
 
 Register/Update Node
 - Request

@@ -35,7 +35,7 @@ Immediate TODOs (Swift track)
      - [x] Ajouter des tests unitaires pour les commandes admin (mock de transport) couvrant `ping`, `log-target`, `reload-config`, `stats`.
    - [x] Stabiliser les tests d’intégration `BoxAdminIntegrationTests` (transport Swift) et les exécuter en CI; un futur travail couvrira l’orchestration complète via la CLI.
      - [ ] Couvrir la génération automatique des PLIST de configuration côté CLI (vérifier la présence du `node_uuid`).
-    - [ ] Adapter la Location Service à l’instantané de connectivité (`addresses[]`, `connectivity.has_global_ipv6`, `port_mapping.*`) et livrer un prototype Swift + documentation consommable par les clients mobiles.
+    - [x] Adapter la Location Service à l’instantané de connectivité (`addresses[]`, `connectivity.has_global_ipv6`, `port_mapping.*`) et livrer un prototype Swift + documentation consommable par les clients mobiles.
    - [x] Implémenter la hiérarchie de stockage `~/.box/queues/` avec la file `INBOX` obligatoire et exposer `queueCount`/`freeSpace` via `box admin status`.
      - [x] Mettre à jour README, DEVELOPMENT_STRATEGY et SPECS pour refléter les nouvelles commandes et matrices de plateformes.
 
@@ -79,7 +79,8 @@ Legacy backlog (C – référence)
    - [ ] Exit: encrypted echo using Noise; framing documented; frame/AEAD tests robust (including replays and OOO); handshake ready.
 
 6) Location Service + Presence (Issue #17)
-   - [ ] Implement embedded LS register/resolve; publish `/uuid` presence and optional `/location`.
+   - [x] Implement embedded LS register/resolve for `/uuid` presence (prototype Swift + filesystem store).
+   - [ ] Publish optional `/location` geo records.
    - [ ] Admission control: only registered clients accepted.
    - [ ] Exit: client resolves server via LS; presence visible.
 
