@@ -1,5 +1,8 @@
 import BoxCore
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import Logging
 import NIOConcurrencyHelpers
 import NIOCore
@@ -1700,9 +1703,18 @@ private func isGlobalUnicastIPv6(_ address: in6_addr) -> Bool {
 #endif
 
 private final class PortMappingCoordinator: @unchecked Sendable {
+    private struct MappingHandle: Sendable {
+        let service: UPnPServiceDescription
+        let internalClient: String
+        let externalPort: UInt16
+    }
+
     private let logger: Logger
     private let port: UInt16
     private let origin: BoxRuntimeOptions.PortMappingOrigin
+    private let leaseDuration: UInt32 = 3_600
+    private var task: Task<Void, Never>?
+    private let state = NIOLockedValueBox<MappingHandle?>(nil)
 
     init(logger: Logger, port: UInt16, origin: BoxRuntimeOptions.PortMappingOrigin) {
         self.logger = logger
@@ -1711,19 +1723,421 @@ private final class PortMappingCoordinator: @unchecked Sendable {
     }
 
     func start() {
+#if os(Windows)
+        logger.info("port mapping not available on Windows yet", metadata: ["origin": "\(origin)"])
+#else
+        guard task == nil else { return }
         logger.info(
-            "port mapping requested (not yet implemented)",
+            "port mapping requested",
             metadata: [
                 "port": "\(port)",
                 "origin": "\(origin)"
             ]
         )
+        task = Task.detached { [weak self] in
+            await self?.run()
+        }
+#endif
     }
 
     func stop() {
+#if !os(Windows)
+        task?.cancel()
+        task = nil
+        if let handle = state.withLockedValue({ $0 }) {
+            Task.detached { [weak self] in
+                await self?.removeMapping(handle)
+            }
+        }
+#endif
         logger.debug("port mapping coordinator stopped")
     }
+
+#if !os(Windows)
+    private func run() async {
+        do {
+            guard let localAddress = try firstNonLoopbackIPv4Address() else {
+                logger.info("port mapping skipped: no non-loopback IPv4 address detected")
+                return
+            }
+            try Task.checkCancellation()
+
+            guard let service = try await discoverService() else {
+                logger.info("port mapping skipped: no UPnP gateway discovered")
+                return
+            }
+            try Task.checkCancellation()
+
+            do {
+                try await addPortMapping(service: service, internalClient: localAddress)
+                state.withLockedValue { $0 = MappingHandle(service: service, internalClient: localAddress, externalPort: port) }
+                logger.info(
+                    "UPnP port mapping established",
+                    metadata: [
+                        "externalPort": "\(port)",
+                        "internalClient": .string(localAddress),
+                        "service": .string(service.serviceType)
+                    ]
+                )
+            } catch {
+                if Task.isCancelled { return }
+                logger.warning(
+                    "failed to create UPnP port mapping",
+                    metadata: ["error": .string("\(error)"), "service": .string(service.serviceType)]
+                )
+            }
+        } catch {
+            if Task.isCancelled { return }
+            logger.warning("port mapping aborted", metadata: ["error": .string("\(error)")])
+        }
+    }
+
+    private func discoverService() async throws -> UPnPServiceDescription? {
+        guard let descriptionURL = try discoverDeviceDescriptionURL() else {
+            return nil
+        }
+        try Task.checkCancellation()
+        let data = try await fetchDeviceDescription(from: descriptionURL)
+        try Task.checkCancellation()
+        let services = try parseServices(from: data, baseURL: descriptionURL)
+        return selectPreferredService(from: services)
+    }
+
+    private func addPortMapping(service: UPnPServiceDescription, internalClient: String) async throws {
+        let arguments = [
+            "NewRemoteHost": "",
+            "NewExternalPort": "\(port)",
+            "NewProtocol": "UDP",
+            "NewInternalPort": "\(port)",
+            "NewInternalClient": internalClient,
+            "NewEnabled": "1",
+            "NewPortMappingDescription": "boxd",
+            "NewLeaseDuration": "\(leaseDuration)"
+        ]
+        _ = try await sendSOAPRequest(
+            action: "AddPortMapping",
+            arguments: arguments,
+            service: service
+        )
+    }
+
+    private func removeMapping(_ handle: MappingHandle) async {
+        let arguments = [
+            "NewRemoteHost": "",
+            "NewExternalPort": "\(handle.externalPort)",
+            "NewProtocol": "UDP"
+        ]
+        do {
+            _ = try await sendSOAPRequest(
+                action: "DeletePortMapping",
+                arguments: arguments,
+                service: handle.service
+            )
+            logger.debug("UPnP port mapping removed", metadata: ["port": "\(handle.externalPort)"])
+        } catch {
+            logger.debug("unable to remove UPnP port mapping", metadata: ["error": .string("\(error)")])
+        }
+        state.withLockedValue { $0 = nil }
+    }
+
+    private func discoverDeviceDescriptionURL() throws -> URL? {
+        let responseData = try performSSDPDiscovery()
+        guard let responseData else { return nil }
+        let headers = PortMappingUtilities.parseSSDPResponse(responseData)
+        guard let location = headers["location"], let url = URL(string: location) else {
+            return nil
+        }
+        return url
+    }
+
+    private func fetchDeviceDescription(from url: URL) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 5
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw PortMappingError.httpError
+        }
+        return data
+    }
+
+    private func parseServices(from data: Data, baseURL: URL) throws -> [UPnPServiceDescription] {
+        let parser = UPnPDeviceDescriptionParser(baseURL: baseURL)
+        return try parser.parse(data: data)
+    }
+
+    private func selectPreferredService(from services: [UPnPServiceDescription]) -> UPnPServiceDescription? {
+        let priorities = [
+            "urn:schemas-upnp-org:service:WANIPConnection:2",
+            "urn:schemas-upnp-org:service:WANIPConnection:1",
+            "urn:schemas-upnp-org:service:WANPPPConnection:1"
+        ]
+
+        for target in priorities {
+            if let match = services.first(where: { $0.serviceType == target }) {
+                return match
+            }
+        }
+        for service in services where service.serviceType.contains("WANIPConnection") || service.serviceType.contains("WANPPPConnection") {
+            return service
+        }
+        return nil
+    }
+
+    private func sendSOAPRequest(
+        action: String,
+        arguments: [String: String],
+        service: UPnPServiceDescription
+    ) async throws -> Data {
+        var request = URLRequest(url: service.controlURL)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 5
+        request.setValue("text/xml; charset=\"utf-8\"", forHTTPHeaderField: "Content-Type")
+        request.setValue("\"\(service.serviceType)#\(action)\"", forHTTPHeaderField: "SOAPACTION")
+        if let host = service.controlURL.host {
+            var header = host
+            if let port = service.controlURL.port {
+                header += ":\(port)"
+            }
+            request.setValue(header, forHTTPHeaderField: "Host")
+        }
+
+        let body = soapEnvelope(action: action, serviceType: service.serviceType, arguments: arguments)
+        request.httpBody = body
+        request.setValue("\(body.count)", forHTTPHeaderField: "Content-Length")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw PortMappingError.httpError
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw PortMappingError.soapFault(code: http.statusCode, payload: data)
+        }
+        return data
+    }
+
+    private func soapEnvelope(action: String, serviceType: String, arguments: [String: String]) -> Data {
+        var argumentXML = ""
+        for (key, value) in arguments {
+            argumentXML += "<\(key)>\(PortMappingUtilities.escapeXML(value))</\(key)>"
+        }
+        let body = """
+        <?xml version="1.0"?>
+        <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+          <s:Body>
+            <u:\(action) xmlns:u="\(serviceType)">
+              \(argumentXML)
+            </u:\(action)>
+          </s:Body>
+        </s:Envelope>
+        """
+        return Data(body.utf8)
+    }
+
+    private func performSSDPDiscovery() throws -> Data? {
+        let socketDescriptor = socket(AF_INET, Int32(SOCK_DGRAM), Int32(IPPROTO_UDP))
+        guard socketDescriptor >= 0 else {
+            throw PortMappingError.socket(errno)
+        }
+        defer { close(socketDescriptor) }
+
+        var enable: Int32 = 1
+        withUnsafeBytes(of: &enable) { buffer in
+            _ = setsockopt(socketDescriptor, SOL_SOCKET, SO_REUSEADDR, buffer.baseAddress, socklen_t(buffer.count))
+        }
+
+        var timeout = timeval(tv_sec: 3, tv_usec: 0)
+        withUnsafeBytes(of: &timeout) { buffer in
+            _ = setsockopt(socketDescriptor, SOL_SOCKET, SO_RCVTIMEO, buffer.baseAddress, socklen_t(buffer.count))
+        }
+
+        var multicastAddress = sockaddr_in()
+        multicastAddress.sin_family = sa_family_t(AF_INET)
+        multicastAddress.sin_port = in_port_t(UInt16(1900).bigEndian)
+        multicastAddress.sin_addr = in_addr(s_addr: inet_addr("239.255.255.250"))
+        let request = """
+        M-SEARCH * HTTP/1.1\r
+        HOST: 239.255.255.250:1900\r
+        MAN: "ssdp:discover"\r
+        MX: 2\r
+        ST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r
+        USER-AGENT: Box/0.1 UPnP/1.1\r
+        \r
+        """
+        try request.withCString { pointer in
+            let length = strlen(pointer)
+            let sent = withUnsafePointer(to: &multicastAddress) {
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    sendto(socketDescriptor, pointer, length, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                }
+            }
+            if sent < 0 {
+                throw PortMappingError.socket(errno)
+            }
+        }
+
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        let bytesRead = recv(socketDescriptor, &buffer, buffer.count, 0)
+        if bytesRead <= 0 {
+            return nil
+        }
+        return Data(buffer[0..<bytesRead])
+    }
+
+    private func firstNonLoopbackIPv4Address() throws -> String? {
+        var ifaddrPointer: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddrPointer) == 0, let basePointer = ifaddrPointer else {
+            let message = String(cString: strerror(errno))
+            throw PortMappingError.network(message)
+        }
+        defer { freeifaddrs(basePointer) }
+
+        var cursor = basePointer
+        while true {
+            let flags = Int32(bitPattern: UInt32(cursor.pointee.ifa_flags))
+            guard (flags & Int32(IFF_UP)) != 0 else {
+                if let next = cursor.pointee.ifa_next { cursor = next; continue } else { break }
+            }
+            guard (flags & Int32(IFF_LOOPBACK)) == 0 else {
+                if let next = cursor.pointee.ifa_next { cursor = next; continue } else { break }
+            }
+            guard let addr = cursor.pointee.ifa_addr else {
+                if let next = cursor.pointee.ifa_next { cursor = next; continue } else { break }
+            }
+            if Int32(addr.pointee.sa_family) == AF_INET {
+                if let host = numericHostString(for: UnsafePointer(addr)) {
+                    return host
+                }
+            }
+            if let next = cursor.pointee.ifa_next {
+                cursor = next
+            } else {
+                break
+            }
+        }
+        return nil
+    }
+#endif
 }
+
+#if !os(Windows)
+internal struct UPnPServiceDescription: Sendable, Equatable {
+    let serviceType: String
+    let controlURL: URL
+}
+
+private enum PortMappingError: Error, CustomStringConvertible {
+    case socket(Int32)
+    case httpError
+    case soapFault(code: Int, payload: Data)
+    case network(String)
+
+    var description: String {
+        switch self {
+        case .socket(let code):
+            return "socket-error(\(code))"
+        case .httpError:
+            return "http-error"
+        case .soapFault(let code, _):
+            return "soap-fault(\(code))"
+        case .network(let message):
+            return "network-error(\(message))"
+        }
+    }
+}
+
+internal enum PortMappingUtilities {
+    static func parseSSDPResponse(_ data: Data) -> [String: String] {
+        guard let response = String(data: data, encoding: .utf8) else { return [:] }
+        let normalized = response.replacingOccurrences(of: "\r\n", with: "\n")
+        let lines = normalized.split(separator: "\n")
+        var headers: [String: String] = [:]
+        for line in lines {
+            if let separatorIndex = line.firstIndex(of: ":") {
+                let name = line[..<separatorIndex].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let value = line[line.index(after: separatorIndex)...].trimmingCharacters(in: .whitespacesAndNewlines)
+                headers[name] = value
+            }
+        }
+        return headers
+    }
+
+    static func escapeXML(_ value: String) -> String {
+        var result = ""
+        result.reserveCapacity(value.count)
+        for character in value {
+            switch character {
+            case "&": result.append("&amp;")
+            case "<": result.append("&lt;")
+            case ">": result.append("&gt;")
+            case "\"": result.append("&quot;")
+            case "'": result.append("&apos;")
+            default: result.append(character)
+            }
+        }
+        return result
+    }
+}
+
+internal final class UPnPDeviceDescriptionParser: NSObject, XMLParserDelegate {
+    private let baseURL: URL
+    private var services: [UPnPServiceDescription] = []
+    private var currentServiceType: String?
+    private var currentControlURL: String?
+    private var currentElement: String?
+    private var accumulator = ""
+
+    init(baseURL: URL) {
+        self.baseURL = baseURL
+    }
+
+    func parse(data: Data) throws -> [UPnPServiceDescription] {
+        services = []
+        let parser = XMLParser(data: data)
+        parser.delegate = self
+        if parser.parse() {
+            return services
+        }
+        if let error = parser.parserError {
+            throw error
+        }
+        return services
+    }
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
+        currentElement = elementName
+        accumulator.removeAll(keepingCapacity: true)
+        if elementName == "service" {
+            currentServiceType = nil
+            currentControlURL = nil
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        accumulator.append(string)
+    }
+
+    func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
+        let value = accumulator.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch elementName {
+        case "serviceType":
+            currentServiceType = value
+        case "controlURL":
+            currentControlURL = value
+        case "service":
+            if let serviceType = currentServiceType, let urlString = currentControlURL,
+               let resolvedURL = URL(string: urlString, relativeTo: baseURL)?.absoluteURL {
+                services.append(UPnPServiceDescription(serviceType: serviceType, controlURL: resolvedURL))
+            }
+            currentServiceType = nil
+            currentControlURL = nil
+        default:
+            break
+        }
+        currentElement = nil
+    }
+}
+#endif
 
 private func logTargetDescription(_ target: BoxLogTarget) -> String {
     switch target {
