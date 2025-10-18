@@ -643,7 +643,7 @@ PUT example
 - Listen on configurable UDP port; prefer IPv6.
 - Register/update presence in embedded LS on start and periodically (keep‑alive with last_seen). Presence is also published into `/uuid`.
 - Enforce ACLs per queue and per user/node.
-- Persist objects sous `~/.box/queues/<queue>/timestamp-UUID.json` (payload base64 + métadonnées incluant `content_type`, `node_id`, `user_id`, `created_at`). Le daemon DOIT provisionner cette hiérarchie au premier démarrage, créer la file `INBOX/` et refuser de démarrer si la création échoue. Les informations LS (`/uuid`, `/location`) sont également stockées via ces files.
+- Persist objects sous `~/.box/queues/<queue>/timestamp-UUID.json` (payload base64 + métadonnées incluant `content_type`, `node_id`, `user_id`, `created_at`). **Exception :** la file `/uuid` écrit directement `<uuid>.json` afin que les identifiants de nœud ou d’utilisateur soient mis à jour en place sans proliférer de doublons. Le daemon DOIT provisionner cette hiérarchie au premier démarrage, créer la file `INBOX/` et refuser de démarrer si la création échoue. Les informations LS (`/uuid`, `/location`) sont également stockées via ces files (`/uuid` hébergeant à la fois les enregistrements de nœud et un index utilisateur).
 - Optional at‑rest encryption with a server‑managed key.
 - Rate limiting and DoS protection per source.
 
@@ -960,7 +960,7 @@ Safety
 - Authentication/Authorization
   - Access is restricted by OS-level file/pipe permissions to the same non-privileged user that owns `boxd`.
   - `boxd` refuses admin-channel requests if the caller is not the same user.
-  - Swift rewrite (MVP 2025): admin commands are invoked as plain text lines (`status`, `ping`, `log-target <target|json>`, `reload-config [json]`, `stats`, `locate <node-uuid>`) retournant un JSON terminé par un saut de ligne. La commande `locate` refuse de divulguer des informations si le couple `(node_id, user_id)` du demandeur n’a jamais été enregistré.
+  - Swift rewrite (MVP 2025): admin commands are invoked as plain text lines (`status`, `ping`, `log-target <target|json>`, `reload-config [json]`, `stats`, `locate <uuid>`) retournant un JSON terminé par un saut de ligne. `locate` accepte un UUID de nœud (réponse `{"record": …}`) ou un UUID d’utilisateur (réponse `{"user": {"nodeUUIDs": [...], "records": [...]}}`). Dans tous les cas, la commande refuse de divulguer des informations si le couple `(node_id, user_id)` du demandeur n’a jamais été enregistré.
   - Implementation status (2025-10): socket Unix et named pipe Windows disponibles avec ACL restreintes; `log-target` pilote Puppy (`stderr|stdout|file:`) et `reload-config` relit les PLIST. Restent à intégrer: tests d’intégration CLI↔️serveur et les commandes NAT/LS décrites ci-dessous.
 
 - Message Format

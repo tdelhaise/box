@@ -7,7 +7,8 @@ actor LocationServiceCoordinator {
     private enum Constants {
         static let queueName = "/uuid"
         static let contentType = "application/json; charset=utf-8"
-        static let schema = "box.location-service.v1"
+        static let nodeSchema = "box.location-service.v1"
+        static let userSchema = "box.location-service.user.v1"
     }
 
     private let store: BoxServerStore
@@ -42,7 +43,7 @@ actor LocationServiceCoordinator {
                 createdAt: Date(),
                 nodeId: record.nodeUUID,
                 userId: record.userUUID,
-                userMetadata: ["schema": Constants.schema]
+                userMetadata: ["schema": Constants.nodeSchema]
             )
             do {
                 try await store.remove(queue: Constants.queueName, id: record.nodeUUID)
@@ -66,8 +67,52 @@ actor LocationServiceCoordinator {
                     "addresses": .array(record.addresses.map { .string("\($0.ip):\($0.port)") })
                 ]
             )
+            await publishUserIndex(for: record.userUUID)
         } catch {
             logger.error("failed to publish location service record", metadata: ["error": .string("\(error)")])
+        }
+    }
+    
+    private func publishUserIndex(for userUUID: UUID) async {
+        do {
+            let nodes = await resolve(userUUID: userUUID)
+            let nodeIDs = Array(Set(nodes.map { $0.nodeUUID })).sorted { $0.uuidString < $1.uuidString }
+            let userRecord = LocationServiceUserRecord.make(userUUID: userUUID, nodeUUIDs: nodeIDs)
+            let data = try encoder.encode(userRecord)
+            let payloadBytes = [UInt8](data)
+            let storedObject = BoxStoredObject(
+                id: userUUID,
+                contentType: Constants.contentType,
+                data: payloadBytes,
+                createdAt: Date(),
+                nodeId: nodeIDs.first ?? userUUID,
+                userId: userUUID,
+                userMetadata: ["schema": Constants.userSchema]
+            )
+            do {
+                try await store.remove(queue: Constants.queueName, id: userUUID)
+            } catch {
+                if case BoxStoreError.objectNotFound = error {
+                    // First publish for this user.
+                } else if case BoxStoreError.queueNotFound = error {
+                    logger.warning("location service queue missing during user publish", metadata: ["error": .string("\(error)")])
+                    try await store.ensureQueue(Constants.queueName)
+                } else {
+                    logger.warning("failed to clear existing user record", metadata: ["error": .string("\(error)")])
+                }
+            }
+            _ = try await store.put(storedObject, into: Constants.queueName)
+            logger.debug(
+                "location service user index persisted",
+                metadata: [
+                    "user": .string(userUUID.uuidString),
+                    "nodes": .array(nodeIDs.map { .string($0.uuidString) })
+                ]
+            )
+        } catch {
+            logger.error(
+                "failed to publish location service user index",
+                metadata: ["user": .string(userUUID.uuidString), "error": .string("\(error)")])
         }
     }
 
@@ -125,9 +170,7 @@ actor LocationServiceCoordinator {
         guard object.contentType.lowercased().hasPrefix("application/json") else {
             return nil
         }
-        if let schema = object.userMetadata?["schema"], schema != Constants.schema {
-            return nil
-        }
+        guard let schema = object.userMetadata?["schema"], schema == Constants.nodeSchema else { return nil }
         do {
             return try decoder.decode(LocationServiceNodeRecord.self, from: Data(object.data))
         } catch {

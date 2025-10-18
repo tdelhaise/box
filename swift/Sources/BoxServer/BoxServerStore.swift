@@ -152,23 +152,25 @@ public actor BoxServerStore {
 	@discardableResult
 	public func put(_ object: BoxStoredObject, into queue: String) async throws -> UUID {
 		do {
-		let qurl = try await ensureQueue(queue)
-		let filename = makeFilename(for: object)
-		let fileURL = qurl.appendingPathComponent(filename)
-		let disk = DiskMessage(
-			id: object.id,
-			contentType: object.contentType,
-			content: Data(object.data).base64EncodedString(),
-			createdAt: object.createdAt,
-			nodeId: object.nodeId,
-			userId: object.userId,
-			userMetadata: object.userMetadata )
-		let data = try encoder.encode(disk)
-		logger.debug("put", metadata: [
-			"queue": .string(queue),
-			"id": .string(object.id.uuidString),
-			"bytes": .stringConvertible(object.data.count),
-			"file": .string(fileURL.lastPathComponent)
+			let qurl = try await ensureQueue(queue)
+			let sanitizedQueue = qurl.lastPathComponent
+			let filename = makeFilename(for: object, queue: sanitizedQueue)
+			let fileURL = qurl.appendingPathComponent(filename)
+			let disk = DiskMessage(
+				id: object.id,
+				contentType: object.contentType,
+				content: Data(object.data).base64EncodedString(),
+				createdAt: object.createdAt,
+				nodeId: object.nodeId,
+				userId: object.userId,
+				userMetadata: object.userMetadata
+			)
+			let data = try encoder.encode(disk)
+			logger.debug("put", metadata: [
+				"queue": .string(queue),
+				"id": .string(object.id.uuidString),
+				"bytes": .stringConvertible(object.data.count),
+				"file": .string(fileURL.lastPathComponent)
 			])
 			try atomicWrite(data: data, to: fileURL)
 			return object.id
@@ -176,9 +178,9 @@ public actor BoxServerStore {
 			logger.error("put failed", metadata: ["queue": .string(queue),
 												  "id": .string(object.id.uuidString),
 												  "error": .string("\(error)")])
-				throw error
+			throw error
 		}
-}
+	}
 	
 	public func get(queue: String, id: UUID) async throws -> BoxStoredObject {
 		do {
@@ -289,9 +291,14 @@ public actor BoxServerStore {
 	}
 	
 	private func findFileURL(for id: UUID, in qurl: URL) throws -> URL {
-		let pattern = "-\(id.uuidString.uppercased()).json"
+		let upperID = id.uuidString.uppercased()
+		let exactPattern = "\(upperID).JSON"
+		let suffixPattern = "-\(exactPattern)"
 		let files = try fm.contentsOfDirectory(at: qurl, includingPropertiesForKeys: nil)
-		if let match = files.first(where: { $0.lastPathComponent.uppercased().hasSuffix(pattern) }) {
+		if let match = files.first(where: {
+			let name = $0.lastPathComponent.uppercased()
+			return name == exactPattern || name.hasSuffix(suffixPattern)
+		}) {
 			return match
 		}
 		throw BoxStoreError.objectNotFound(id)
@@ -323,7 +330,10 @@ public actor BoxServerStore {
 		return n
 	}
 	
-	private func makeFilename(for object: BoxStoredObject) -> String {
+	private func makeFilename(for object: BoxStoredObject, queue: String) -> String {
+		if queue.caseInsensitiveCompare("uuid") == .orderedSame {
+			return "\(object.id.uuidString).json"
+		}
 		let ts = iso8601BasicUTC(object.createdAt)
 		return "\(ts)-\(object.id.uuidString).json"
 	}

@@ -148,6 +148,17 @@ final class BoxAdminIntegrationTests: XCTestCase {
         XCTAssertNotNil(coerceArrayOfDictionaries(record["addresses"]))
         XCTAssertNotNil(coerceDictionary(record["connectivity"]))
 
+        let userUUID = try XCTUnwrap(statusJSON["userUUID"] as? String)
+        let locateUserJSON = try decodeJSON(try transport.send(command: "locate \(userUUID)"))
+        XCTAssertEqual(locateUserJSON["status"] as? String, "ok")
+        let userPayload = try XCTUnwrap(coerceDictionary(locateUserJSON["user"]))
+        XCTAssertEqual(userPayload["userUUID"] as? String, userUUID)
+        let nodeUUIDs = (userPayload["nodeUUIDs"] as? [String]) ?? (userPayload["nodeUUIDs"] as? [NSString])?.map { $0 as String }
+        XCTAssertEqual(nodeUUIDs, [nodeUUID])
+        let userRecords = try XCTUnwrap(coerceArrayOfDictionaries(userPayload["records"]))
+        XCTAssertEqual(userRecords.count, 1)
+        XCTAssertEqual(userRecords.first?["nodeUUID"] as? String, nodeUUID)
+
         let missingJSON = try decodeJSON(try transport.send(command: "locate \(UUID().uuidString)"))
         XCTAssertEqual(missingJSON["status"] as? String, "error")
         XCTAssertEqual(missingJSON["message"] as? String, "node-not-found")

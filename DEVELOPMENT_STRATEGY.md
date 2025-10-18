@@ -94,7 +94,7 @@ M5 — Embedded Location Service (LS) and Presence
 - CLI: resolution step using bootstrap bundle; display node key fingerprint; verify during HELLO.
 - Exit criteria: client discovers server via LS; presence updates visible; admission control only for registered clients.
 
-Status: The Swift server now persists the connectivity snapshot into `/uuid` via the `LocationServiceCoordinator` actor. Each publish reuses the same `LocationServiceNodeRecord` that feeds admin responses, keeping addresses/connectivity consistent. Resolve helpers are available for upcoming CLI/handshake wiring; geo `/location` records, client bootstrap plumbing, and admission gating remain to be completed.
+Status: The Swift server now persiste la présence dans `/uuid` via l’acteur `LocationServiceCoordinator`. Chaque publication alimente à la fois `<node_uuid>.json` (snapshot du nœud, identique à celui exposé par l’admin channel) et `<user_uuid>.json` (index utilisateur listant les nœuds actifs), garantissant la cohérence des réponses de résolution. Les helpers `resolve(user|node)` sont prêts pour l’intégration CLI/handshake ; restent à brancher les enregistrements `/location`, le bootstrap client et le contrôle d’admission.
 
 M6 — Authorization and ACLs
 - Implement ACL engine with global and per‑queue rules as per SPECS.

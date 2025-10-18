@@ -234,3 +234,41 @@ public extension BoxRuntimeOptions.PortMappingOrigin {
         }
     }
 }
+
+/// Captures the association between a user and the nodes currently online on their behalf.
+public struct LocationServiceUserRecord: Codable, Sendable {
+    /// Unique identifier of the user.
+    public var userUUID: UUID
+    /// Identifiers of nodes belonging to the user.
+    public var nodeUUIDs: [UUID]
+    /// Timestamp (ms since epoch) describing when the record was last updated.
+    public var updatedAt: UInt64
+
+    /// Creates a new user record.
+    /// - Parameters match the stored properties of the struct.
+    public init(userUUID: UUID, nodeUUIDs: [UUID], updatedAt: UInt64) {
+        self.userUUID = userUUID
+        self.nodeUUIDs = nodeUUIDs
+        self.updatedAt = updatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case userUUID = "user_uuid"
+        case nodeUUIDs = "node_uuids"
+        case updatedAt = "updated_at"
+    }
+}
+
+public extension LocationServiceUserRecord {
+    /// Builds a deterministic user record from the supplied node list.
+    /// - Parameters:
+    ///   - userUUID: Identifier of the user.
+    ///   - nodeUUIDs: Node identifiers associated to the user.
+    ///   - updatedAt: Optional timestamp override (milliseconds since epoch).
+    /// - Returns: A normalised user record suitable for persistence.
+    static func make(userUUID: UUID, nodeUUIDs: [UUID], updatedAt: UInt64? = nil) -> LocationServiceUserRecord {
+        let timestamp = updatedAt ?? UInt64(Date().timeIntervalSince1970 * 1000)
+        let deduplicated = Array(Set(nodeUUIDs)).sorted { $0.uuidString < $1.uuidString }
+        return LocationServiceUserRecord(userUUID: userUUID, nodeUUIDs: deduplicated, updatedAt: timestamp)
+    }
+}

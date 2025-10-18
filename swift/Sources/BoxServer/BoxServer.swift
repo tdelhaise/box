@@ -347,17 +347,24 @@ public enum BoxServer {
             return renderStats(state: snapshot, logTarget: currentTarget)
         }
 
-        let locateProvider: @Sendable (UUID) async -> String = { node in
-            if let record = await locationService.resolve(nodeUUID: node) {
+        let locateProvider: @Sendable (UUID) async -> String = { target in
+            if let record = await locationService.resolve(nodeUUID: target) {
                 return adminResponse([
                     "status": "ok",
                     "record": adminLocationRecordPayload(from: record)
                 ])
             }
+            let userRecords = await locationService.resolve(userUUID: target)
+            if !userRecords.isEmpty {
+                return adminResponse([
+                    "status": "ok",
+                    "user": adminLocationUserPayload(userUUID: target, records: userRecords)
+                ])
+            }
             return adminResponse([
                 "status": "error",
                 "message": "node-not-found",
-                "nodeUUID": node.uuidString
+                "nodeUUID": target.uuidString
             ])
         }
 
@@ -1511,6 +1518,21 @@ private func adminLocationRecordPayload(from record: LocationServiceNodeRecord) 
         payload["tags"] = tags
     }
     return payload
+}
+
+/// Converts a collection of Location Service records into a user-centric admin payload.
+/// - Parameters:
+///   - userUUID: Identifier of the user being described.
+///   - records: Node records currently associated with the user.
+/// - Returns: Dictionary ready for JSON serialisation.
+private func adminLocationUserPayload(userUUID: UUID, records: [LocationServiceNodeRecord]) -> [String: Any] {
+    let sortedRecords = records.sorted { $0.nodeUUID.uuidString < $1.nodeUUID.uuidString }
+    return [
+        "userUUID": userUUID.uuidString,
+        "nodeCount": sortedRecords.count,
+        "nodeUUIDs": sortedRecords.map { $0.nodeUUID.uuidString },
+        "records": sortedRecords.map { adminLocationRecordPayload(from: $0) }
+    ]
 }
 
 /// Converts `Date` instances into millisecond timestamps.

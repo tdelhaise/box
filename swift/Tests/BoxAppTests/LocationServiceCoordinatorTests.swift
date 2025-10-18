@@ -33,7 +33,10 @@ final class LocationServiceCoordinatorTests: XCTestCase {
         await coordinator.publish(record: initialRecord)
 
         var files = try await store.list(queue: "/uuid")
-        XCTAssertEqual(files.count, 1, "Expected a single presence entry after first publish")
+        XCTAssertEqual(files.count, 2, "Expected node and user entries after first publish")
+        let fileNames = Set(files.map { $0.url.lastPathComponent })
+        XCTAssertTrue(fileNames.contains("\(nodeUUID.uuidString).json"))
+        XCTAssertTrue(fileNames.contains("\(userUUID.uuidString).json"))
 
         let initialSnapshot = await coordinator.snapshot()
         XCTAssertEqual(initialSnapshot.count, 1)
@@ -57,7 +60,12 @@ final class LocationServiceCoordinatorTests: XCTestCase {
         await coordinator.publish(record: updatedRecord)
 
         files = try await store.list(queue: "/uuid")
-        XCTAssertEqual(files.count, 1, "Publishing should replace the existing entry for the node")
+        XCTAssertEqual(files.count, 2, "Publishing should keep node and user entries in sync")
+        let userRef = try XCTUnwrap(files.first { $0.id == userUUID })
+        let userObject = try await store.read(reference: userRef)
+        let decodedUserRecord = try JSONDecoder().decode(LocationServiceUserRecord.self, from: Data(userObject.data))
+        XCTAssertEqual(decodedUserRecord.userUUID, userUUID)
+        XCTAssertEqual(decodedUserRecord.nodeUUIDs, [nodeUUID])
 
         let snapshot = await coordinator.snapshot()
         XCTAssertEqual(snapshot.count, 1)

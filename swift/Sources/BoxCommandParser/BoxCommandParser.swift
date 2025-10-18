@@ -338,21 +338,21 @@ extension BoxCommandParser {
             }
         }
 
-        /// `box admin locate <node-uuid>` — resolves a node through the Location Service snapshot.
+        /// `box admin locate <uuid>` — resolves a node or user through the Location Service snapshot.
         public struct Locate: AsyncParsableCommand {
             @Option(name: .shortAndLong, help: "Admin socket path (defaults to ~/.box/run/boxd.socket).")
             public var socket: String?
 
-            @Argument(help: "Node UUID to resolve.")
-            public var node: String
+            @Argument(help: "Node or user UUID to resolve.")
+            public var target: String
 
             public init() {}
 
             public mutating func run() throws {
-                guard UUID(uuidString: node) != nil else {
-                    throw ValidationError("locate expects a valid node UUID.")
+                guard UUID(uuidString: target) != nil else {
+                    throw ValidationError("locate expects a valid UUID.")
                 }
-                let response = try Admin.sendCommand("locate \(node)", socketOverride: socket)
+                let response = try Admin.sendCommand("locate \(target)", socketOverride: socket)
                 Admin.writeResponse(response)
             }
         }

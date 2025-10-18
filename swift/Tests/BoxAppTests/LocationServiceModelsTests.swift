@@ -64,6 +64,29 @@ final class LocationServiceModelsTests: XCTestCase {
         XCTAssertEqual(portMapping?["origin"] as? String, "cli")
         XCTAssertEqual(portMapping?["enabled"] as? Bool, true)
     }
+
+    func testUserRecordMakeDeduplicatesAndSorts() throws {
+        let userUUID = UUID(uuidString: "bbbbbbbb-cccc-dddd-eeee-ffffffffffff")!
+        let nodeA = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        let nodeB = UUID(uuidString: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")!
+        let record = LocationServiceUserRecord.make(userUUID: userUUID, nodeUUIDs: [nodeB, nodeA, nodeB], updatedAt: 42)
+
+        XCTAssertEqual(record.userUUID, userUUID)
+        XCTAssertEqual(record.updatedAt, 42)
+        XCTAssertEqual(record.nodeUUIDs, [nodeA, nodeB])
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(record)
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            XCTFail("encoded record is not JSON dictionary")
+            return
+        }
+        XCTAssertEqual((json["user_uuid"] as? String)?.lowercased(), userUUID.uuidString.lowercased())
+        XCTAssertEqual((json["updated_at"] as? NSNumber)?.uint64Value, 42)
+        let nodeStrings = (json["node_uuids"] as? [String]) ?? (json["node_uuids"] as? [NSString])?.map { $0 as String }
+        XCTAssertEqual(nodeStrings?.map { $0.lowercased() }, [nodeA.uuidString.lowercased(), nodeB.uuidString.lowercased()])
+    }
 }
 
 /// Helper that coerces a JSON value to a dictionary.
