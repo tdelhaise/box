@@ -14,7 +14,7 @@ swift run box                 # mode client par défaut
 - `BoxCommandParser` résout la ligne de commande et délègue à `BoxServer` ou `BoxClient`. Les options actuelles couvrent `--server/-s`, `--port`, `--address`, `--config` (PLIST), `--log-level`, `--log-target (stderr|stdout|file:<path>)`, `--enable-port-mapping`/`--no-enable-port-mapping`, `--put /queue[:type] --data "..."` et `--get /queue`.
 - `box admin status` interroge le socket Unix local (`~/.box/run/boxd.socket`) et renvoie un JSON de statut.
 - `BoxCodec` encapsule le framing v1 (HELLO/STATUS/PUT/GET) avec en-tête enrichi (`request_id` UUID, `node_id`, `user_id`) et peut être réutilisé dans n’importe quel handler SwiftNIO fondé sur `ByteBuffer`.
-- Les journaux vont par défaut dans `~/.box/logs/` (`box.log` pour le client, `boxd.log` pour le serveur). Les cibles `stderr`/`stdout` restent disponibles via `--log-target` ou `Box.plist`.
+- Les journaux vont par défaut dans `~/.box/logs/` (`box.log` pour le client, `boxd.log` pour le serveur). Les cibles `stderr`/`stdout` restent disponibles via `--log-target` ou `Box.plist` et chaque entrée est horodatée (ISO 8601 + millisecondes) tout en exposant niveau, composant et contexte (`fichier:ligne`, fonction, thread, métadonnées).
 - Le protocole est pour l’instant implémenté en clair le temps de porter l’ensemble des fonctionnalités. La réintégration Noise/libsodium arrivera une fois le socle Swift stabilisé.
 - Les fichiers de configuration basculent vers le format Property List (PLIST). La lecture TOML existante est gelée et sera réintroduite ultérieurement si nécessaire.
 

@@ -107,37 +107,110 @@ private final class BoxLoggingState: @unchecked Sendable {
 
     private func configureDestinations(for target: BoxLogTarget) {
         puppy.removeAll()
+        let formatter = BoxLogFormatter()
         switch target {
         case .stderr:
-            let logger = StandardErrorLogger()
+            let logger = StandardErrorLogger(format: formatter)
             puppy.add(logger)
         case .stdout:
-            let logger = ConsoleLogger("box.stdout")
+            let logger = ConsoleLogger("box.stdout", logFormat: formatter)
             puppy.add(logger)
         case .file(let path):
             let expanded = NSString(string: path).expandingTildeInPath
             let url = URL(fileURLWithPath: expanded)
             let directoryURL = url.deletingLastPathComponent()
             try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-            if let fileLogger = try? FileLogger("box.file", fileURL: url) {
+            if let fileLogger = try? FileLogger("box.file", logFormat: formatter, fileURL: url) {
                 puppy.add(fileLogger)
             } else {
-                let fallback = StandardErrorLogger()
+                let fallback = StandardErrorLogger(format: formatter)
                 puppy.add(fallback)
             }
         }
     }
 
     private struct StandardErrorLogger: Loggerable, Sendable {
-        let label = "box.stderr"
+        let label: String = "box.stderr"
         let queue = DispatchQueue(label: "box.stderr")
         let logLevel: LogLevel = .trace
-        let logFormat: LogFormattable? = nil
+        let logFormat: LogFormattable?
+
+        init(format: LogFormattable) {
+            self.logFormat = format
+        }
 
         func log(_ level: LogLevel, string: String) {
             if let data = (string + "\n").data(using: .utf8) {
                 FileHandle.standardError.write(data)
             }
+        }
+    }
+}
+
+/// Formats log records emitted through Puppy with rich contextual details.
+private struct BoxLogFormatter: LogFormattable, Sendable {
+    private static let formatterLock = NSLock()
+    private static let timestampFormatter = TimestampFormatter()
+
+    func formatMessage(
+        _ level: LogLevel,
+        message: String,
+        tag: String,
+        function: String,
+        file: String,
+        line: UInt,
+        swiftLogInfo: [String: String],
+        label: String,
+        date: Date,
+        threadID: UInt64
+    ) -> String {
+        let timestamp = Self.formatTimestamp(date)
+        let levelComponent = level.description
+        let category = swiftLogInfo["label"].flatMap { $0.isEmpty ? nil : $0 } ?? label
+        let source = swiftLogInfo["source"].flatMap { $0.isEmpty ? nil : $0 }
+        let metadata = swiftLogInfo["metadata"].flatMap { $0.isEmpty ? nil : $0 }
+
+        var contextSegments: [String] = []
+        contextSegments.append(fileContext(file: file, line: line))
+        if !function.isEmpty {
+            contextSegments.append(function)
+        }
+        if let source, source != "swiftlog" {
+            contextSegments.append("source=\(source)")
+        }
+        contextSegments.append("thread=\(threadID)")
+        if let metadata {
+            contextSegments.append("metadata=\(metadata)")
+        }
+
+        let context = contextSegments.joined(separator: " ")
+        return [timestamp, levelComponent, category, context, message]
+            .filter { !$0.isEmpty }
+            .joined(separator: " | ")
+    }
+
+    private static func formatTimestamp(_ date: Date) -> String {
+        formatterLock.lock()
+        defer { formatterLock.unlock() }
+        return timestampFormatter.string(from: date)
+    }
+
+    private func fileContext(file: String, line: UInt) -> String {
+        "\(file):\(line)"
+    }
+
+    /// Thread-safe ISO 8601 formatter wrapper.
+    private final class TimestampFormatter: @unchecked Sendable {
+        private let formatter: ISO8601DateFormatter
+
+        init() {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            self.formatter = formatter
+        }
+
+        func string(from date: Date) -> String {
+            formatter.string(from: date)
         }
     }
 }
