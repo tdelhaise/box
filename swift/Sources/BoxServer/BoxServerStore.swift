@@ -304,15 +304,9 @@ public actor BoxServerStore {
 	}
 	
 	private func atomicWrite(data: Data, to url: URL) throws {
-		let dir = url.deletingLastPathComponent()
-		let tmp = dir.appendingPathComponent(".\(UUID().uuidString).tmp")
 		do {
-			try data.write(to: tmp, options: .atomic) // écrit atomique au niveau fichier temporaire
-													  // replace assure un move atomique (si possible sur le FS)
-			_ = try fm.replaceItemAt(url, withItemAt: tmp)
+			try data.write(to: url, options: .atomic)
 		} catch {
-			// cleanup best-effort
-			try? fm.removeItem(at: tmp)
 			throw BoxStoreError.io(error)
 		}
 	}
