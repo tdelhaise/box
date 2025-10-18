@@ -30,3 +30,4 @@ DerivedData/
 !default.perspectivev3
 *.xccheckout
 xcuserdata/
+*.patch

@@ -1396,10 +1396,10 @@ private func probeConnectivity(logger: Logger) -> ConnectivitySnapshot {
     while true {
         let rawFlags = UInt32(cursor.pointee.ifa_flags)
         let flags = Int32(bitPattern: rawFlags)
-        guard (flags & IFF_UP) != 0 else {
+        guard (flags & Int32(IFF_UP)) != 0 else {
             if let next = cursor.pointee.ifa_next { cursor = next; continue } else { break }
         }
-        guard (flags & IFF_LOOPBACK) == 0 else {
+        guard (flags & Int32(IFF_LOOPBACK)) == 0 else {
             if let next = cursor.pointee.ifa_next { cursor = next; continue } else { break }
         }
         guard let addr = cursor.pointee.ifa_addr else {
