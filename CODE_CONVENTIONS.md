@@ -10,7 +10,7 @@ Architecture Conventions
 - Protocol: Binary framing with magic 'B', version, length, command, `request_id` (UUID), `node_id` (UUID) et `user_id` (UUID). Commands: HELLO, PUT, GET, DELETE, STATUS, SEARCH, BYE.
 - Queues: Logical destinations under a user’s server (e.g., `/message`, `/photos`, `/uuid`, `/location`).
 - ACLs: Default‑deny, intersection of global and queue‑level rules. Principals: owner, user UUID, node UUID, any. Capabilities: put/get/list/delete.
-- Location Service data: uses `/uuid` for presence and `/location` for geo; LS persists and consumes via queues (no external DB required).
+- Location Service data: uses `/uuid` for presence and `/location` pour la géo; les enregistrements doivent inclure `addresses[]` (IP/port/scope/source) et un bloc `connectivity` (has_global_ipv6, global_ipv6[], port_mapping.*). LS persiste et consomme via les queues (pas de base externe).
 
 Security and Identity
 - Identities: User UUID and Node UUID. Each node has a long‑term identity keypair (Ed25519).

@@ -274,8 +274,8 @@ public enum BoxServer {
                 }
 
                 if let newTarget = targetAdjustment {
-                BoxLogging.update(target: newTarget)
-            }
+                    BoxLogging.update(target: newTarget)
+                }
 
             let snapshot = runtimeStateBox.withLockedValue { $0 }
             BoxLogging.update(level: snapshot.logLevel)
@@ -297,14 +297,17 @@ public enum BoxServer {
             if let errorDescription = snapshot.ipv6DetectionError {
                 response["ipv6ProbeError"] = errorDescription
             }
+            let locationRecord = locationServiceRecord(from: snapshot)
+            response["addresses"] = adminAddressesPayload(from: locationRecord)
+            response["connectivity"] = adminConnectivityPayload(from: locationRecord)
             if let timestamp = snapshot.lastReloadTimestamp {
                 response["timestamp"] = iso8601String(timestamp)
             }
             if let error = snapshot.lastReloadError {
                 response["message"] = error
-                }
-                return adminResponse(response)
-            } catch {
+            }
+            return adminResponse(response)
+        } catch {
                 let timestamp = Date()
                 runtimeStateBox.withLockedValue { state in
                     state.reloadCount += 1
@@ -1205,6 +1208,9 @@ private func renderStatus(state: BoxServerRuntimeState, logTarget: BoxLogTarget)
         payload["objects"] = 0
         payload["queues"] = 1
     }
+    let locationRecord = locationServiceRecord(from: state)
+    payload["addresses"] = adminAddressesPayload(from: locationRecord)
+    payload["connectivity"] = adminConnectivityPayload(from: locationRecord)
     if let timestamp = state.lastReloadTimestamp {
         payload["lastReload"] = iso8601String(timestamp)
     }
@@ -1265,10 +1271,60 @@ private func renderStats(state: BoxServerRuntimeState, logTarget: BoxLogTarget) 
         payload["objects"] = 0
         payload["queues"] = 1
     }
+    let locationRecord = locationServiceRecord(from: state)
+    payload["addresses"] = adminAddressesPayload(from: locationRecord)
+    payload["connectivity"] = adminConnectivityPayload(from: locationRecord)
     if let error = state.lastReloadError {
         payload["message"] = error
     }
     return adminResponse(payload)
+}
+
+/// Builds a Location Service record from the current runtime snapshot.
+/// - Parameter state: Runtime state used to populate the record.
+/// - Returns: A `LocationServiceNodeRecord` mirroring the runtime connectivity data.
+private func locationServiceRecord(from state: BoxServerRuntimeState) -> LocationServiceNodeRecord {
+    LocationServiceNodeRecord.make(
+        userUUID: state.userIdentifier,
+        nodeUUID: state.nodeIdentifier,
+        port: state.port,
+        probedGlobalIPv6: state.globalIPv6Addresses,
+        ipv6Error: state.ipv6DetectionError,
+        portMappingEnabled: state.portMappingRequested,
+        portMappingOrigin: state.portMappingOrigin
+    )
+}
+
+/// Converts Location Service addresses into an admin-channel friendly payload.
+/// - Parameter record: Record providing the address list.
+/// - Returns: Array of dictionaries ready for JSON serialisation.
+private func adminAddressesPayload(from record: LocationServiceNodeRecord) -> [[String: Any]] {
+    record.addresses.map { address in
+        [
+            "ip": address.ip,
+            "port": Int(address.port),
+            "scope": address.scope.rawValue,
+            "source": address.source.rawValue
+        ]
+    }
+}
+
+/// Converts the Location Service connectivity snapshot into an admin payload.
+/// - Parameter record: Record carrying the connectivity data.
+/// - Returns: Dictionary ready for JSON serialisation.
+private func adminConnectivityPayload(from record: LocationServiceNodeRecord) -> [String: Any] {
+    var payload: [String: Any] = [
+        "hasGlobalIPv6": record.connectivity.hasGlobalIPv6,
+        "globalIPv6": record.connectivity.globalIPv6,
+        "portMapping": [
+            "enabled": record.connectivity.portMapping.enabled,
+            "origin": record.connectivity.portMapping.origin
+        ]
+    ]
+    if let error = record.connectivity.ipv6ProbeError {
+        payload["ipv6ProbeError"] = error
+    }
+    return payload
 }
 
 /// Emits a structured log entry summarising the effective runtime configuration.

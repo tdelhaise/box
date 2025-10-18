@@ -46,6 +46,26 @@ final class BoxAdminIntegrationTests: XCTestCase {
         let portMappingEnabled = (statusJSON["portMappingEnabled"] as? Bool) ?? (statusJSON["portMappingEnabled"] as? NSNumber)?.boolValue
         XCTAssertNotNil(portMappingEnabled)
         XCTAssertNotNil(statusJSON["portMappingOrigin"] as? String)
+        let addresses = coerceArrayOfDictionaries(statusJSON["addresses"])
+        XCTAssertNotNil(addresses)
+        if let addresses {
+            for address in addresses {
+                XCTAssertNotNil(address["ip"] as? String)
+                XCTAssertNotNil(address["port"])
+                XCTAssertNotNil(address["scope"] as? String)
+                XCTAssertNotNil(address["source"] as? String)
+            }
+        }
+        if let connectivity = coerceDictionary(statusJSON["connectivity"]) {
+            XCTAssertNotNil(connectivity["hasGlobalIPv6"])
+            XCTAssertNotNil(connectivity["globalIPv6"])
+            let portMapping = coerceDictionary(connectivity["portMapping"])
+            XCTAssertNotNil(portMapping)
+            XCTAssertNotNil(portMapping?["origin"] as? String)
+            XCTAssertNotNil(portMapping?["enabled"])
+        } else {
+            XCTFail("connectivity payload missing from status response")
+        }
         let queueCount = (statusJSON["queueCount"] as? NSNumber)?.intValue ?? 0
         XCTAssertGreaterThanOrEqual(queueCount, 1)
         XCTAssertNotNil(statusJSON["objects"] as? NSNumber)
@@ -75,6 +95,8 @@ final class BoxAdminIntegrationTests: XCTestCase {
         XCTAssertEqual(reloadJSON["userUUID"] as? String, configuration.common.userUUID.uuidString)
         XCTAssertNotNil(reloadJSON["hasGlobalIPv6"])
         XCTAssertNotNil(reloadJSON["portMappingEnabled"])
+        XCTAssertNotNil(coerceArrayOfDictionaries(reloadJSON["addresses"]))
+        XCTAssertNotNil(coerceDictionary(reloadJSON["connectivity"]))
 
         let statsResponse = try transport.send(command: "stats")
         let statsJSON = try decodeJSON(statsResponse)
@@ -86,6 +108,8 @@ final class BoxAdminIntegrationTests: XCTestCase {
         XCTAssertNotNil(statsJSON["queueFreeBytes"] as? NSNumber)
         XCTAssertNotNil(statsJSON["hasGlobalIPv6"])
         XCTAssertNotNil(statsJSON["portMappingEnabled"])
+        XCTAssertNotNil(coerceArrayOfDictionaries(statsJSON["addresses"]))
+        XCTAssertNotNil(coerceDictionary(statsJSON["connectivity"]))
 
         let verificationLogger = Logger(label: "box.integration.reload")
         XCTAssertEqual(verificationLogger.logLevel, .debug)
@@ -102,6 +126,8 @@ final class BoxAdminIntegrationTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(statusAfterQueueCount, 1)
         XCTAssertEqual(statusAfter["queueRoot"] as? String, context.homeDirectory.appendingPathComponent(".box/queues").path)
         XCTAssertNotNil(statusAfter["queueFreeBytes"] as? NSNumber)
+        XCTAssertNotNil(coerceArrayOfDictionaries(statusAfter["addresses"]))
+        XCTAssertNotNil(coerceDictionary(statusAfter["connectivity"]))
     }
 }
 
@@ -213,6 +239,48 @@ private func decodeJSON(_ response: String) throws -> [String: Any] {
         throw NSError(domain: "BoxAdminIntegrationTests", code: 3, userInfo: [NSLocalizedDescriptionKey: "response is not a JSON object"])
     }
     return dictionary
+}
+
+/// Converts an arbitrary JSON object into a Swift dictionary when possible.
+/// - Parameter value: The value returned by `JSONSerialization`.
+/// - Returns: A `[String: Any]` representation when the value is bridgeable.
+private func coerceDictionary(_ value: Any?) -> [String: Any]? {
+    if let dictionary = value as? [String: Any] {
+        return dictionary
+    }
+    if let nsDictionary = value as? NSDictionary {
+        var result: [String: Any] = [:]
+        for case let (key as String, element) in nsDictionary {
+            result[key] = element
+        }
+        return result
+    }
+    return nil
+}
+
+/// Converts an arbitrary JSON array into an array of dictionaries when possible.
+/// - Parameter value: The value returned by `JSONSerialization`.
+/// - Returns: An array of `[String: Any]` dictionaries when every element is bridgeable.
+private func coerceArrayOfDictionaries(_ value: Any?) -> [[String: Any]]? {
+    if let array = value as? [[String: Any]] {
+        return array
+    }
+    if let nsArray = value as? [NSDictionary] {
+        return nsArray.compactMap { dictionary in
+            coerceDictionary(dictionary)
+        }
+    }
+    if let genericArray = value as? [Any] {
+        var result: [[String: Any]] = []
+        for element in genericArray {
+            guard let dictionary = coerceDictionary(element) else {
+                return nil
+            }
+            result.append(dictionary)
+        }
+        return result
+    }
+    return nil
 }
 
 private func waitForTaskCancellation(_ task: Task<Void, Error>, timeout: TimeInterval = 5.0) {

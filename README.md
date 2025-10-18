@@ -20,10 +20,11 @@ swift run box                 # mode client par défaut
 
 ### Connectivité & IPv6
 
-- IPv6 est privilégié : le serveur se lie simultanément sur `::` et `0.0.0.0`. Sur un Raspberry Pi ou une machine domestique recevant un préfixe IPv6 global, cela permet une exposition directe sans redirection NAT.
-- IPv4 reste un repli obligatoire. Si aucune adresse IPv6 globale n’est détectée, Box continue d’accepter les connexions en IPv4. Il conviendra alors de configurer une redirection UDP sur la box Internet ou d’utiliser un relais auto-hébergé. Une vérification de connectivité (détection d’adresse globale, avertissement dans les logs/admin) sera ajoutée avant l’intégration Noise/libsodium. Un module de port-mapping automatique (PCP/NAT-PMP/UPnP, opt-in) sera intégré à court terme pour demander l’ouverture du port UDP côté routeur résidentiel.
-- Les clients mobiles (iOS/Android) interrogeront la Location Service pour récupérer toutes les adresses publiées par le serveur (IPv6 en priorité, IPv4 en secours) et testeront les points de terminaison dans cet ordre.
-- Documentez ou forcez l’adresse publique via `Box.plist` si la machine est multi-homée ou derrière un relais, afin que la Location Service reflète correctement les routes accessibles depuis l’extérieur.
+- IPv6 reste la voie privilégiée. Par défaut, `box --server` se lie à `0.0.0.0`; définissez `--address ::` ou configurez `server.address` dans `Box.plist` pour exposer explicitement une interface IPv6. Sur un Raspberry Pi ou une machine domestique recevant un préfixe IPv6 global, cela permet une exposition directe sans redirection NAT.
+- Le serveur sonde l’hôte au démarrage et lors des rechargements pour détecter la présence d’adresses IPv6 globales. Les champs `hasGlobalIPv6`, `globalIPv6Addresses` et `ipv6ProbeError` sont exposés via `box admin status|stats` et publiés dans l’enregistrement Location Service afin que les clients mobiles puissent tester les routes disponibles.
+- IPv4 reste le repli obligatoire. Si aucune adresse IPv6 globale n’est détectée, les journaux et le canal d’administration avertissent qu’une redirection NAT devra être configurée. L’option `--enable-port-mapping` (ou `port_mapping = true` dans `Box.plist`) prépare l’orchestration PCP/NAT-PMP/UPnP et l’état (`portMappingEnabled`, `portMappingOrigin`) est également reflété côté admin/Location Service.
+- La Location Service diffuse désormais pour chaque nœud un tableau `addresses[]` (port + IP + portée + source) et un bloc `connectivity` reprenant l’instantané ci-dessus. Les clients iOS/Android interrogent ces champs et tentent d’abord les adresses IPv6 globales (source `probe`), puis les éventuelles adresses configurées ou IPv4 de secours.
+- Documentez ou forcez l’adresse publique (via `common.public_addresses` à venir ou `server.address`) si la machine est multi-homée ou derrière un relais, afin que la Location Service reflète correctement les routes accessibles depuis l’extérieur.
 
 ### Avancement 2025-10-14
 

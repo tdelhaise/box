@@ -227,12 +227,26 @@ Resolve by User UUID
     "nodes": [
       {
         "node_uuid": "776BA464-BA07-4B6D-B102-11D5D9917C6F",
-        "ip": "2001:db8::10",
-        "port": 9988,
+        "addresses": [
+          {
+            "ip": "2001:db8::10",
+            "port": 9988,
+            "scope": "global",
+            "source": "probe"
+          }
+        ],
         "node_public_key": "ed25519:8c1f...ab42",
         "online": true,
         "since": 1736712345123,
-        "last_seen": 1736712389456
+        "last_seen": 1736712389456,
+        "connectivity": {
+          "has_global_ipv6": true,
+          "global_ipv6": ["2001:db8::10"],
+          "port_mapping": {
+            "enabled": false,
+            "origin": "default"
+          }
+        }
       }
     ]
   }
@@ -256,12 +270,27 @@ Resolve by Node UUID
   node-record = {
     "user_uuid": uuid,
     "node_uuid": uuid,
-    "ip": tstr-nonempty,             ; textual IP (IPv6/IPv4)
-    "port": port,
+    "addresses": [
+      {
+        "ip": tstr-nonempty,
+        "port": port,
+        "scope": "global" / "lan" / "loopback",
+        "source": "probe" / "config" / "manual"
+      }
+    ],
     "node_public_key": tstr-nonempty, ; e.g., "ed25519:" + hex
     "online": bool,
     "since": uint,
     "last_seen": uint,
+    "connectivity": {
+      "has_global_ipv6": bool,
+      "global_ipv6": [* tstr-nonempty],
+      ? "ipv6_probe_error": tstr-nonempty,
+      "port_mapping": {
+        "enabled": bool,
+        "origin": tstr-nonempty
+      }
+    },
     ? "tags": { * tstr => tstr }
   }
 
@@ -324,19 +353,32 @@ Diagnostic notation
     "record": {
       "user_uuid": h'000102030405060708090A0B0C0D0E0F',
       "node_uuid": h'F0E0D0C0B0A090807060504030201000',
-      "ip": "2001:db8::10",
-      "port": 9988,
+      "addresses": [
+        {
+          "ip": "2001:db8::10",
+          "port": 9988,
+          "scope": "global",
+          "source": "probe"
+        }
+      ],
       "node_public_key": "ed25519:00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF",
       "online": true,
       "since": 1,
-      "last_seen": 2
+      "last_seen": 2,
+      "connectivity": {
+        "has_global_ipv6": true,
+        "global_ipv6": ["2001:db8::10"],
+        "port_mapping": {
+          "enabled": false,
+          "origin": "default"
+        }
+      }
     }
   }
 
-Exact hex (canonical CBOR, sorted map keys)
-  a2626f70687265676973746572667265636f7264a86269706c323030313a6462383a3a313064706f72741927046573696e636501666f6e6c696e65f5696c6173745f7365656e02696e6f64655f7575696450f0e0d0c0b0a09080706050403020100069757365725f7575696450000102030405060708090a0b0c0d0e0f6f6e6f64655f7075626c69635f6b65797848656432353531393a30303131323233333434353536363737383839394141424243434444454546463030313132323333343435353636373738383939414142424343444445454646
-
-Field note: Replace the example port 9972 (0x26F4) with 9988 (0x2704) in your encoder.
+Exact hex (canonical CBOR, sorted map keys) — pending regeneration. The previous
+encoding did not include the new `addresses` and `connectivity` maps. Re-run the
+encoder once the schema stops evolving to publish an authoritative hex dump.
 
 Example B — ls-resolve-user response (single node)
 
@@ -347,20 +389,33 @@ Diagnostic notation
       {
         "user_uuid": h'000102030405060708090A0B0C0D0E0F',
         "node_uuid": h'F0E0D0C0B0A090807060504030201000',
-        "ip": "2001:db8::10",
-        "port": 9988,
+        "addresses": [
+          {
+            "ip": "2001:db8::10",
+            "port": 9988,
+            "scope": "global",
+            "source": "probe"
+          }
+        ],
         "node_public_key": "ed25519:00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF",
         "online": true,
         "since": 1,
-        "last_seen": 2
+        "last_seen": 2,
+        "connectivity": {
+          "has_global_ipv6": true,
+          "global_ipv6": ["2001:db8::10"],
+          "port_mapping": {
+            "enabled": false,
+            "origin": "default"
+          }
+        }
       }
     ]
   }
 
-Exact hex (canonical CBOR, sorted map keys)
-  a2626f6bf5656e6f64657381a86269706c323030313a6462383a3a313064706f72741927046573696e636501666f6e6c696e65f5696c6173745f7365656e02696e6f64655f7575696450f0e0d0c0b0a09080706050403020100069757365725f7575696450000102030405060708090a0b0c0d0e0f6f6e6f64655f7075626c69635f6b65797848656432353531393a30303131323233333434353536363737383839394141424243434444454546463030313132323333343435353636373738383939414142424343444445454646
-
-Ellipses (...) indicate trimmed string bodies for brevity; actual encodings include the full text contents.
+Exact hex (canonical CBOR, sorted map keys) — pending regeneration with the new
+record shape. Ellipses (…) will continue to indicate trimmed string bodies for
+brevity once a refreshed sample is committed.
 
 7. Data Model
 
