@@ -71,7 +71,11 @@ public struct BoxCommandParser: AsyncParsableCommand {
         let cliLogLevel = Logger.Level(logLevelString: logLevel)
         let cliLogTarget = try resolveLogTarget()
         let resolvedMode: BoxRuntimeMode = server ? .server : .client
-        let clientConfiguration = (resolvedMode == .client) ? try loadClientConfiguration() : nil
+
+        let configurationResult = try BoxConfiguration.loadDefault(explicitPath: configurationPath)
+        let configuration = configurationResult?.configuration
+        let clientConfiguration = (resolvedMode == .client) ? configuration?.client : nil
+        let commonConfiguration = configuration?.common
 
         let (effectiveLogLevel, logLevelOrigin): (Logger.Level, BoxRuntimeOptions.LogLevelOrigin) = {
             if logLevel != nil {
@@ -93,6 +97,9 @@ public struct BoxCommandParser: AsyncParsableCommand {
             }
             return (BoxRuntimeOptions.defaultLogTarget, .default)
         }()
+
+        let effectiveNodeId = commonConfiguration?.nodeUUID ?? UUID()
+        let effectiveUserId = commonConfiguration?.userUUID ?? UUID()
 
         BoxLogging.bootstrap(level: effectiveLogLevel, target: effectiveLogTarget)
 
@@ -129,6 +136,8 @@ public struct BoxCommandParser: AsyncParsableCommand {
             logTarget: effectiveLogTarget,
             logLevelOrigin: logLevelOrigin,
             logTargetOrigin: logTargetOrigin,
+            nodeId: effectiveNodeId,
+            userId: effectiveUserId,
             clientAction: try resolveClientAction(for: resolvedMode)
         )
 
@@ -173,11 +182,6 @@ public struct BoxCommandParser: AsyncParsableCommand {
         }
 
         return .handshake
-    }
-
-    /// Loads the client configuration from disk (if available).
-    private func loadClientConfiguration() throws -> BoxClientConfiguration? {
-        try BoxClientConfiguration.loadDefault(explicitPath: configurationPath)
     }
 
     /// Resolves the logging target based on CLI arguments.

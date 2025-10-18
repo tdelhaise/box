@@ -38,9 +38,9 @@ public enum BoxServer {
         }
 
         let configurationURL = BoxPaths.serverConfigurationURL(explicitPath: options.configurationPath)
-        let configuration: BoxServerConfiguration?
+        let configurationResult: BoxConfigurationLoadResult?
         do {
-            configuration = try BoxServerConfiguration.loadDefault(explicitPath: options.configurationPath)
+            configurationResult = try BoxConfiguration.loadDefault(explicitPath: options.configurationPath)
         } catch {
             if let configURL = configurationURL {
                 throw BoxRuntimeError.configurationLoadFailed(configURL)
@@ -49,14 +49,18 @@ public enum BoxServer {
             }
         }
 
-        if portOrigin == .default, let configPort = configuration?.port {
+        let configuration = configurationResult?.configuration
+        let serverConfiguration = configuration?.server
+        let commonConfiguration = configuration?.common
+
+        if portOrigin == .default, let configPort = serverConfiguration?.port {
             effectivePort = configPort
             portOrigin = .configuration
         }
 
         var effectiveLogLevel = options.logLevel
         var logLevelOrigin = options.logLevelOrigin
-        if logLevelOrigin == .default, let configLogLevel = configuration?.logLevel {
+        if logLevelOrigin == .default, let configLogLevel = serverConfiguration?.logLevel {
             effectiveLogLevel = configLogLevel
             logLevelOrigin = .configuration
         }
@@ -65,7 +69,7 @@ public enum BoxServer {
 
         var effectiveLogTarget = options.logTarget
         var logTargetOrigin = options.logTargetOrigin
-        if logTargetOrigin == .default, let configTarget = configuration?.logTarget {
+        if logTargetOrigin == .default, let configTarget = serverConfiguration?.logTarget {
             if let parsedTarget = BoxLogTarget.parse(configTarget) {
                 effectiveLogTarget = parsedTarget
                 logTargetOrigin = .configuration
@@ -76,11 +80,14 @@ public enum BoxServer {
         BoxLogging.update(target: effectiveLogTarget)
 
         var adminChannelEnabled = options.adminChannelEnabled
-        if let configAdmin = configuration?.adminChannelEnabled {
+        if let configAdmin = serverConfiguration?.adminChannelEnabled {
             adminChannelEnabled = configAdmin
         }
 
-        let selectedTransport = configuration?.transportGeneral
+        let selectedTransport = serverConfiguration?.transportGeneral
+
+        let effectiveNodeId = commonConfiguration?.nodeUUID ?? options.nodeId
+        let effectiveUserId = commonConfiguration?.userUUID ?? options.userId
 
         let initialRuntimeState = BoxServerRuntimeState(
             configurationPath: configurationURL?.path,
@@ -93,6 +100,8 @@ public enum BoxServer {
             port: effectivePort,
             portOrigin: portOrigin,
             transport: selectedTransport,
+            nodeIdentifier: effectiveNodeId,
+            userIdentifier: effectiveUserId,
             queueRootPath: queueRoot.path,
             reloadCount: 0,
             lastReloadTimestamp: nil,
@@ -109,17 +118,22 @@ public enum BoxServer {
             logLevelOrigin: logLevelOrigin,
             logTarget: effectiveLogTarget,
             logTargetOrigin: logTargetOrigin,
-            configurationPresent: configuration != nil,
+            configurationPresent: configurationResult != nil,
             adminChannelEnabled: adminChannelEnabled,
             transport: selectedTransport
         )
 
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
-        let store = BoxServerStore()
+        let store = try await BoxServerStore(root: queueRoot)
         let statusProvider: @Sendable () -> String = {
             let snapshot = runtimeStateBox.withLockedValue { $0 }
             let currentTarget = BoxLogging.currentTarget()
-            return renderStatus(state: snapshot, store: store, logTarget: currentTarget)
+            return renderStatus(state: snapshot, logTarget: currentTarget)
+        }
+        let identityProvider: @Sendable () -> (UUID, UUID) = {
+            runtimeStateBox.withLockedValue { state in
+                (state.nodeIdentifier, state.userIdentifier)
+            }
         }
         let logTargetUpdater: @Sendable (String) -> String = { candidate in
             let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -162,43 +176,39 @@ public enum BoxServer {
 
             let url = URL(fileURLWithPath: configPath)
             do {
-                guard let loaded = try BoxServerConfiguration.load(from: url) else {
-                    let timestamp = Date()
-                    runtimeStateBox.withLockedValue { state in
-                        state.reloadCount += 1
-                        state.lastReloadTimestamp = timestamp
-                        state.lastReloadStatus = "error"
-                        state.lastReloadError = "configuration-not-found"
-                    }
-                    return adminResponse(["status": "error", "message": "configuration-not-found", "path": configPath])
-                }
+                let loadResult = try BoxConfiguration.load(from: url)
+                let loadedConfiguration = loadResult.configuration
+                let loadedServer = loadedConfiguration.server
+                let loadedCommon = loadedConfiguration.common
 
                 let timestamp = Date()
                 let targetAdjustment = runtimeStateBox.withLockedValue { state -> BoxLogTarget? in
                     state.reloadCount += 1
                     state.lastReloadTimestamp = timestamp
                     state.configurationPath = configPath
-                    state.configuration = loaded
+                    state.configuration = loadedConfiguration
                     state.lastReloadStatus = "ok"
                     state.lastReloadError = nil
+                    state.nodeIdentifier = loadedCommon.nodeUUID
+                    state.userIdentifier = loadedCommon.userUUID
 
                     var targetCandidate: BoxLogTarget?
 
                     if state.logTargetOrigin != .cliFlag {
-                        if let targetString = loaded.logTarget, let parsed = BoxLogTarget.parse(targetString) {
+                        if let targetString = loadedServer.logTarget, let parsed = BoxLogTarget.parse(targetString) {
                             if state.logTarget != parsed {
                                 targetCandidate = parsed
                             }
                             state.logTarget = parsed
                             state.logTargetOrigin = .configuration
-                        } else if loaded.logTarget != nil {
+                        } else if loadedServer.logTarget != nil {
                             state.lastReloadStatus = "partial"
                             state.lastReloadError = "invalid-log-target"
                         }
                     }
 
                     if state.logLevelOrigin != .cliFlag {
-                        if let level = loaded.logLevel {
+                        if let level = loadedServer.logLevel {
                             state.logLevel = level
                             state.logLevelOrigin = .configuration
                         } else if state.logLevelOrigin == .configuration {
@@ -208,10 +218,10 @@ public enum BoxServer {
                         }
                     }
 
-                    if let transport = loaded.transportGeneral {
+                    if let transport = loadedServer.transportGeneral {
                         state.transport = transport
                     }
-                    if let adminEnabled = loaded.adminChannelEnabled {
+                    if let adminEnabled = loadedServer.adminChannelEnabled {
                         state.adminChannelEnabled = adminEnabled
                     }
 
@@ -233,9 +243,8 @@ public enum BoxServer {
                     "logTargetOrigin": "\(snapshot.logTargetOrigin)",
                     "reloadCount": snapshot.reloadCount
                 ]
-                if let nodeUUID = snapshot.configuration?.nodeUUID.uuidString {
-                    response["nodeUUID"] = nodeUUID
-                }
+                response["nodeUUID"] = snapshot.nodeIdentifier.uuidString
+                response["userUUID"] = snapshot.userIdentifier.uuidString
                 if let timestamp = snapshot.lastReloadTimestamp {
                     response["timestamp"] = iso8601String(timestamp)
                 }
@@ -262,7 +271,7 @@ public enum BoxServer {
         let statsProvider: @Sendable () -> String = {
             let snapshot = runtimeStateBox.withLockedValue { $0 }
             let currentTarget = BoxLogging.currentTarget()
-            return renderStats(state: snapshot, store: store, logTarget: currentTarget)
+            return renderStats(state: snapshot, logTarget: currentTarget)
         }
 
         let adminSocketPath = adminChannelEnabled ? BoxPaths.adminSocketPath() : nil
@@ -300,7 +309,14 @@ public enum BoxServer {
         let bootstrap = DatagramBootstrap(group: eventLoopGroup)
             .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .channelInitializer { channel in
-                channel.pipeline.addHandler(BoxServerHandler(logger: pipelineLogger, allocator: channel.allocator, store: store))
+                channel.pipeline.addHandler(
+                    BoxServerHandler(
+                        logger: pipelineLogger,
+                        allocator: channel.allocator,
+                        store: store,
+                        identityProvider: identityProvider
+                    )
+                )
             }
 
         do {
@@ -372,40 +388,10 @@ public enum BoxServer {
     }
 }
 
-/// In-memory stored object for demo PUT/GET flows.
-private struct BoxStoredObject: Sendable {
-    /// Content type associated with the stored payload.
-    var contentType: String
-    /// Stored payload bytes.
-    var data: [UInt8]
-}
-
-/// Thread-safe store shared between datagram pipeline and admin channel queries.
-private final class BoxServerStore: @unchecked Sendable {
-    private let storage = NIOLockedValueBox<[String: BoxStoredObject]>([:])
-
-    /// Saves or replaces an object for the supplied queue path.
-    func set(object: BoxStoredObject, for queuePath: String) {
-        storage.withLockedValue { storage in
-            storage[queuePath] = object
-        }
-    }
-
-    /// Retrieves the stored object if present.
-    func get(queuePath: String) -> BoxStoredObject? {
-        storage.withLockedValue { $0[queuePath] }
-    }
-
-    /// Counts the number of stored objects.
-    func count() -> Int {
-        storage.withLockedValue { $0.count }
-    }
-}
-
 /// Captures mutable runtime state exposed over the admin channel and used for reload decisions.
 private struct BoxServerRuntimeState: Sendable {
     var configurationPath: String?
-    var configuration: BoxServerConfiguration?
+    var configuration: BoxConfiguration?
     var logLevel: Logger.Level
     var logLevelOrigin: BoxRuntimeOptions.LogLevelOrigin
     var logTarget: BoxLogTarget
@@ -414,6 +400,8 @@ private struct BoxServerRuntimeState: Sendable {
     var port: UInt16
     var portOrigin: BoxRuntimeOptions.PortOrigin
     var transport: String?
+    var nodeIdentifier: UUID
+    var userIdentifier: UUID
     var queueRootPath: String?
     var reloadCount: Int
     var lastReloadTimestamp: Date?
@@ -439,11 +427,18 @@ private final class BoxServerHandler: ChannelInboundHandler {
     private let logger: Logger
     private let allocator: ByteBufferAllocator
     private let store: BoxServerStore
+    private let identityProvider: @Sendable () -> (UUID, UUID)
 
-    init(logger: Logger, allocator: ByteBufferAllocator, store: BoxServerStore) {
+    init(
+        logger: Logger,
+        allocator: ByteBufferAllocator,
+        store: BoxServerStore,
+        identityProvider: @escaping @Sendable () -> (UUID, UUID)
+    ) {
         self.logger = logger
         self.allocator = allocator
         self.store = store
+        self.identityProvider = identityProvider
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -475,7 +470,7 @@ private final class BoxServerHandler: ChannelInboundHandler {
                 message: "unknown-command",
                 allocator: allocator
             )
-            send(frame: BoxCodec.Frame(command: .status, requestId: frame.requestId + 1, payload: statusPayload), to: remote, context: context)
+            send(command: .status, requestId: frame.requestId, payload: statusPayload, to: remote, context: context)
         }
     }
 
@@ -488,11 +483,11 @@ private final class BoxServerHandler: ChannelInboundHandler {
                 message: "unsupported-version",
                 allocator: allocator
             )
-            send(frame: BoxCodec.Frame(command: .status, requestId: frame.requestId + 1, payload: statusPayload), to: remote, context: context)
+            send(command: .status, requestId: frame.requestId, payload: statusPayload, to: remote, context: context)
             return
         }
         let responsePayload = try BoxCodec.encodeHelloPayload(status: .ok, versions: [1], allocator: allocator)
-        send(frame: BoxCodec.Frame(command: .hello, requestId: frame.requestId + 1, payload: responsePayload), to: remote, context: context)
+        send(command: .hello, requestId: frame.requestId, payload: responsePayload, to: remote, context: context)
     }
 
     private func respondToStatus(frame: BoxCodec.Frame, remote: SocketAddress, context: ChannelHandlerContext) throws {
@@ -500,32 +495,103 @@ private final class BoxServerHandler: ChannelInboundHandler {
         let status = try BoxCodec.decodeStatusPayload(from: &payload)
         logger.debug("STATUS received", metadata: ["status": "\(status.status)", "message": "\(status.message)"])
         let pongPayload = BoxCodec.encodeStatusPayload(status: .ok, message: "pong", allocator: allocator)
-        send(frame: BoxCodec.Frame(command: .status, requestId: frame.requestId + 1, payload: pongPayload), to: remote, context: context)
+        send(command: .status, requestId: frame.requestId, payload: pongPayload, to: remote, context: context)
     }
 
     private func handlePut(payload: inout ByteBuffer, frame: BoxCodec.Frame, remote: SocketAddress, context: ChannelHandlerContext) throws {
         let putPayload = try BoxCodec.decodePutPayload(from: &payload)
-        store.set(object: BoxStoredObject(contentType: putPayload.contentType, data: putPayload.data), for: putPayload.queuePath)
-		logger.info("stored object on queue \(putPayload.queuePath), contentType \(putPayload.contentType) bytes: \(putPayload.data.count)", metadata: ["queue": "\(putPayload.queuePath)", "bytes": "\(putPayload.data.count)"])
-        let statusPayload = BoxCodec.encodeStatusPayload(status: .ok, message: "stored", allocator: allocator)
-        send(frame: BoxCodec.Frame(command: .status, requestId: frame.requestId + 1, payload: statusPayload), to: remote, context: context)
+        let queuePath = putPayload.queuePath
+        let storedObject = BoxStoredObject(
+            contentType: putPayload.contentType,
+            data: putPayload.data,
+            nodeId: frame.nodeId,
+            userId: frame.userId
+        )
+        let store = self.store
+        let logger = self.logger
+        let allocator = self.allocator
+        let requestId = frame.requestId
+        let eventLoop = context.eventLoop
+        let contextBox = UncheckedSendableBox(context)
+        let remoteAddress = remote
+
+        Task {
+            do {
+                try await store.put(storedObject, into: queuePath)
+                logger.info(
+                    "stored object on queue \(queuePath)",
+                    metadata: [
+                        "queue": .string(queuePath),
+                        "bytes": .string("\(storedObject.data.count)"),
+                        "originNode": .string(storedObject.nodeId.uuidString),
+                        "originUser": .string(storedObject.userId.uuidString)
+                    ]
+                )
+                eventLoop.execute {
+                    let statusPayload = BoxCodec.encodeStatusPayload(status: .ok, message: "stored", allocator: allocator)
+                    let ctx = contextBox.value
+                    self.send(command: .status, requestId: requestId, payload: statusPayload, to: remoteAddress, context: ctx)
+                }
+            } catch {
+                logger.error(
+                    "failed to store object",
+                    metadata: ["queue": .string(queuePath), "error": .string("\(error)")]
+                )
+                eventLoop.execute {
+                    let statusPayload = BoxCodec.encodeStatusPayload(status: .internalError, message: "storage-error", allocator: allocator)
+                    let ctx = contextBox.value
+                    self.send(command: .status, requestId: requestId, payload: statusPayload, to: remoteAddress, context: ctx)
+                }
+            }
+        }
     }
 
     private func handleGet(payload: inout ByteBuffer, frame: BoxCodec.Frame, remote: SocketAddress, context: ChannelHandlerContext) throws {
         let getPayload = try BoxCodec.decodeGetPayload(from: &payload)
-        if let object = store.get(queuePath: getPayload.queuePath) {
-            let responsePayload = BoxCodec.encodePutPayload(
-                BoxCodec.PutPayload(queuePath: getPayload.queuePath, contentType: object.contentType, data: object.data),
-                allocator: allocator
-            )
-            send(frame: BoxCodec.Frame(command: .put, requestId: frame.requestId + 1, payload: responsePayload), to: remote, context: context)
-        } else {
-            let statusPayload = BoxCodec.encodeStatusPayload(status: .badRequest, message: "not-found", allocator: allocator)
-            send(frame: BoxCodec.Frame(command: .status, requestId: frame.requestId + 1, payload: statusPayload), to: remote, context: context)
+        let queuePath = getPayload.queuePath
+        let store = self.store
+        let allocator = self.allocator
+        let logger = self.logger
+        let requestId = frame.requestId
+        let eventLoop = context.eventLoop
+        let contextBox = UncheckedSendableBox(context)
+        let remoteAddress = remote
+
+        Task {
+            do {
+                if let object = try await store.popOldest(from: queuePath) {
+                    eventLoop.execute {
+                        let responsePayload = BoxCodec.encodePutPayload(
+                            BoxCodec.PutPayload(queuePath: queuePath, contentType: object.contentType, data: object.data),
+                            allocator: allocator
+                        )
+                        let ctx = contextBox.value
+                        self.send(command: .put, requestId: requestId, payload: responsePayload, to: remoteAddress, context: ctx)
+                    }
+                } else {
+                    eventLoop.execute {
+                        let statusPayload = BoxCodec.encodeStatusPayload(status: .badRequest, message: "not-found", allocator: allocator)
+                        let ctx = contextBox.value
+                        self.send(command: .status, requestId: requestId, payload: statusPayload, to: remoteAddress, context: ctx)
+                    }
+                }
+            } catch {
+                logger.error(
+                    "failed to fetch object",
+                    metadata: ["queue": .string(queuePath), "error": .string("\(error)")]
+                )
+                eventLoop.execute {
+                    let statusPayload = BoxCodec.encodeStatusPayload(status: .internalError, message: "storage-error", allocator: allocator)
+                    let ctx = contextBox.value
+                    self.send(command: .status, requestId: requestId, payload: statusPayload, to: remoteAddress, context: ctx)
+                }
+            }
         }
     }
 
-    private func send(frame: BoxCodec.Frame, to remote: SocketAddress, context: ChannelHandlerContext) {
+    private func send(command: BoxCodec.Command, requestId: UUID, payload: ByteBuffer, to remote: SocketAddress, context: ChannelHandlerContext) {
+        let (nodeId, userId) = identityProvider()
+        let frame = BoxCodec.Frame(command: command, requestId: requestId, nodeId: nodeId, userId: userId, payload: payload)
         let datagram = BoxCodec.encodeFrame(frame, allocator: allocator)
         let envelope = AddressedEnvelope(remoteAddress: remote, data: datagram)
         context.writeAndFlush(wrapOutboundOut(envelope), promise: nil)
@@ -936,6 +1002,7 @@ private func ensureQueueInfrastructure(logger: Logger) throws -> URL {
 /// Captures file-system metrics derived from the queue storage root.
 private struct QueueMetrics {
     var count: Int
+    var objectCount: Int
     var freeBytes: UInt64?
 }
 
@@ -943,10 +1010,19 @@ private struct QueueMetrics {
 private func queueMetrics(at root: URL) -> QueueMetrics {
     let fileManager = FileManager.default
     var queueCount = 0
+    var objectCount = 0
 
     if let contents = try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
-        queueCount = contents.reduce(0) { partialResult, url in
-            (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true ? partialResult + 1 : partialResult
+        for url in contents {
+            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                continue
+            }
+            queueCount += 1
+            if let entries = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
+                objectCount += entries.reduce(0) { partial, fileURL in
+                    fileURL.pathExtension.lowercased() == "json" ? partial + 1 : partial
+                }
+            }
         }
     }
 
@@ -959,7 +1035,7 @@ private func queueMetrics(at root: URL) -> QueueMetrics {
     if queueCount < 1 {
         queueCount = 1
     }
-    return QueueMetrics(count: queueCount, freeBytes: freeBytes)
+    return QueueMetrics(count: queueCount, objectCount: objectCount, freeBytes: freeBytes)
 }
 
 /// Binds the admin channel on the provided UNIX domain socket path.
@@ -1023,12 +1099,11 @@ private func startAdminChannel(
 ///   - store: Shared object store (used to expose queue count).
 ///   - logTarget: Active log target reported by the logging subsystem.
 /// - Returns: A JSON string summarising the current server state.
-private func renderStatus(state: BoxServerRuntimeState, store: BoxServerStore, logTarget: BoxLogTarget) -> String {
+private func renderStatus(state: BoxServerRuntimeState, logTarget: BoxLogTarget) -> String {
     var payload: [String: Any] = [
         "status": "ok",
         "port": Int(state.port),
         "portOrigin": "\(state.portOrigin)",
-        "objects": store.count(),
         "logLevel": state.logLevel.rawValue,
         "logLevelOrigin": "\(state.logLevelOrigin)",
         "logTarget": logTargetDescription(logTarget),
@@ -1040,18 +1115,21 @@ private func renderStatus(state: BoxServerRuntimeState, store: BoxServerStore, l
     if let path = state.configurationPath {
         payload["configPath"] = path
     }
-    if let nodeUUID = state.configuration?.nodeUUID.uuidString {
-        payload["nodeUUID"] = nodeUUID
-    }
+    payload["nodeUUID"] = state.nodeIdentifier.uuidString
+    payload["userUUID"] = state.userIdentifier.uuidString
     if let queueRootPath = state.queueRootPath {
         payload["queueRoot"] = queueRootPath
         let metrics = queueMetrics(at: URL(fileURLWithPath: queueRootPath, isDirectory: true))
         payload["queueCount"] = metrics.count
+        payload["objects"] = metrics.objectCount
+        payload["queues"] = metrics.count
         if let freeBytes = metrics.freeBytes {
             payload["queueFreeBytes"] = freeBytes
         }
     } else {
         payload["queueCount"] = 1
+        payload["objects"] = 0
+        payload["queues"] = 1
     }
     if let timestamp = state.lastReloadTimestamp {
         payload["lastReload"] = iso8601String(timestamp)
@@ -1071,7 +1149,7 @@ private func renderStatus(state: BoxServerRuntimeState, store: BoxServerStore, l
 ///   - store: Shared object store exposing queue counters.
 ///   - logTarget: Active log target reported by the logging subsystem.
 /// - Returns: A JSON string describing runtime metrics.
-private func renderStats(state: BoxServerRuntimeState, store: BoxServerStore, logTarget: BoxLogTarget) -> String {
+private func renderStats(state: BoxServerRuntimeState, logTarget: BoxLogTarget) -> String {
     var payload: [String: Any] = [
         "status": "ok",
         "timestamp": iso8601String(Date()),
@@ -1082,7 +1160,6 @@ private func renderStats(state: BoxServerRuntimeState, store: BoxServerStore, lo
         "logTargetOrigin": "\(state.logTargetOrigin)",
         "transport": state.transport ?? "clear",
         "adminChannel": state.adminChannelEnabled ? "enabled" : "disabled",
-        "queues": store.count(),
         "reloadCount": state.reloadCount
     ]
     if let path = state.configurationPath {
@@ -1091,18 +1168,21 @@ private func renderStats(state: BoxServerRuntimeState, store: BoxServerStore, lo
     if let lastReload = state.lastReloadTimestamp {
         payload["lastReload"] = iso8601String(lastReload)
     }
-    if let nodeUUID = state.configuration?.nodeUUID.uuidString {
-        payload["nodeUUID"] = nodeUUID
-    }
+    payload["nodeUUID"] = state.nodeIdentifier.uuidString
+    payload["userUUID"] = state.userIdentifier.uuidString
     if let queueRootPath = state.queueRootPath {
         payload["queueRoot"] = queueRootPath
         let metrics = queueMetrics(at: URL(fileURLWithPath: queueRootPath, isDirectory: true))
         payload["queueCount"] = metrics.count
+        payload["objects"] = metrics.objectCount
+        payload["queues"] = metrics.count
         if let freeBytes = metrics.freeBytes {
             payload["queueFreeBytes"] = freeBytes
         }
     } else {
         payload["queueCount"] = 1
+        payload["objects"] = 0
+        payload["queues"] = 1
     }
     if let error = state.lastReloadError {
         payload["message"] = error

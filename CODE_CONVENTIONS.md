@@ -7,7 +7,7 @@ Purpose
 Architecture Conventions
 - Components: un exécutable unique `box` qui agit en mode client par défaut et en mode serveur via `--server`/`-s`. Le service LS reste embarqué côté serveur.
 - Transport: UDP over IPv6 preferred; IPv4 supported. A single configurable UDP port per node.
-- Protocol: Binary framing with magic 'B', version, length, command, request_id. Commands: HELLO, PUT, GET, DELETE, STATUS, SEARCH, BYE.
+- Protocol: Binary framing with magic 'B', version, length, command, `request_id` (UUID), `node_id` (UUID) et `user_id` (UUID). Commands: HELLO, PUT, GET, DELETE, STATUS, SEARCH, BYE.
 - Queues: Logical destinations under a user’s server (e.g., `/message`, `/photos`, `/uuid`, `/location`).
 - ACLs: Default‑deny, intersection of global and queue‑level rules. Principals: owner, user UUID, node UUID, any. Capabilities: put/get/list/delete.
 - Location Service data: uses `/uuid` for presence and `/location` for geo; LS persists and consumes via queues (no external DB required).
@@ -25,19 +25,19 @@ Networking and NAT
 - Hole punching and user‑owned relays are optional fallbacks; end‑to‑end encryption applies regardless of path.
 
 Storage and Data
-- Storage root: `<root>/<user_uuid>/<queue>/<digest>` with metadata sidecar; digest is SHA‑256 of content.
+- Storage root: `~/.box/queues/<queue>/timestamp-UUID.json` contenant le message sérialisé (payload base64, `node_id`, `user_id`, métadonnées facultatives). La file `INBOX` est créée automatiquement au premier démarrage.
 - Index: portable binary B‑tree by default; pluggable backends allowed (BSD libdb, LMDB) behind build flags.
 - Data at rest: optional encryption with a server‑managed key (future enhancement).
 
 Configuration and Paths
-- Format: PLIST (Property List) pour la voie Swift (`~/.box/box.plist`, `~/.box/boxd.plist`). Le parseur TOML historique est gelé et sera réintroduit si nécessaire pour compatibilité ascendante.
+- Format: PLIST (Property List) unique (`~/.box/Box.plist`) structuré en trois sections : `common` (UUID de nœud et d’utilisateur), `server` (port/log/transport/admin_channel) et `client` (adresse/port/log). Le parseur TOML historique est gelé et sera réintroduit si nécessaire pour compatibilité ascendante.
 - Unix/macOS
-  - Config: `~/.box/box.plist` (CLI), `~/.box/boxd.plist` (daemon) — anciens fichiers TOML toujours acceptés par l’ancienne implémentation C.
+  - Config: `~/.box/Box.plist` (section `common` + `server`/`client`), surcharge avec `--config`. Les anciens fichiers TOML restent pris en charge uniquement par l’implémentation C historique.
   - Data: `~/.box/data`
   - Keys: `~/.box/keys/identity.ed25519`, `~/.box/keys/client.ed25519` (optional)
   - Admin socket: `~/.box/run/boxd.sock`
 - Windows
-  - Config: `%USERPROFILE%\.box\box.plist`, `%USERPROFILE%\.box\boxd.plist`
+  - Config: `%USERPROFILE%\.box\Box.plist`
   - Data: `%USERPROFILE%\.box\data`
   - Keys: `%USERPROFILE%\.box\keys\identity.ed25519`
   - Admin pipe: `\\.\pipe\boxd`

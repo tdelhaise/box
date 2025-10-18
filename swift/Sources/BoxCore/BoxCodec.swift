@@ -25,8 +25,8 @@ public enum BoxCodec {
     public static let magic: UInt8 = 0x42
     /// Protocol version currently supported by the Swift implementation.
     public static let version: UInt8 = 0x01
-    /// Header size after the length field (command + request identifier).
-    private static let headerRemainderSize: Int = 12
+    /// Header size after the length field (command + request identifier + node/user identifiers).
+    private static let headerRemainderSize: Int = 52
 
     /// Enumeration of the command identifiers defined by the protocol.
     public enum Command: UInt32 {
@@ -73,7 +73,11 @@ public enum BoxCodec {
         /// Command associated with the frame.
         public var command: Command
         /// Request identifier chosen by the sender.
-        public var requestId: UInt64
+        public var requestId: UUID
+        /// Node identifier of the sending machine.
+        public var nodeId: UUID
+        /// User identifier on whose behalf the sender operates.
+        public var userId: UUID
         /// Payload slice referencing the underlying datagram.
         public var payload: ByteBuffer
 
@@ -81,10 +85,14 @@ public enum BoxCodec {
         /// - Parameters:
         ///   - command: High-level command.
         ///   - requestId: Request identifier.
+        ///   - nodeId: Origin node identifier.
+        ///   - userId: Origin user identifier.
         ///   - payload: Raw payload buffer.
-        public init(command: Command, requestId: UInt64, payload: ByteBuffer) {
+        public init(command: Command, requestId: UUID, nodeId: UUID, userId: UUID, payload: ByteBuffer) {
             self.command = command
             self.requestId = requestId
+            self.nodeId = nodeId
+            self.userId = userId
             self.payload = payload
         }
     }
@@ -164,8 +172,7 @@ public enum BoxCodec {
         guard let magicByte: UInt8 = buffer.readInteger(),
               let versionByte: UInt8 = buffer.readInteger(),
               let totalLength: UInt32 = buffer.readInteger(endianness: .big, as: UInt32.self),
-              let rawCommand: UInt32 = buffer.readInteger(endianness: .big, as: UInt32.self),
-              let requestId: UInt64 = buffer.readInteger(endianness: .big, as: UInt64.self) else {
+              let rawCommand: UInt32 = buffer.readInteger(endianness: .big, as: UInt32.self) else {
             throw BoxCodecError.malformedHeader
         }
 
@@ -179,6 +186,12 @@ public enum BoxCodec {
             throw BoxCodecError.unsupportedCommand
         }
 
+        guard let requestId = readUUID(from: &buffer),
+              let nodeId = readUUID(from: &buffer),
+              let userId = readUUID(from: &buffer) else {
+            throw BoxCodecError.malformedHeader
+        }
+
         let payloadLength = Int(totalLength) - headerRemainderSize
         guard payloadLength >= 0 else {
             throw BoxCodecError.invalidLength
@@ -187,7 +200,7 @@ public enum BoxCodec {
             throw BoxCodecError.truncatedPayload
         }
 
-        return Frame(command: command, requestId: requestId, payload: payloadSlice)
+        return Frame(command: command, requestId: requestId, nodeId: nodeId, userId: userId, payload: payloadSlice)
     }
 
     /// Encodes a frame into a new datagram buffer.
@@ -203,9 +216,32 @@ public enum BoxCodec {
         buffer.writeInteger(version)
         buffer.writeInteger(UInt32(headerRemainderSize + payloadLength), endianness: .big)
         buffer.writeInteger(frame.command.rawValue, endianness: .big)
-        buffer.writeInteger(frame.requestId, endianness: .big)
+        writeUUID(frame.requestId, into: &buffer)
+        writeUUID(frame.nodeId, into: &buffer)
+        writeUUID(frame.userId, into: &buffer)
         buffer.writeBuffer(&payloadCopy)
         return buffer
+    }
+
+    private static func readUUID(from buffer: inout ByteBuffer) -> UUID? {
+        guard let bytes = buffer.readBytes(length: 16) else {
+            return nil
+        }
+        return bytes.withUnsafeBytes { pointer -> UUID? in
+            guard pointer.count == 16 else {
+                return nil
+            }
+            let tuple = pointer.load(as: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8).self)
+            return UUID(uuid: tuple)
+        }
+    }
+
+    private static func writeUUID(_ uuid: UUID, into buffer: inout ByteBuffer) {
+        var value = uuid.uuid
+        let bytes = withUnsafeBytes(of: &value) { pointer in
+            Array(pointer)
+        }
+        buffer.writeBytes(bytes)
     }
 
     /// Encodes a HELLO payload into a buffer.

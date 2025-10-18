@@ -13,7 +13,7 @@ swift run box                 # mode client par défaut
 - Par défaut, le serveur se lie à toutes les interfaces (`0.0.0.0`). Utilisez `--address <ip>` pour restreindre l'écoute.
 - `BoxCommandParser` résout la ligne de commande et délègue à `BoxServer` ou `BoxClient`. Les options actuelles couvrent `--server/-s`, `--port`, `--address`, `--config` (PLIST), `--log-level`, `--log-target (stderr|stdout|file:<path>)`, `--put /queue[:type] --data "..."` et `--get /queue`.
 - `box admin status` interroge le socket Unix local (`~/.box/run/boxd.socket`) et renvoie un JSON de statut.
-- `BoxCodec` encapsule le framing v1 (HELLO/STATUS/PUT/GET) et peut être réutilisé dans n’importe quel handler SwiftNIO basé sur `ByteBuffer`.
+- `BoxCodec` encapsule le framing v1 (HELLO/STATUS/PUT/GET) avec en-tête enrichi (`request_id` UUID, `node_id`, `user_id`) et peut être réutilisé dans n’importe quel handler SwiftNIO fondé sur `ByteBuffer`.
 - Le protocole est pour l’instant implémenté en clair le temps de porter l’ensemble des fonctionnalités. La réintégration Noise/libsodium arrivera une fois le socle Swift stabilisé.
 - Les fichiers de configuration basculent vers le format Property List (PLIST). La lecture TOML existante est gelée et sera réintroduite ultérieurement si nécessaire.
 
@@ -21,8 +21,8 @@ swift run box                 # mode client par défaut
 
 - Transport d’administration unifié: `box admin` s’appuie désormais sur une abstraction commune (socket Unix `~/.box/run/boxd.socket` ou named pipe Windows `\\.\pipe\boxd-admin`) et prend en charge `status`, `ping`, `log-target`, `reload-config` et `stats`.
 - Rechargement dynamique des configurations PLIST serveur/client avec priorité CLI > env > fichier, mise à jour des cibles Puppy (`stderr|stdout|file:`) et journalisation centralisée via `BoxLogging`.
-- Les configurations PLIST par défaut sont générées automatiquement (`~/.box/box.plist`, `~/.box/boxd.plist`) lors du premier lancement avec des valeurs par défaut et un `node_uuid` unique (UUID) propre au client et au serveur; le daemon expose son UUID via `box admin status`.
-- Stockage par défaut: le serveur initialise une hiérarchie `~/.box/queues/` dès le premier démarrage et garantit la présence d’une file `INBOX`; l’appel `box admin status` devra refléter la capacité disque disponible et le nombre de files (minimum 1 grâce à `INBOX`).
+- Un fichier de configuration unique `~/.box/Box.plist` est généré au premier lancement. Il contient trois sections : `common` (UUID de nœud `node_uuid` et UUID d’utilisateur `user_uuid` partagés entre client et serveur), `server` (port, `log_level`, `log_target`, options de transport, `admin_channel`) et `client` (adresse/port par défaut, niveau et cible de log). Client et serveur se synchronisent sur ces identités persistantes et `box admin status` expose le `node_uuid` actif.
+- Stockage persistant: le serveur initialise une hiérarchie `~/.box/queues/` dès le premier démarrage, garantit la présence d’une file `INBOX` et persiste chaque message sous forme de fichier JSON (`timestamp-<uuid>.json`) enrichi avec le couple (`node_id`,`user_id`). `box admin status` et `box admin stats` exposent le chemin racine, le nombre de files (minimum 1 grâce à `INBOX`), le nombre d’objets et l’espace disque libre disponible.
 - Tests Swift couvrant les commandes d’administration côté répartiteur (`BoxAdminDispatcherTests`) et les parcours ping/log-target/reload-config via socket Unix (`BoxAdminIntegrationTests`). Les prochains jalons porteront sur des tests d’intégration CLI↔️serveur et la réintégration Noise/libsodium.
 
 ### Exemples (Swift cleartext)
@@ -51,9 +51,12 @@ Les logs indiquent la progression HELLO → STATUS → action. Les réponses GET
 
 ### Configuration (PLIST)
 
-- Serveur: `~/.box/boxd.plist` (CLI `--config` pour personnaliser le chemin). Exemples de clés : `port` (UInt16), `log_level` (`trace|debug|info|warn|error|critical`), `log_target` (`stderr|stdout|file:/chemin`), `transport`, `pre_share_key`, `noise_pattern`, `admin_channel` (booléen).
-- Client: `~/.box/box.plist` (chargé si présent). Clés actuelles: `log_level`, `log_target`, `address`, `port`. Priorité des sources: CLI > PLIST > défauts.
-- Priorité des sources (serveur): CLI `--port` > variable d’environnement `BOXD_PORT` > PLIST > valeur par défaut `12567`.
+- Fichier unique: `~/.box/Box.plist` (surcharge via `--config`). Structure :
+  - `common`: `node_uuid` et `user_uuid` (UUID générés au premier lancement et réutilisés par le client comme par le serveur).
+  - `server`: `port`, `log_level`, `log_target`, paramètres de transport (`transport`, `transport_status`, `transport_put`, `transport_get`), `admin_channel`, options Noise futures.
+  - `client`: `address`, `port`, `log_level`, `log_target` par défaut pour le mode client.
+- Priorité des sources: CLI > variables d’environnement (`BOXD_PORT` pour le port serveur) > PLIST > valeurs par défaut (adresse `0.0.0.0` côté serveur, `127.0.0.1` côté client, port `12567`).
+- Les identifiants `node_uuid`/`user_uuid` sont consumés pour signer chaque trame réseau (via `BoxCodec`).
 - Un répertoire `~/.box` est créé au démarrage avec permissions strictes (`0700`) ainsi que `~/.box/run` (`0700`) pour héberger le socket admin (`0600`). Les journaux utilisent Puppy (`stderr` par défaut, configurable vers `stdout` ou un fichier).
 
 ### Commandes d’administration
@@ -173,28 +176,6 @@ Observation attendue (logs):
 
 Remarques:
 - Le chiffrement (Noise + XChaCha) repose aujourd’hui sur un pré-partage simple (`--pre-share-key`). La dérivation NK/IK est en cours d’industrialisation. Voir DEVELOPMENT_STRATEGY.md.
-
-### Configuration
-
-Fichier optionnel: `~/.box/boxd.toml` (Unix/macOS). Clés reconnues:
-
-```
-port = 12567
-log_level = "info"    # trace|debug|info|warn|error
-log_target = "syslog"  # stderr|syslog|oslog|eventlog|file:/path
-protocol = "simple"    # simple|v1
-transport = "clear"    # clear|noise (général)
-transport_status = "clear"
-transport_put = "clear"
-transport_get = "clear"
-```
-
-Priorité des sources (port, niveau et cible de log):
-
-- CLI (`--port`, `--log-level`, `--log-target`)
-- Variables d’environnement (ex: `BOXD_PORT` pour le port)
-- Fichier `~/.box/boxd.toml`
-- Valeurs par défaut
 
 ## Conventions
 

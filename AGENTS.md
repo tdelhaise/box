@@ -33,7 +33,7 @@ Coding Conventions (highlights)
 - Naming: `BF` prefix for library symbols; explicit variable/parameter names (avoid abbreviations like `buffer`, `address`, `pointer`, `index`, etc. are required; abbreviations like `buf`, `addr`, `ptr`, `idx` are forbidden). See CODE_CONVENTIONS.md.
 - Security posture: default‑deny ACLs, adhere to Noise + XChaCha crypto roadmap, and follow non‑root policy.
 - Admin channel (Unix/Windows): socket `~/.box/run/boxd.socket` ou named pipe `\\.\pipe\boxd-admin`, commandes `status|ping|log-target|reload-config|stats` via `box admin …`.
-- Config PLIST defaults: le client et le serveur créent automatiquement `~/.box/box.plist` et `~/.box/boxd.plist` avec un `node_uuid` dédié s’ils n’existent pas (ne supprimez jamais ces fichiers côté agent).
+- Config PLIST defaults: un fichier unique `~/.box/Box.plist` est généré avec les sections `common` (UUID de nœud et d’utilisateur partagés), `server` et `client`. Ne supprimez jamais ce fichier côté agent.
 - Stockage: les files résident dans `~/.box/queues/`; assurez-vous que `INBOX/` reste présent (les tests/implémentations doivent échouer si la création échoue).
 
 Platform Notes

@@ -21,11 +21,16 @@ final class BoxAppTests: XCTestCase {
     func testFrameRoundTrip() throws {
         var payload = ByteBufferAllocator().buffer(capacity: 0)
         payload.writeString("test")
-        let frame = BoxCodec.Frame(command: .status, requestId: 42, payload: payload)
+        let requestId = UUID()
+        let nodeId = UUID()
+        let userId = UUID()
+        let frame = BoxCodec.Frame(command: .status, requestId: requestId, nodeId: nodeId, userId: userId, payload: payload)
         var encoded = BoxCodec.encodeFrame(frame, allocator: ByteBufferAllocator())
         let decoded = try BoxCodec.decodeFrame(from: &encoded)
         XCTAssertEqual(decoded.command, .status)
-        XCTAssertEqual(decoded.requestId, 42)
+        XCTAssertEqual(decoded.requestId, requestId)
+        XCTAssertEqual(decoded.nodeId, nodeId)
+        XCTAssertEqual(decoded.userId, userId)
         XCTAssertEqual(decoded.payload.getString(at: 0, length: decoded.payload.readableBytes), "test")
     }
 

@@ -31,11 +31,11 @@ S2 — Networking Parity (Cleartext)
   Progress: `BoxCodec` fournit le framing réutilisable; `BoxServer` et `BoxClient` gèrent HELLO → STATUS → PUT/GET en SwiftNIO avec stockage mémoire.
 
 S3 — Configuration & Admin Channel
-- Lire les fichiers PLIST (`~/.box/box.plist` / `~/.box/boxd.plist`) avec `PropertyListDecoder`, conserver la priorité CLI/env.
+- Lire un fichier PLIST unique (`~/.box/Box.plist`) structuré en sections `common`/`server`/`client` avec `PropertyListDecoder`, conserver la priorité CLI/env.
 - Recréer le socket d’administration Unix, refuser l’exécution en root et gérer les répertoires `~/.box`.
 - Exit: `box --server` expose `status` sur le canal admin; non-root enforcement vérifié.
-  Progress: chargement PLIST serveur avec priorité CLI/env, enforcement non-root, création des répertoires `~/.box`/`run`, socket admin `status` opérationnel, commandes `box admin status|ping|log-target|reload-config|stats` effectives (reload relit le PLIST, met à jour log level/target et persiste la configuration), bascule de la journalisation sur Puppy (`stderr|stdout|file`) et lecture/écriture automatique des PLIST client/serveur (`~/.box/box.plist`, `~/.box/boxd.plist`) avec génération d’un `node_uuid` unique par rôle. Transport admin abstrait (socket Unix ou named pipe Windows) avec CLI/serveur alignés et ACL restreintes côté Windows. Restent à couvrir : tests d’intégration CLI↔️serveur.
-  Next: initialiser le répertoire `~/.box/queues/`, créer la file `INBOX` au premier démarrage et exposer via l’admin channel la capacité disque disponible et le nombre de files.
+  Progress: configuration `BoxConfiguration` unifiée (`~/.box/Box.plist`) avec sections `common` (UUID nœud/utilisateur), `server` et `client`, génération automatique des identités persistantes, priorité CLI/env conservée. Canal admin opérationnel (`status|ping|log-target|reload-config|stats`), enforcement non-root, répertoires `~/.box`/`run` sécurisés. Stockage persistant sur disque via `BoxServerStore` (fichiers JSON par message, file `INBOX` créée automatiquement) et exposition des métriques (`queueRoot`, `queueCount`, `objects`, espace libre) dans `status`/`stats`. Les trames réseau incluent désormais `request_id`, `node_id`, `user_id` sous forme d’UUID.
+  Next: couvrir via tests d’intégration end-to-end CLI↔️serveur (PUT/GET persistants), préparer la réintégration Noise/libsodium (S4) et introduire la validation ACL côté Swift.
 
 S4 — Crypto Reintegration
 - Intégrer libsodium via un module Swift (bindings) et rétablir le transport Noise NK/IK.

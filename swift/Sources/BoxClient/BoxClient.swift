@@ -1,4 +1,5 @@
 import BoxCore
+import Foundation
 import Logging
 import NIOConcurrencyHelpers
 import NIOCore
@@ -24,7 +25,9 @@ public enum BoxClient {
                     action: options.clientAction,
                     logger: logger,
                     allocator: channel.allocator,
-                    eventLoop: channel.eventLoop
+                    eventLoop: channel.eventLoop,
+                    nodeId: options.nodeId,
+                    userId: options.userId
                 )
                 completionHolder.withLockedValue { storage in
                     storage = handler.completionFuture
@@ -103,8 +106,10 @@ final class BoxClientHandler: ChannelInboundHandler {
     var completionFuture: EventLoopFuture<Void> {
         completionPromise.futureResult
     }
-    /// Monotonic request identifier generator.
-    private var requestIdentifier: UInt64 = 1
+    /// Node identifier used for outbound frames.
+    private let nodeId: UUID
+    /// User identifier used for outbound frames.
+    private let userId: UUID
     /// Internal stage tracker.
     private var stage: Stage = .waitingForHello
 
@@ -115,18 +120,24 @@ final class BoxClientHandler: ChannelInboundHandler {
     ///   - logger: Logger used for diagnostics.
     ///   - allocator: Channel allocator used to build frames.
     ///   - eventLoop: Event loop owning the handler for promise creation.
+    ///   - nodeId: Node identifier propagated over the wire.
+    ///   - userId: User identifier propagated over the wire.
     init(
         remoteAddress: SocketAddress,
         action: BoxClientAction,
         logger: Logger,
         allocator: ByteBufferAllocator,
-        eventLoop: EventLoop
+        eventLoop: EventLoop,
+        nodeId: UUID,
+        userId: UUID
     ) {
         self.remoteAddress = remoteAddress
         self.action = action
         self.logger = logger
         self.allocator = allocator
         self.completionPromise = eventLoop.makePromise(of: Void.self)
+        self.nodeId = nodeId
+        self.userId = userId
     }
 
     /// Sends the initial HELLO when the channel becomes active.
@@ -162,7 +173,7 @@ final class BoxClientHandler: ChannelInboundHandler {
         do {
             let payload = try BoxCodec.encodeHelloPayload(status: .ok, versions: [1], allocator: allocator)
             send(
-                frame: BoxCodec.Frame(command: .hello, requestId: nextRequestId(), payload: payload),
+                frame: BoxCodec.Frame(command: .hello, requestId: nextRequestId(), nodeId: nodeId, userId: userId, payload: payload),
                 context: context
             )
             stage = .waitingForHello
@@ -204,7 +215,7 @@ final class BoxClientHandler: ChannelInboundHandler {
 
         let statusPayload = BoxCodec.encodeStatusPayload(status: .ok, message: "ping", allocator: allocator)
         send(
-            frame: BoxCodec.Frame(command: .status, requestId: nextRequestId(), payload: statusPayload),
+            frame: BoxCodec.Frame(command: .status, requestId: nextRequestId(), nodeId: nodeId, userId: userId, payload: statusPayload),
             context: context
         )
         stage = .waitingForStatus
@@ -227,7 +238,7 @@ final class BoxClientHandler: ChannelInboundHandler {
             let putPayload = BoxCodec.PutPayload(queuePath: queuePath, contentType: contentType, data: data)
             let buffer = BoxCodec.encodePutPayload(putPayload, allocator: allocator)
             send(
-                frame: BoxCodec.Frame(command: .put, requestId: nextRequestId(), payload: buffer),
+                frame: BoxCodec.Frame(command: .put, requestId: nextRequestId(), nodeId: nodeId, userId: userId, payload: buffer),
                 context: context
             )
             stage = .waitingForPutAck
@@ -235,7 +246,7 @@ final class BoxClientHandler: ChannelInboundHandler {
             let getPayload = BoxCodec.GetPayload(queuePath: queuePath)
             let buffer = BoxCodec.encodeGetPayload(getPayload, allocator: allocator)
             send(
-                frame: BoxCodec.Frame(command: .get, requestId: nextRequestId(), payload: buffer),
+                frame: BoxCodec.Frame(command: .get, requestId: nextRequestId(), nodeId: nodeId, userId: userId, payload: buffer),
                 context: context
             )
             stage = .waitingForGetResponse
@@ -293,9 +304,8 @@ final class BoxClientHandler: ChannelInboundHandler {
     }
 
     /// Allocates the next request identifier (monotonic increment).
-    private func nextRequestId() -> UInt64 {
-        defer { requestIdentifier &+= 1 }
-        return requestIdentifier
+    private func nextRequestId() -> UUID {
+        UUID()
     }
 
     /// Completes the promise successfully and closes the channel.

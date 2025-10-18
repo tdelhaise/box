@@ -1,82 +1,251 @@
 import Foundation
 import Logging
 
-/// Runtime representation of the server configuration loaded from a PLIST file.
-public struct BoxServerConfiguration: Sendable {
-    /// Port override when present.
-    public var port: UInt16?
-    /// Logging level override when present.
-    public var logLevel: Logger.Level?
-    /// Log target string determining the Puppy destination (`stderr|stdout|file:/path`).
-    public var logTarget: String?
-    /// General transport toggle (`clear` or `noise`).
-    public var transportGeneral: String?
-    /// Transport override for STATUS commands.
-    public var transportStatus: String?
-    /// Transport override for PUT commands.
-    public var transportPut: String?
-    /// Transport override for GET commands.
-    public var transportGet: String?
-    /// Pre-shared key ASCII string configured for the Noise scaffold.
-    public var preShareKey: String?
-    /// Noise handshake pattern (`nk`, `ik`, ...).
-    public var noisePattern: String?
-    /// Optional flag enabling/disabling the admin channel.
-    public var adminChannelEnabled: Bool?
-    /// Stable node UUID persisted on disk.
-    public var nodeUUID: UUID
+/// Represents the merged Box configuration loaded from `Box.plist`.
+public struct BoxConfiguration: Sendable {
+    /// Common identifiers shared between the client and the server.
+    public struct Common: Sendable {
+        /// Stable identifier of the local machine on the Box network.
+        public var nodeUUID: UUID
+        /// Stable identifier of the user on whose behalf the machine operates.
+        public var userUUID: UUID
+    }
 
-    /// Attempts to load the server configuration from a PLIST file.
+    /// Nested configuration specific to the server runtime.
+    public struct Server: Sendable {
+        public var port: UInt16?
+        public var logLevel: Logger.Level?
+        public var logTarget: String?
+        public var transportGeneral: String?
+        public var transportStatus: String?
+        public var transportPut: String?
+        public var transportGet: String?
+        public var preShareKey: String?
+        public var noisePattern: String?
+        public var adminChannelEnabled: Bool?
+
+        public init(
+            port: UInt16? = nil,
+            logLevel: Logger.Level? = nil,
+            logTarget: String? = nil,
+            transportGeneral: String? = nil,
+            transportStatus: String? = nil,
+            transportPut: String? = nil,
+            transportGet: String? = nil,
+            preShareKey: String? = nil,
+            noisePattern: String? = nil,
+            adminChannelEnabled: Bool? = nil
+        ) {
+            self.port = port
+            self.logLevel = logLevel
+            self.logTarget = logTarget
+            self.transportGeneral = transportGeneral
+            self.transportStatus = transportStatus
+            self.transportPut = transportPut
+            self.transportGet = transportGet
+            self.preShareKey = preShareKey
+            self.noisePattern = noisePattern
+            self.adminChannelEnabled = adminChannelEnabled
+        }
+    }
+
+    /// Nested configuration specific to the client runtime.
+    public struct Client: Sendable {
+        public var logLevel: Logger.Level?
+        public var logTarget: String?
+        public var address: String?
+        public var port: UInt16?
+
+        public init(
+            logLevel: Logger.Level? = nil,
+            logTarget: String? = nil,
+            address: String? = nil,
+            port: UInt16? = nil
+        ) {
+            self.logLevel = logLevel
+            self.logTarget = logTarget
+            self.address = address
+            self.port = port
+        }
+    }
+
+    /// Common section shared by every runtime.
+    public var common: Common
+    /// Server-specific section.
+    public var server: Server
+    /// Client-specific section.
+    public var client: Client
+
+    public init(common: Common, server: Server, client: Client) {
+        self.common = common
+        self.server = server
+        self.client = client
+    }
+}
+
+/// Result returned when loading a configuration from disk.
+public struct BoxConfigurationLoadResult: Sendable {
+    /// Parsed configuration.
+    public var configuration: BoxConfiguration
+    /// Location of the configuration file on disk.
+    public var url: URL
+    /// Indicates whether the file was created (or fully rewritten) during the load process.
+    public var wasCreated: Bool
+}
+
+public extension BoxConfiguration {
+    /// Loads the configuration from disk, creating a default one when missing.
     /// - Parameter url: Location of the PLIST file.
-    /// - Returns: A configuration instance when decoding succeeds, otherwise `nil`.
-    public static func load(from url: URL) throws -> BoxServerConfiguration? {
-        if !FileManager.default.fileExists(atPath: url.path) {
-            return try writeDefaultServerConfiguration(to: url)
+    /// - Returns: Parsed configuration alongside metadata describing creation status.
+    static func load(from url: URL) throws -> BoxConfigurationLoadResult {
+        let fileManager = FileManager.default
+        var wasCreated = false
+
+        if !fileManager.fileExists(atPath: url.path) {
+            let defaultPlist = ConfigurationPlist.default()
+            try persist(plist: defaultPlist, to: url)
+            wasCreated = true
         }
 
         let data = try Data(contentsOf: url)
         if data.isEmpty {
-            return try writeDefaultServerConfiguration(to: url)
+            let defaultPlist = ConfigurationPlist.default()
+            try persist(plist: defaultPlist, to: url)
+            return BoxConfigurationLoadResult(
+                configuration: BoxConfiguration(plist: defaultPlist),
+                url: url,
+                wasCreated: true
+            )
         }
 
         let decoder = PropertyListDecoder()
-        var plist = try decoder.decode(ServerConfigPlist.self, from: data)
+        var plist = try decoder.decode(ConfigurationPlist.self, from: data)
         var mutated = false
-        if plist.nodeUUID == nil || UUID(uuidString: plist.nodeUUID ?? "") == nil {
-            plist.nodeUUID = UUID().uuidString
+
+        if plist.common == nil {
+            plist.common = ConfigurationPlist.Common(
+                nodeUUID: UUID().uuidString,
+                userUUID: UUID().uuidString
+            )
+            mutated = true
+        } else {
+            if let node = plist.common?.nodeUUID.flatMap(UUID.init(uuidString:)).map({ $0.uuidString }) {
+                plist.common?.nodeUUID = node
+            } else {
+                plist.common?.nodeUUID = UUID().uuidString
+                mutated = true
+            }
+            if let user = plist.common?.userUUID.flatMap(UUID.init(uuidString:)).map({ $0.uuidString }) {
+                plist.common?.userUUID = user
+            } else {
+                plist.common?.userUUID = UUID().uuidString
+                mutated = true
+            }
+        }
+
+        if plist.client == nil {
+            plist.client = ConfigurationPlist.Client.default()
             mutated = true
         }
+        if plist.server == nil {
+            plist.server = ConfigurationPlist.Server.default()
+            mutated = true
+        }
+
         if mutated {
             try persist(plist: plist, to: url)
         }
-        return BoxServerConfiguration(plist: plist)
+
+        return BoxConfigurationLoadResult(
+            configuration: BoxConfiguration(plist: plist),
+            url: url,
+            wasCreated: wasCreated
+        )
     }
 
-    /// Convenience helper loading the default server configuration if present.
-    /// - Parameter explicitPath: Optional CLI `--config` path that should take precedence.
-    /// - Returns: A configuration instance when decoding succeeds, otherwise `nil`.
-    public static func loadDefault(explicitPath: String?) throws -> BoxServerConfiguration? {
-        guard let url = BoxPaths.serverConfigurationURL(explicitPath: explicitPath) else {
+    /// Loads the configuration from the default path, falling back to `Box.plist` under `~/.box`.
+    /// - Parameter explicitPath: Optional CLI supplied path.
+    /// - Returns: Parsed configuration when the location could be resolved.
+    static func loadDefault(explicitPath: String?) throws -> BoxConfigurationLoadResult? {
+        guard let url = BoxPaths.configurationURL(explicitPath: explicitPath) else {
             return nil
         }
         return try load(from: url)
     }
+}
 
-    private init(plist: ServerConfigPlist) {
-        self.port = plist.port
-        self.logLevel = plist.logLevel.flatMap { Logger.Level(logLevelString: $0) }
-        self.logTarget = plist.logTarget
-        self.transportGeneral = plist.transport
-        self.transportStatus = plist.transportStatus
-        self.transportPut = plist.transportPut
-        self.transportGet = plist.transportGet
-        self.preShareKey = plist.preShareKey
-        self.noisePattern = plist.noisePattern
-        self.adminChannelEnabled = plist.adminChannelEnabled
-        self.nodeUUID = UUID(uuidString: plist.nodeUUID ?? "") ?? UUID()
+// MARK: - Codable plumbing
+
+private extension BoxConfiguration {
+    init(plist: ConfigurationPlist) {
+        let commonSection = plist.common ?? ConfigurationPlist.Common(nodeUUID: UUID().uuidString, userUUID: UUID().uuidString)
+        let nodeUUID = commonSection.nodeUUID.flatMap(UUID.init(uuidString:)) ?? UUID()
+        let userUUID = commonSection.userUUID.flatMap(UUID.init(uuidString:)) ?? UUID()
+        self.common = Common(nodeUUID: nodeUUID, userUUID: userUUID)
+
+        let serverSection = plist.server ?? ConfigurationPlist.Server.default()
+        self.server = Server(
+            port: serverSection.port,
+            logLevel: serverSection.logLevel.flatMap { Logger.Level(logLevelString: $0) },
+            logTarget: serverSection.logTarget,
+            transportGeneral: serverSection.transport,
+            transportStatus: serverSection.transportStatus,
+            transportPut: serverSection.transportPut,
+            transportGet: serverSection.transportGet,
+            preShareKey: serverSection.preShareKey,
+            noisePattern: serverSection.noisePattern,
+            adminChannelEnabled: serverSection.adminChannelEnabled
+        )
+
+        let clientSection = plist.client ?? ConfigurationPlist.Client.default()
+        self.client = Client(
+            logLevel: clientSection.logLevel.flatMap { Logger.Level(logLevelString: $0) },
+            logTarget: clientSection.logTarget,
+            address: clientSection.address,
+            port: clientSection.port
+        )
     }
 
-    private struct ServerConfigPlist: Codable {
+    func makePlist() -> ConfigurationPlist {
+        ConfigurationPlist(
+            common: ConfigurationPlist.Common(
+                nodeUUID: common.nodeUUID.uuidString.uppercased(),
+                userUUID: common.userUUID.uuidString.uppercased()
+            ),
+            server: ConfigurationPlist.Server(
+                port: server.port,
+                logLevel: server.logLevel?.rawValue,
+                logTarget: server.logTarget,
+                transport: server.transportGeneral,
+                transportStatus: server.transportStatus,
+                transportPut: server.transportPut,
+                transportGet: server.transportGet,
+                preShareKey: server.preShareKey,
+                noisePattern: server.noisePattern,
+                adminChannelEnabled: server.adminChannelEnabled
+            ),
+            client: ConfigurationPlist.Client(
+                logLevel: client.logLevel?.rawValue,
+                logTarget: client.logTarget,
+                address: client.address,
+                port: client.port
+            )
+        )
+    }
+}
+
+private struct ConfigurationPlist: Codable {
+    struct Common: Codable {
+        var nodeUUID: String?
+        var userUUID: String?
+
+        enum CodingKeys: String, CodingKey {
+            case nodeUUID = "node_uuid"
+            case userUUID = "user_uuid"
+        }
+    }
+
+    struct Server: Codable {
         var port: UInt16?
         var logLevel: String?
         var logTarget: String?
@@ -87,7 +256,6 @@ public struct BoxServerConfiguration: Sendable {
         var preShareKey: String?
         var noisePattern: String?
         var adminChannelEnabled: Bool?
-        var nodeUUID: String?
 
         enum CodingKeys: String, CodingKey {
             case port
@@ -100,129 +268,93 @@ public struct BoxServerConfiguration: Sendable {
             case preShareKey = "pre_share_key"
             case noisePattern = "noise_pattern"
             case adminChannelEnabled = "admin_channel"
-            case nodeUUID = "node_uuid"
+        }
+
+        static func `default`() -> Server {
+            Server(
+                port: BoxRuntimeOptions.defaultPort,
+                logLevel: Logger.Level.info.rawValue,
+                logTarget: BoxRuntimeOptions.defaultLogTarget.description,
+                transport: "clear",
+                transportStatus: nil,
+                transportPut: nil,
+                transportGet: nil,
+                preShareKey: nil,
+                noisePattern: nil,
+                adminChannelEnabled: true
+            )
         }
     }
 
-    private static func writeDefaultServerConfiguration(to url: URL) throws -> BoxServerConfiguration {
-        let defaultPlist = ServerConfigPlist(
-            port: BoxRuntimeOptions.defaultPort,
-            logLevel: Logger.Level.info.rawValue,
-            logTarget: "stderr",
-            transport: "clear",
-            transportStatus: nil,
-            transportPut: nil,
-            transportGet: nil,
-            preShareKey: nil,
-            noisePattern: nil,
-            adminChannelEnabled: true,
-            nodeUUID: UUID().uuidString
-        )
-        try persist(plist: defaultPlist, to: url)
-        return BoxServerConfiguration(plist: defaultPlist)
-    }
-
-    private static func persist(plist: ServerConfigPlist, to url: URL) throws {
-        let encoder = PropertyListEncoder()
-        encoder.outputFormat = .xml
-        let data = try encoder.encode(plist)
-        try ensureConfigurationParentDirectoryExists(for: url)
-        try data.write(to: url, options: .atomic)
-        #if !os(Windows)
-        try FileManager.default.setAttributes([.posixPermissions: NSNumber(value: Int16(0o600))], ofItemAtPath: url.path)
-        #endif
-    }
-}
-
-/// Runtime representation of the client configuration loaded from a PLIST file.
-public struct BoxClientConfiguration: Sendable {
-    /// Logging level override when present.
-    public var logLevel: Logger.Level?
-    /// Logging target string.
-    public var logTarget: String?
-    /// Default server address override.
-    public var address: String?
-    /// Default server port override.
-    public var port: UInt16?
-    /// Stable node UUID persisted on disk for this client instance.
-    public var nodeUUID: UUID?
-
-    /// Attempts to load the client configuration from a PLIST file.
-    public static func load(from url: URL) throws -> BoxClientConfiguration? {
-        if !FileManager.default.fileExists(atPath: url.path) {
-            return try writeDefaultClientConfiguration(to: url)
-        }
-        let data = try Data(contentsOf: url)
-        if data.isEmpty {
-            return try writeDefaultClientConfiguration(to: url)
-        }
-        let decoder = PropertyListDecoder()
-        var plist = try decoder.decode(ClientConfigPlist.self, from: data)
-        var mutated = false
-        if plist.nodeUUID == nil || UUID(uuidString: plist.nodeUUID ?? "") == nil {
-            plist.nodeUUID = UUID().uuidString
-            mutated = true
-        }
-        if mutated {
-            try persist(plist: plist, to: url)
-        }
-        return BoxClientConfiguration(plist: plist)
-    }
-
-    /// Convenience helper loading the default client configuration if present.
-    /// - Parameter explicitPath: Optional CLI `--config` path that should take precedence.
-    public static func loadDefault(explicitPath: String?) throws -> BoxClientConfiguration? {
-        guard let url = BoxPaths.clientConfigurationURL(explicitPath: explicitPath) else {
-            return nil
-        }
-        return try load(from: url)
-    }
-
-    private init(plist: ClientConfigPlist) {
-        self.logLevel = plist.logLevel.flatMap { Logger.Level(logLevelString: $0) }
-        self.logTarget = plist.logTarget
-        self.address = plist.address
-        self.port = plist.port
-        self.nodeUUID = plist.nodeUUID.flatMap { UUID(uuidString: $0) }
-    }
-
-    private struct ClientConfigPlist: Codable {
+    struct Client: Codable {
         var logLevel: String?
         var logTarget: String?
         var address: String?
         var port: UInt16?
-        var nodeUUID: String?
 
         enum CodingKeys: String, CodingKey {
             case logLevel = "log_level"
             case logTarget = "log_target"
             case address
             case port
-            case nodeUUID = "node_uuid"
+        }
+
+        static func `default`() -> Client {
+            Client(
+                logLevel: Logger.Level.info.rawValue,
+                logTarget: BoxRuntimeOptions.defaultLogTarget.description,
+                address: BoxRuntimeOptions.defaultClientAddress,
+                port: BoxRuntimeOptions.defaultPort
+            )
         }
     }
 
-    private static func writeDefaultClientConfiguration(to url: URL) throws -> BoxClientConfiguration {
-        let defaultPlist = ClientConfigPlist(
-            logLevel: Logger.Level.info.rawValue,
-            logTarget: "stderr",
-            address: BoxRuntimeOptions.defaultClientAddress,
-            port: BoxRuntimeOptions.defaultPort,
-            nodeUUID: UUID().uuidString
-        )
-        try persist(plist: defaultPlist, to: url)
-        return BoxClientConfiguration(plist: defaultPlist)
-    }
+    var common: Common?
+    var server: Server?
+    var client: Client?
 
-    private static func persist(plist: ClientConfigPlist, to url: URL) throws {
-        let encoder = PropertyListEncoder()
-        encoder.outputFormat = .xml
-        let data = try encoder.encode(plist)
-        try ensureConfigurationParentDirectoryExists(for: url)
-        try data.write(to: url, options: .atomic)
-        #if !os(Windows)
-        try FileManager.default.setAttributes([.posixPermissions: NSNumber(value: Int16(0o600))], ofItemAtPath: url.path)
-        #endif
+    static func `default`() -> ConfigurationPlist {
+        ConfigurationPlist(
+            common: Common(
+                nodeUUID: UUID().uuidString,
+                userUUID: UUID().uuidString
+            ),
+            server: Server.default(),
+            client: Client.default()
+        )
+    }
+}
+
+private extension BoxLogTarget {
+    /// Provides a serialisable representation suitable for plist storage.
+    var description: String {
+        switch self {
+        case .stderr:
+            return "stderr"
+        case .stdout:
+            return "stdout"
+        case .file(let path):
+            return "file:\(path)"
+        }
+    }
+}
+
+private func persist(plist: ConfigurationPlist, to url: URL) throws {
+    let encoder = PropertyListEncoder()
+    encoder.outputFormat = .xml
+    let data = try encoder.encode(plist)
+    try ensureConfigurationParentDirectoryExists(for: url)
+    try data.write(to: url, options: .atomic)
+#if !os(Windows)
+    try FileManager.default.setAttributes([.posixPermissions: NSNumber(value: Int16(0o600))], ofItemAtPath: url.path)
+#endif
+}
+
+public extension BoxConfiguration {
+    /// Persists the configuration back to disk.
+    /// - Parameter url: Destination path.
+    func save(to url: URL) throws {
+        try persist(plist: makePlist(), to: url)
     }
 }
 
@@ -232,10 +364,10 @@ private func ensureConfigurationParentDirectoryExists(for url: URL) throws {
     if FileManager.default.fileExists(atPath: directoryURL.path, isDirectory: &isDirectory), isDirectory.boolValue {
         return
     }
-    #if !os(Windows)
+#if !os(Windows)
     let attributes: [FileAttributeKey: Any]? = [.posixPermissions: NSNumber(value: Int16(0o700))]
-    #else
+#else
     let attributes: [FileAttributeKey: Any]? = nil
-    #endif
+#endif
     try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true, attributes: attributes)
 }

@@ -32,24 +32,28 @@ public enum BoxPaths {
         boxDirectory()?.appendingPathComponent("run", isDirectory: true)
     }
 
+    /// Resolves the shared configuration path (`~/.box/Box.plist`), using an explicit CLI path when provided.
+    /// - Parameter explicitPath: Optional path passed by the user.
+    /// - Returns: URL to the configuration file or `nil` when it cannot be determined.
+    public static func configurationURL(explicitPath: String?) -> URL? {
+        if let explicitPath, !explicitPath.isEmpty {
+            return URL(fileURLWithPath: NSString(string: explicitPath).expandingTildeInPath)
+        }
+        return boxDirectory()?.appendingPathComponent("Box.plist", isDirectory: false)
+    }
+
     /// Resolves the server configuration path, using an explicit CLI path when provided.
     /// - Parameter explicitPath: Optional path passed by the user.
     /// - Returns: URL to the configuration file or `nil` when it cannot be determined.
     public static func serverConfigurationURL(explicitPath: String?) -> URL? {
-        if let explicitPath, !explicitPath.isEmpty {
-            return URL(fileURLWithPath: NSString(string: explicitPath).expandingTildeInPath)
-        }
-        return boxDirectory()?.appendingPathComponent("boxd.plist", isDirectory: false)
+        configurationURL(explicitPath: explicitPath)
     }
 
     /// Resolves the client configuration path, using an explicit CLI path when provided.
     /// - Parameter explicitPath: Optional path passed by the user.
     /// - Returns: URL to the configuration file or `nil` when it cannot be determined.
     public static func clientConfigurationURL(explicitPath: String?) -> URL? {
-        if let explicitPath, !explicitPath.isEmpty {
-            return URL(fileURLWithPath: NSString(string: explicitPath).expandingTildeInPath)
-        }
-        return boxDirectory()?.appendingPathComponent("box.plist", isDirectory: false)
+        configurationURL(explicitPath: explicitPath)
     }
 
     /// Resolves the root directory storing queue data (`~/.box/queues`).

@@ -37,37 +37,27 @@ final class BoxAdminIntegrationTests: XCTestCase {
         let nodeUUIDString = statusJSON["nodeUUID"] as? String
         XCTAssertNotNil(nodeUUIDString)
         XCTAssertNotNil(nodeUUIDString.flatMap(UUID.init(uuidString:)))
+        let userUUIDString = statusJSON["userUUID"] as? String
+        XCTAssertNotNil(userUUIDString)
+        XCTAssertNotNil(userUUIDString.flatMap(UUID.init(uuidString:)))
         let queueCount = (statusJSON["queueCount"] as? NSNumber)?.intValue ?? 0
         XCTAssertGreaterThanOrEqual(queueCount, 1)
+        XCTAssertNotNil(statusJSON["objects"] as? NSNumber)
         XCTAssertEqual(statusJSON["queueRoot"] as? String, context.homeDirectory.appendingPathComponent(".box/queues").path)
         XCTAssertNotNil(statusJSON["queueFreeBytes"] as? NSNumber)
     }
 
     func testReloadConfigUpdatesLogLevel() async throws {
-        let config = try PropertyListSerialization.data(
-            fromPropertyList: [
-                "log_level": "info",
-                "admin_channel": true
-            ],
-            format: .xml,
-            options: 0
-        )
-
-        let context = try await startServer(configurationData: config)
+        let context = try await startServer()
         defer { context.tearDown() }
 
         try await context.waitForAdminSocket()
         let transport = BoxAdminTransportFactory.makeTransport(socketPath: context.socketPath)
 
-        let updatedConfig = try PropertyListSerialization.data(
-            fromPropertyList: [
-                "log_level": "debug",
-                "admin_channel": true
-            ],
-            format: .xml,
-            options: 0
-        )
-        try updatedConfig.write(to: context.configurationURL)
+        let configurationResult = try BoxConfiguration.load(from: context.configurationURL)
+        var configuration = configurationResult.configuration
+        configuration.server.logLevel = .debug
+        try configuration.save(to: context.configurationURL)
 
         let reloadResponse = try transport.send(command: "reload-config {\"path\":\"\(context.configurationURL.path)\"}")
         let reloadJSON = try decodeJSON(reloadResponse)
@@ -76,6 +66,7 @@ final class BoxAdminIntegrationTests: XCTestCase {
         XCTAssertEqual(reloadJSON["logLevelOrigin"] as? String, "configuration")
         let reloadedNodeUUID = reloadJSON["nodeUUID"] as? String
         XCTAssertNotNil(reloadedNodeUUID)
+        XCTAssertEqual(reloadJSON["userUUID"] as? String, configuration.common.userUUID.uuidString)
 
         let statsResponse = try transport.send(command: "stats")
         let statsJSON = try decodeJSON(statsResponse)
@@ -83,6 +74,7 @@ final class BoxAdminIntegrationTests: XCTestCase {
         XCTAssertEqual(statsJSON["logLevelOrigin"] as? String, "configuration")
         let statsQueueCount = (statsJSON["queueCount"] as? NSNumber)?.intValue ?? 0
         XCTAssertGreaterThanOrEqual(statsQueueCount, 1)
+        XCTAssertNotNil(statsJSON["objects"] as? NSNumber)
         XCTAssertNotNil(statsJSON["queueFreeBytes"] as? NSNumber)
 
         let verificationLogger = Logger(label: "box.integration.reload")
@@ -93,6 +85,7 @@ final class BoxAdminIntegrationTests: XCTestCase {
         XCTAssertEqual(statusAfter["logLevel"] as? String, "debug")
         XCTAssertEqual(statusNodeUUID, reloadedNodeUUID)
         XCTAssertNotNil(statusNodeUUID.flatMap(UUID.init(uuidString:)))
+        XCTAssertEqual(statusAfter["userUUID"] as? String, configuration.common.userUUID.uuidString)
         let statusAfterQueueCount = (statusAfter["queueCount"] as? NSNumber)?.intValue ?? 0
         XCTAssertGreaterThanOrEqual(statusAfterQueueCount, 1)
         XCTAssertEqual(statusAfter["queueRoot"] as? String, context.homeDirectory.appendingPathComponent(".box/queues").path)
@@ -148,17 +141,19 @@ private struct ServerContext {
 private func startServer(configurationData: Data? = nil) async throws -> ServerContext {
     let tempRoot = URL(fileURLWithPath: "/tmp", isDirectory: true)
     let tempHome = tempRoot.appendingPathComponent("box-tests-\(UUID().uuidString)", isDirectory: true)
+    let originalHome = getenv("HOME").map { String(cString: $0) }
+    setenv("HOME", tempHome.path, 1)
+
     let boxDirectory = tempHome.appendingPathComponent(".box", isDirectory: true)
     let runDirectory = boxDirectory.appendingPathComponent("run", isDirectory: true)
     try FileManager.default.createDirectory(at: runDirectory, withIntermediateDirectories: true)
 
-    let configurationURL = boxDirectory.appendingPathComponent("boxd.plist")
+    let configurationURL = boxDirectory.appendingPathComponent("Box.plist")
     if let configurationData {
         try configurationData.write(to: configurationURL)
     }
-
-    let originalHome = getenv("HOME").map { String(cString: $0) }
-    setenv("HOME", tempHome.path, 1)
+    let configurationResult = try BoxConfiguration.load(from: configurationURL)
+    let configuration = configurationResult.configuration
 
     BoxLogging.bootstrap(level: .info, target: .stderr)
     BoxLogging.update(level: .info)
@@ -169,12 +164,14 @@ private func startServer(configurationData: Data? = nil) async throws -> ServerC
         address: "127.0.0.1",
         port: 0,
         portOrigin: .cliFlag,
-        configurationPath: configurationData == nil ? nil : configurationURL.path,
+        configurationPath: configurationURL.path,
         adminChannelEnabled: true,
         logLevel: .info,
         logTarget: .stderr,
         logLevelOrigin: .default,
-        logTargetOrigin: .default
+        logTargetOrigin: .default,
+        nodeId: configuration.common.nodeUUID,
+        userId: configuration.common.userUUID
     )
 
     let task = Task {

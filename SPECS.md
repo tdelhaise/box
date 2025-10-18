@@ -298,10 +298,9 @@ Resolve by Node UUID
   scaffolded key derivation and replay protection.
 - Server (`boxd`):
   - Enable via CLI: `boxd --transport noise [--pre-share-key <ascii>]`
-  - Or via config `~/.box/boxd.toml`:
-    - `transport = "noise"` (global) or `transport_status = "noise"` (status only)
-    - Optional: `pre_share_key = "devsecret"`
-    - Optional: `noise_pattern = "nk" | "ik"`
+  - Or via la section `server` de `~/.box/Box.plist`:
+    - `<key>transport</key><string>noise</string>` (général) ou `transport_status = noise` pour STATUS uniquement
+    - Optionnel: `pre_share_key`, `noise_pattern` (`nk`|`ik`)
 - Client (`box`):
   - `box <address> [port] --transport noise [--pre-share-key <ascii>]`
   - Optional environment: `BOX_NOISE_PATTERN=nk|ik`
@@ -473,8 +472,10 @@ Send on behalf of a specific sender User UUID:
 - 1 byte: version (current: 1)
 - 4 bytes: total_length of the remainder (uint32)
 - 4 bytes: command (uint32): HELLO=1, PUT=2, GET=3, DELETE=4, STATUS=5, SEARCH=6, BYE=7
-- 8 bytes: request_id (uint64) to correlate replies
-- Remaining: command‑specific payload (usually encrypted AEAD after an initial handshake)
+- 16 bytes: request_id (UUID) to corréler les réponses
+- 16 bytes: node_id (UUID du nœud expéditeur)
+- 16 bytes: user_id (UUID du user pour lequel l’action est effectuée)
+- Remaining: command-specific payload (généralement chiffré via AEAD après la phase HELLO)
 
 Note: Except for the initial HELLO exchange used to establish keys, payloads are AEAD‑encrypted. Command code may remain cleartext for routing.
 
@@ -542,15 +543,17 @@ Header layout (common)
 - Offset 1: version (1)
 - Offset 2–5: total_length (uint32, big‑endian)
 - Offset 6–9: command (uint32)
-- Offset 10–17: request_id (uint64)
-- Offset 18…: command‑specific payload
+- Offset 10–25: request_id (UUID, 16 bytes, big-endian byte order)
+- Offset 26–41: node_id (UUID of the sender)
+- Offset 42–57: user_id (UUID of the user on whose behalf the frame is sent)
+- Offset 58…: command-specific payload
 
 HELLO example
 - Purpose: establish keys; payload typically cleartext, then both sides derive session keys.
 - Payload fields (example): user_uuid (16), node_uuid (16), client_identity_pubkey (32), timestamp (uint64), nonce (24), versions_count (uint8), versions[...] (uint16 each)
 - Example header bytes (hex):
-  42 01 00 00 00 5E 00 00 00 01 00 00 00 00 00 00 00 01
-  Where: magic=42, ver=01, len=0x0000005E (94 bytes payload), cmd=1 (HELLO), req_id=1.
+  42 01 00 00 00 92 00 00 00 01 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F 20 21 22 23 24 25 26 27 28 29 2A 2B 2C 2D 2E 2F
+  Where: magic=42, ver=01, len=0x00000092 (payload 0x5E + 52 bytes d’en-tête), cmd=1 (HELLO), request_id=`00010203-0405-0607-0809-0a0b0c0d0e0f`, node_id=`10111213-1415-1617-1819-1a1b1c1d1e1f`, user_id=`20212223-2425-2627-2829-2a2b2c2d2e2f`.
 - Example payload (JSON for clarity):
   {
     "user_uuid": "507FA643-A2A6-47AF-A09E-E235E9727332",
@@ -575,8 +578,8 @@ PUT example
   - content_type_len = 10, content_type = "text/plain"
   - payload_len = 5, payload = 68 65 6c 6c 6f
 - Example header bytes (hex):
-  42 01 00 00 00 2F 00 00 00 02 00 00 00 00 00 00 00 02
-  Where: magic=42, ver=01, len=0x0000002F (47 bytes logical payload), cmd=2 (PUT), req_id=2.
+  42 01 00 00 00 63 00 00 00 02 AA AA AA AA AA AA AA AA AA AA AA AA AA AA AA BB BB BB BB BB BB BB BB BB BB BB BB BB BB BB CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC
+  Where: len=0x00000063 (47 bytes logique + 52 d’en-tête), cmd=2 (PUT), `request_id`, `node_id`, `user_id` illustrés ici avec des octets `AA`, `BB`, `CC` pour lisibilité.
   Note: Actual on‑wire payload is AEAD ciphertext with nonce and tag per session parameters.
 
 10. Server (`boxd`) Behavior
@@ -584,8 +587,7 @@ PUT example
 - Listen on configurable UDP port; prefer IPv6.
 - Register/update presence in embedded LS on start and periodically (keep‑alive with last_seen). Presence is also published into `/uuid`.
 - Enforce ACLs per queue and per user/node.
-- Persist objects under a storage root: default filesystem layout: `<root>/<user_uuid>/<queue>/<digest>` with metadata sidecar. LS data is also persisted via `/uuid` and `/location` queues.
-- Swift rewrite default root: `~/.box/queues/` (configurable later). The daemon MUST provision this directory on first boot and ensure a writable `INBOX/` queue exists before accepting traffic; failure is fatal.
+- Persist objects sous `~/.box/queues/<queue>/timestamp-UUID.json` (payload base64 + métadonnées incluant `content_type`, `node_id`, `user_id`, `created_at`). Le daemon DOIT provisionner cette hiérarchie au premier démarrage, créer la file `INBOX/` et refuser de démarrer si la création échoue. Les informations LS (`/uuid`, `/location`) sont également stockées via ces files.
 - Optional at‑rest encryption with a server‑managed key.
 - Rate limiting and DoS protection per source.
 
@@ -599,58 +601,54 @@ PUT example
 11.2 File Locations
 
 - Unix/macOS:
-  - Config: `~/.box/box.toml` (CLI) and `~/.box/boxd.toml` (daemon)
-  - Data root: `~/.box/data`
-  - Keys: `~/.box/keys/identity.ed25519` (server), `~/.box/keys/client.ed25519` (optional)
-  - Permissions: directories `700`, key files `600`.
+  - Config: `~/.box/Box.plist`
+  - Queues root: `~/.box/queues/` (permissions `700`)
+  - Keys: `~/.box/keys/identity.ed25519` (serveur), `~/.box/keys/client.ed25519` (optionnel)
 - Windows:
-  - Config: `%USERPROFILE%\.box\box.toml` and `%USERPROFILE%\.box\boxd.toml`
-  - Data root: `%USERPROFILE%\.box\data`
+  - Config: `%USERPROFILE%\.box\Box.plist`
+  - Queues root: `%USERPROFILE%\.box\queues`
   - Keys: `%USERPROFILE%\.box\keys\identity.ed25519`
 
 11.3 Formats
 
-- Configuration: human‑readable TOML.
-- Internal data: binary format. Default implementation uses filesystem objects with a portable B‑tree index.
-  - Implementation options (pluggable): BSD `libdb` (available on macOS/FreeBSD/OpenBSD), LMDB, or a compact custom B‑tree. Choice is an implementation detail; on platforms where `libdb` is unavailable, use a portable alternative.
+- Configuration: Property List (PLIST) XML avec trois sections obligatoires:
+  - `common`: `node_uuid` (UUID), `user_uuid` (UUID). Générés au premier lancement; réutilisés par client et serveur.
+  - `server`: `port` (UInt16), `log_level` (`trace|debug|info|warn|error|critical`), `log_target` (`stderr|stdout|file:<path>`), paramètres de transport (`transport`, `transport_status`, `transport_put`, `transport_get`), `admin_channel` (booléen), options Noise (`pre_share_key`, `noise_pattern`).
+  - `client`: `address` (IPv4/IPv6 ou nom), `port` (UInt16), `log_level`, `log_target`.
+- Données internes: fichiers JSON par message dans `~/.box/queues/<queue>/` (cf. section 10), encodés en UTF‑8/base64.
 
-11.4 Bootstrap Configuration Snippets
+11.4 Exemple minimal `~/.box/Box.plist`
 
-Example `~/.box/box.toml` (client):
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>common</key>
+  <dict>
+    <key>node_uuid</key><string>F0E0D0C0-B0A0-9080-7060-504030201000</string>
+    <key>user_uuid</key><string>00010203-0405-0607-0809-0A0B0C0D0E0F</string>
+  </dict>
+  <key>server</key>
+  <dict>
+    <key>port</key><integer>12567</integer>
+    <key>log_level</key><string>info</string>
+    <key>log_target</key><string>stderr</string>
+    <key>admin_channel</key><true/>
+    <key>transport</key><string>clear</string>
+  </dict>
+  <key>client</key>
+  <dict>
+    <key>address</key><string>127.0.0.1</string>
+    <key>port</key><integer>12567</integer>
+    <key>log_level</key><string>info</string>
+    <key>log_target</key><string>stderr</string>
+  </dict>
+</dict>
+</plist>
+```
 
-  [identity]
-  user_uuid = "9B6DF823-6E22-4BAD-BB6E-77EC6F71AEF1"
-  key_path  = "~/.box/keys/client.ed25519"
-
-  [network]
-  prefer_ipv6 = true
-  timeout_ms  = 8000
-
-  [bootstrap."507FA643-A2A6-47AF-A09E-E235E9727332"]
-  endpoints   = ["[2001:db8::10]:9988", "203.0.113.20:9988"]
-  fingerprint = "ed25519:8c1f...ab42"
-
-Example `~/.box/boxd.toml` (daemon):
-
-  [identity]
-  user_uuid = "507FA643-A2A6-47AF-A09E-E235E9727332"
-  node_uuid = "776BA464-BA07-4B6D-B102-11D5D9917C6F"
-  key_path  = "~/.box/keys/identity.ed25519"
-
-  [network]
-  listen      = "[::]:9988"  # or "0.0.0.0:9988"
-  prefer_ipv6 = true
-
-  [storage]
-  data_root = "~/.box/data"
-  backend   = "portable-btree"  # or "bsd-db" | "lmdb" (implementation‑dependent)
-
-  # Optional: bootstrap peers the daemon may contact when originating client actions
-  [bootstrap]
-  # Map of user_uuid => endpoints and optional fingerprint
-  [bootstrap."9B6DF823-6E22-4BAD-BB6E-77EC6F71AEF1"]
-  endpoints   = ["[2001:db8::20]:9988"]
-  fingerprint = "ed25519:aa12...44ef"
+Legacy TOML configurations (client/daemon ACLs) restent valables pour l’implémentation C et servent de référence tant que l’équivalent PLIST n’est pas finalisé. Les sections suivantes décrivent le schéma historique (à porter vers PLIST ou une représentation dédiée lors de la migration ACL).
 
 11.5 ACL Configuration
 
@@ -795,7 +793,7 @@ In `~/.box/boxd.toml`:
   - Expose des helpers pour lister un dossier, vérifier l’existence, obtenir tampons `BFData`, tout en encapsulant les détails POSIX/Windows.
 
 - `BFStorageManager` — logique métier Box au-dessus de `BFFileManager`.
-  - Organise la hiérarchie `{storage_root}/queues/<queue>/` (par défaut `~/.box/data/queues` configurable via `boxd.toml`).
+  - Organise la hiérarchie `{storage_root}/queues/<queue>/` (par défaut `~/.box/queues` dans la réécriture Swift ; configurable via la section `server` de `Box.plist`).
   - API envisagée :
     - `Put(queue, data, metadata)` → écrit un fichier (ex. `<timestamp>-<digest>.msg`) et retourne un `messageId` explicite.
     - `GetLast(queue)` → rend la dernière entrée (ordre par horodatage/id).

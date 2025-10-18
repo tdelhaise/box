@@ -90,6 +90,10 @@ public struct BoxRuntimeOptions: Sendable {
     public var logTargetOrigin: LogTargetOrigin
     /// Optional client action that should be executed after the handshake.
     public var clientAction: BoxClientAction
+    /// Stable node identifier assigned to this runtime.
+    public var nodeId: UUID
+    /// Stable user identifier on behalf of which this runtime acts.
+    public var userId: UUID
 
     /// Creates a new bundle of runtime options.
     /// - Parameters:
@@ -103,6 +107,8 @@ public struct BoxRuntimeOptions: Sendable {
     ///   - portOrigin: Origin of the port value (default, CLI, env, config, positional).
     ///   - logLevelOrigin: Origin of the log level value (default, CLI, config).
     ///   - logTargetOrigin: Origin of the log target value (default, CLI, config).
+    ///   - nodeId: Stable identifier describing the local machine.
+    ///   - userId: Stable identifier describing the user operating the client/server.
     ///   - clientAction: Action executed by the client after the handshake.
     public init(
         mode: BoxRuntimeMode,
@@ -115,6 +121,8 @@ public struct BoxRuntimeOptions: Sendable {
         logTarget: BoxLogTarget,
         logLevelOrigin: LogLevelOrigin,
         logTargetOrigin: LogTargetOrigin,
+        nodeId: UUID,
+        userId: UUID,
         clientAction: BoxClientAction = .handshake
     ) {
         self.mode = mode
@@ -127,6 +135,8 @@ public struct BoxRuntimeOptions: Sendable {
         self.logTarget = logTarget
         self.logLevelOrigin = logLevelOrigin
         self.logTargetOrigin = logTargetOrigin
+        self.nodeId = nodeId
+        self.userId = userId
         self.clientAction = clientAction
     }
 }
