@@ -135,6 +135,7 @@ public enum BoxServer {
             lastReloadError: nil,
             hasGlobalIPv6: connectivity.hasGlobalIPv6,
             globalIPv6Addresses: connectivity.globalIPv6Addresses,
+            ipv6DetectionError: connectivity.detectionErrorDescription,
             portMappingRequested: portMappingRequested,
             portMappingOrigin: portMappingOrigin
         )
@@ -273,27 +274,34 @@ public enum BoxServer {
                 }
 
                 if let newTarget = targetAdjustment {
-                    BoxLogging.update(target: newTarget)
-                }
+                BoxLogging.update(target: newTarget)
+            }
 
-                let snapshot = runtimeStateBox.withLockedValue { $0 }
-                BoxLogging.update(level: snapshot.logLevel)
-                var response: [String: Any] = [
-                    "status": snapshot.lastReloadStatus,
-                    "path": configPath,
-                    "logLevel": snapshot.logLevel.rawValue,
-                    "logLevelOrigin": "\(snapshot.logLevelOrigin)",
-                    "logTarget": logTargetDescription(snapshot.logTarget),
-                    "logTargetOrigin": "\(snapshot.logTargetOrigin)",
-                    "reloadCount": snapshot.reloadCount
-                ]
-                response["nodeUUID"] = snapshot.nodeIdentifier.uuidString
-                response["userUUID"] = snapshot.userIdentifier.uuidString
-                if let timestamp = snapshot.lastReloadTimestamp {
-                    response["timestamp"] = iso8601String(timestamp)
-                }
-                if let error = snapshot.lastReloadError {
-                    response["message"] = error
+            let snapshot = runtimeStateBox.withLockedValue { $0 }
+            BoxLogging.update(level: snapshot.logLevel)
+            var response: [String: Any] = [
+                "status": snapshot.lastReloadStatus,
+                "path": configPath,
+                "logLevel": snapshot.logLevel.rawValue,
+                "logLevelOrigin": "\(snapshot.logLevelOrigin)",
+                "logTarget": logTargetDescription(snapshot.logTarget),
+                "logTargetOrigin": "\(snapshot.logTargetOrigin)",
+                "reloadCount": snapshot.reloadCount,
+                "hasGlobalIPv6": snapshot.hasGlobalIPv6,
+                "globalIPv6Addresses": snapshot.globalIPv6Addresses,
+                "portMappingEnabled": snapshot.portMappingRequested,
+                "portMappingOrigin": "\(snapshot.portMappingOrigin)"
+            ]
+            response["nodeUUID"] = snapshot.nodeIdentifier.uuidString
+            response["userUUID"] = snapshot.userIdentifier.uuidString
+            if let errorDescription = snapshot.ipv6DetectionError {
+                response["ipv6ProbeError"] = errorDescription
+            }
+            if let timestamp = snapshot.lastReloadTimestamp {
+                response["timestamp"] = iso8601String(timestamp)
+            }
+            if let error = snapshot.lastReloadError {
+                response["message"] = error
                 }
                 return adminResponse(response)
             } catch {
@@ -460,6 +468,7 @@ private struct BoxServerRuntimeState: Sendable {
     var lastReloadError: String?
     var hasGlobalIPv6: Bool
     var globalIPv6Addresses: [String]
+    var ipv6DetectionError: String?
     var portMappingRequested: Bool
     var portMappingOrigin: BoxRuntimeOptions.PortMappingOrigin
 }
@@ -1168,13 +1177,20 @@ private func renderStatus(state: BoxServerRuntimeState, logTarget: BoxLogTarget)
         "logTargetOrigin": "\(state.logTargetOrigin)",
         "adminChannel": state.adminChannelEnabled ? "enabled" : "disabled",
         "transport": state.transport ?? "clear",
-        "reloadCount": state.reloadCount
+        "reloadCount": state.reloadCount,
+        "hasGlobalIPv6": state.hasGlobalIPv6,
+        "globalIPv6Addresses": state.globalIPv6Addresses,
+        "portMappingEnabled": state.portMappingRequested,
+        "portMappingOrigin": "\(state.portMappingOrigin)"
     ]
     if let path = state.configurationPath {
         payload["configPath"] = path
     }
     payload["nodeUUID"] = state.nodeIdentifier.uuidString
     payload["userUUID"] = state.userIdentifier.uuidString
+    if let detectionError = state.ipv6DetectionError {
+        payload["ipv6ProbeError"] = detectionError
+    }
     if let queueRootPath = state.queueRootPath {
         payload["queueRoot"] = queueRootPath
         let metrics = queueMetrics(at: URL(fileURLWithPath: queueRootPath, isDirectory: true))
@@ -1218,7 +1234,11 @@ private func renderStats(state: BoxServerRuntimeState, logTarget: BoxLogTarget) 
         "logTargetOrigin": "\(state.logTargetOrigin)",
         "transport": state.transport ?? "clear",
         "adminChannel": state.adminChannelEnabled ? "enabled" : "disabled",
-        "reloadCount": state.reloadCount
+        "reloadCount": state.reloadCount,
+        "hasGlobalIPv6": state.hasGlobalIPv6,
+        "globalIPv6Addresses": state.globalIPv6Addresses,
+        "portMappingEnabled": state.portMappingRequested,
+        "portMappingOrigin": "\(state.portMappingOrigin)"
     ]
     if let path = state.configurationPath {
         payload["configPath"] = path
@@ -1228,6 +1248,9 @@ private func renderStats(state: BoxServerRuntimeState, logTarget: BoxLogTarget) 
     }
     payload["nodeUUID"] = state.nodeIdentifier.uuidString
     payload["userUUID"] = state.userIdentifier.uuidString
+    if let detectionError = state.ipv6DetectionError {
+        payload["ipv6ProbeError"] = detectionError
+    }
     if let queueRootPath = state.queueRootPath {
         payload["queueRoot"] = queueRootPath
         let metrics = queueMetrics(at: URL(fileURLWithPath: queueRootPath, isDirectory: true))

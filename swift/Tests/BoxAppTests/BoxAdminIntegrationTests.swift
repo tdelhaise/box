@@ -40,6 +40,12 @@ final class BoxAdminIntegrationTests: XCTestCase {
         let userUUIDString = statusJSON["userUUID"] as? String
         XCTAssertNotNil(userUUIDString)
         XCTAssertNotNil(userUUIDString.flatMap(UUID.init(uuidString:)))
+        let hasGlobal = (statusJSON["hasGlobalIPv6"] as? Bool) ?? (statusJSON["hasGlobalIPv6"] as? NSNumber)?.boolValue
+        XCTAssertNotNil(hasGlobal)
+        XCTAssertNotNil(statusJSON["globalIPv6Addresses"])
+        let portMappingEnabled = (statusJSON["portMappingEnabled"] as? Bool) ?? (statusJSON["portMappingEnabled"] as? NSNumber)?.boolValue
+        XCTAssertNotNil(portMappingEnabled)
+        XCTAssertNotNil(statusJSON["portMappingOrigin"] as? String)
         let queueCount = (statusJSON["queueCount"] as? NSNumber)?.intValue ?? 0
         XCTAssertGreaterThanOrEqual(queueCount, 1)
         XCTAssertNotNil(statusJSON["objects"] as? NSNumber)
@@ -67,6 +73,8 @@ final class BoxAdminIntegrationTests: XCTestCase {
         let reloadedNodeUUID = reloadJSON["nodeUUID"] as? String
         XCTAssertNotNil(reloadedNodeUUID)
         XCTAssertEqual(reloadJSON["userUUID"] as? String, configuration.common.userUUID.uuidString)
+        XCTAssertNotNil(reloadJSON["hasGlobalIPv6"])
+        XCTAssertNotNil(reloadJSON["portMappingEnabled"])
 
         let statsResponse = try transport.send(command: "stats")
         let statsJSON = try decodeJSON(statsResponse)
@@ -76,6 +84,8 @@ final class BoxAdminIntegrationTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(statsQueueCount, 1)
         XCTAssertNotNil(statsJSON["objects"] as? NSNumber)
         XCTAssertNotNil(statsJSON["queueFreeBytes"] as? NSNumber)
+        XCTAssertNotNil(statsJSON["hasGlobalIPv6"])
+        XCTAssertNotNil(statsJSON["portMappingEnabled"])
 
         let verificationLogger = Logger(label: "box.integration.reload")
         XCTAssertEqual(verificationLogger.logLevel, .debug)
@@ -86,6 +96,8 @@ final class BoxAdminIntegrationTests: XCTestCase {
         XCTAssertEqual(statusNodeUUID, reloadedNodeUUID)
         XCTAssertNotNil(statusNodeUUID.flatMap(UUID.init(uuidString:)))
         XCTAssertEqual(statusAfter["userUUID"] as? String, configuration.common.userUUID.uuidString)
+        XCTAssertNotNil(statusAfter["hasGlobalIPv6"])
+        XCTAssertNotNil(statusAfter["portMappingEnabled"])
         let statusAfterQueueCount = (statusAfter["queueCount"] as? NSNumber)?.intValue ?? 0
         XCTAssertGreaterThanOrEqual(statusAfterQueueCount, 1)
         XCTAssertEqual(statusAfter["queueRoot"] as? String, context.homeDirectory.appendingPathComponent(".box/queues").path)
@@ -171,7 +183,10 @@ private func startServer(configurationData: Data? = nil) async throws -> ServerC
         logLevelOrigin: .default,
         logTargetOrigin: .default,
         nodeId: configuration.common.nodeUUID,
-        userId: configuration.common.userUUID
+        userId: configuration.common.userUUID,
+        portMappingRequested: false,
+        clientAction: .handshake,
+        portMappingOrigin: .default
     )
 
     let task = Task {
