@@ -2,7 +2,7 @@ import XCTest
 @testable import BoxServer
 
 final class BoxAdminDispatcherTests: XCTestCase {
-    func testStatusCommandInvokesProvider() {
+    func testStatusCommandInvokesProvider() async throws {
         let expectation = expectation(description: "status provider")
         let dispatcher = BoxAdminCommandDispatcher(
             statusProvider: {
@@ -20,21 +20,22 @@ final class BoxAdminDispatcherTests: XCTestCase {
             statsProvider: {
                 XCTFail("stats should not be called")
                 return ""
-            }
+            },
+            locateNode: { _ in "" }
         )
 
-        let response = dispatcher.process("status")
+        let response = await dispatcher.process("status")
         XCTAssertEqual(response, "{\"status\":\"ok\"}")
-        wait(for: [expectation], timeout: 0.1)
+        await fulfillment(of: [expectation], timeout: 0.1)
     }
 
-    func testPingReturnsPong() {
+    func testPingReturnsPong() async {
         let dispatcher = fixtureDispatcher()
-        let response = dispatcher.process("ping")
+        let response = await dispatcher.process("ping")
         assertJSON(response, equals: ["status": "ok", "message": "pong"])
     }
 
-    func testLogTargetAcceptsPlainArgument() {
+    func testLogTargetAcceptsPlainArgument() async throws {
         let expectation = expectation(description: "log-target plain")
         let capture = CaptureBox<String>()
         let dispatcher = BoxAdminCommandDispatcher(
@@ -45,16 +46,17 @@ final class BoxAdminDispatcherTests: XCTestCase {
                 return "{\"status\":\"ok\"}"
             },
             reloadConfiguration: { _ in "" },
-            statsProvider: { "" }
+            statsProvider: { "" },
+            locateNode: { _ in "" }
         )
 
-        let response = dispatcher.process("log-target stdout")
+        let response = await dispatcher.process("log-target stdout")
         XCTAssertEqual(response, "{\"status\":\"ok\"}")
-        wait(for: [expectation], timeout: 0.1)
+        await fulfillment(of: [expectation], timeout: 0.1)
         XCTAssertEqual(capture.value, "stdout")
     }
 
-    func testLogTargetAcceptsJSONPayload() {
+    func testLogTargetAcceptsJSONPayload() async throws {
         let expectation = expectation(description: "log-target json")
         let dispatcher = BoxAdminCommandDispatcher(
             statusProvider: { "" },
@@ -64,15 +66,16 @@ final class BoxAdminDispatcherTests: XCTestCase {
                 return "ack"
             },
             reloadConfiguration: { _ in "" },
-            statsProvider: { "" }
+            statsProvider: { "" },
+            locateNode: { _ in "" }
         )
 
-        let response = dispatcher.process("log-target {\"target\":\"stderr\"}")
+        let response = await dispatcher.process("log-target {\"target\":\"stderr\"}")
         XCTAssertEqual(response, "ack")
-        wait(for: [expectation], timeout: 0.1)
+        await fulfillment(of: [expectation], timeout: 0.1)
     }
 
-    func testReloadConfigAcceptsOptionalPath() {
+    func testReloadConfigAcceptsOptionalPath() async throws {
         let expectation = expectation(description: "reload-config path")
         let capture = CaptureBox<String>()
         let dispatcher = BoxAdminCommandDispatcher(
@@ -83,34 +86,35 @@ final class BoxAdminDispatcherTests: XCTestCase {
                 expectation.fulfill()
                 return "ok"
             },
-            statsProvider: { "" }
+            statsProvider: { "" },
+            locateNode: { _ in "" }
         )
 
-        let response = dispatcher.process("reload-config {\"path\":\"~/config.plist\"}")
+        let response = await dispatcher.process("reload-config {\"path\":\"~/config.plist\"}")
         XCTAssertEqual(response, "ok")
-        wait(for: [expectation], timeout: 0.1)
+        await fulfillment(of: [expectation], timeout: 0.1)
         XCTAssertEqual(capture.value, "~/config.plist")
     }
 
-    func testUnknownCommandReturnsError() {
+    func testUnknownCommandReturnsError() async {
         let dispatcher = fixtureDispatcher()
-        let response = dispatcher.process("unknown-cmd")
+        let response = await dispatcher.process("unknown-cmd")
         assertJSON(response, equals: ["status": "error", "message": "unknown-command", "command": "unknown-cmd"])
     }
 
-    func testEmptyCommandReportsError() {
+    func testEmptyCommandReportsError() async {
         let dispatcher = fixtureDispatcher()
-        let response = dispatcher.process("   \n")
+        let response = await dispatcher.process("   \n")
         assertJSON(response, equals: ["status": "error", "message": "empty-command"])
     }
 
-    func testInvalidLogTargetPayloadReportsError() {
+    func testInvalidLogTargetPayloadReportsError() async {
         let dispatcher = fixtureDispatcher()
-        let response = dispatcher.process("log-target {\"unexpected\":42}")
+        let response = await dispatcher.process("log-target {\"unexpected\":42}")
         assertJSON(response, equals: ["status": "error", "message": "invalid-log-target-payload"])
     }
 
-    func testStatsCommandInvokesProvider() {
+    func testStatsCommandInvokesProvider() async throws {
         let expectation = expectation(description: "stats provider")
         let dispatcher = BoxAdminCommandDispatcher(
             statusProvider: { "" },
@@ -119,12 +123,13 @@ final class BoxAdminDispatcherTests: XCTestCase {
             statsProvider: {
                 expectation.fulfill()
                 return "{\"status\":\"ok\"}"
-            }
+            },
+            locateNode: { _ in "" }
         )
 
-        let response = dispatcher.process("stats")
+        let response = await dispatcher.process("stats")
         XCTAssertEqual(response, "{\"status\":\"ok\"}")
-        wait(for: [expectation], timeout: 0.1)
+        await fulfillment(of: [expectation], timeout: 0.1)
     }
 
     private func fixtureDispatcher() -> BoxAdminCommandDispatcher {
@@ -132,7 +137,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             statusProvider: { "status" },
             logTargetUpdater: { _ in "log" },
             reloadConfiguration: { _ in "reload" },
-            statsProvider: { "stats" }
+            statsProvider: { "stats" },
+            locateNode: { _ in "locate" }
         )
     }
 }

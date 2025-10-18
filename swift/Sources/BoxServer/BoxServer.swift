@@ -165,7 +165,7 @@ public enum BoxServer {
         let store = try await BoxServerStore(root: queueRoot)
         let locationService = LocationServiceCoordinator(store: store, logger: logger)
         try await locationService.bootstrap()
-        let statusProvider: @Sendable () -> String = {
+        let statusProvider: @Sendable () async -> String = {
             let snapshot = runtimeStateBox.withLockedValue { $0 }
             let currentTarget = BoxLogging.currentTarget()
             return renderStatus(state: snapshot, logTarget: currentTarget)
@@ -188,7 +188,7 @@ public enum BoxServer {
                 (state.nodeIdentifier, state.userIdentifier)
             }
         }
-        let logTargetUpdater: @Sendable (String) -> String = { candidate in
+        let logTargetUpdater: @Sendable (String) async -> String = { candidate in
             let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
             guard let parsed = BoxLogTarget.parse(trimmed) else {
                 return adminResponse(["status": "error", "message": "invalid-log-target"])
@@ -203,7 +203,7 @@ public enum BoxServer {
             return adminResponse(["status": "ok", "logTarget": logTargetDescription(parsed), "logTargetOrigin": originDescription])
         }
         let defaultConfigurationPath = configurationURL?.path
-        let reloadConfigurationHandler: @Sendable (String?) -> String = { path in
+        let reloadConfigurationHandler: @Sendable (String?) async -> String = { path in
             let expandedOverride: String?
             if let path, !path.isEmpty {
                 expandedOverride = NSString(string: path).expandingTildeInPath
@@ -341,10 +341,24 @@ public enum BoxServer {
                 ])
             }
         }
-        let statsProvider: @Sendable () -> String = {
+        let statsProvider: @Sendable () async -> String = {
             let snapshot = runtimeStateBox.withLockedValue { $0 }
             let currentTarget = BoxLogging.currentTarget()
             return renderStats(state: snapshot, logTarget: currentTarget)
+        }
+
+        let locateProvider: @Sendable (UUID) async -> String = { node in
+            if let record = await locationService.resolve(nodeUUID: node) {
+                return adminResponse([
+                    "status": "ok",
+                    "record": adminLocationRecordPayload(from: record)
+                ])
+            }
+            return adminResponse([
+                "status": "error",
+                "message": "node-not-found",
+                "nodeUUID": node.uuidString
+            ])
         }
 
         let adminSocketPath = adminChannelEnabled ? BoxPaths.adminSocketPath() : nil
@@ -358,7 +372,8 @@ public enum BoxServer {
                     statusProvider: statusProvider,
                     logTargetUpdater: logTargetUpdater,
                     reloadConfiguration: reloadConfigurationHandler,
-                    statsProvider: statsProvider
+                    statsProvider: statsProvider,
+                    locateProvider: locateProvider
                 )
                 adminChannelBox.withLockedValue { $0 = handle }
                 logger.info("admin channel ready", metadata: ["socket": "\(adminSocketPath)"])
@@ -378,6 +393,12 @@ public enum BoxServer {
         #endif
 
         let pipelineLogger = logger
+        let locationAuthorizer: @Sendable (UUID, UUID) async -> Bool = { node, user in
+            await locationService.authorize(nodeUUID: node, userUUID: user)
+        }
+        let locationResolver: @Sendable (UUID) async -> LocationServiceNodeRecord? = { target in
+            await locationService.resolve(nodeUUID: target)
+        }
 
         let bootstrap = DatagramBootstrap(group: eventLoopGroup)
             .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
@@ -387,7 +408,9 @@ public enum BoxServer {
                         logger: pipelineLogger,
                         allocator: channel.allocator,
                         store: store,
-                        identityProvider: identityProvider
+                        identityProvider: identityProvider,
+                        authorizer: locationAuthorizer,
+                        locationResolver: locationResolver
                     )
                 )
             }
@@ -520,17 +543,27 @@ private final class BoxServerHandler: ChannelInboundHandler {
     private let allocator: ByteBufferAllocator
     private let store: BoxServerStore
     private let identityProvider: @Sendable () -> (UUID, UUID)
+    private let authorizer: @Sendable (UUID, UUID) async -> Bool
+    private let locationResolver: @Sendable (UUID) async -> LocationServiceNodeRecord?
+    private let jsonEncoder: JSONEncoder
 
     init(
         logger: Logger,
         allocator: ByteBufferAllocator,
         store: BoxServerStore,
-        identityProvider: @escaping @Sendable () -> (UUID, UUID)
+        identityProvider: @escaping @Sendable () -> (UUID, UUID),
+        authorizer: @escaping @Sendable (UUID, UUID) async -> Bool,
+        locationResolver: @escaping @Sendable (UUID) async -> LocationServiceNodeRecord?
     ) {
         self.logger = logger
         self.allocator = allocator
         self.store = store
         self.identityProvider = identityProvider
+        self.authorizer = authorizer
+        self.locationResolver = locationResolver
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        self.jsonEncoder = encoder
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -556,6 +589,8 @@ private final class BoxServerHandler: ChannelInboundHandler {
             try handlePut(payload: &payload, frame: frame, remote: remote, context: context)
         case .get:
             try handleGet(payload: &payload, frame: frame, remote: remote, context: context)
+        case .locate, .search:
+            try handleLocate(payload: &payload, frame: frame, remote: remote, context: context)
         default:
             let statusPayload = BoxCodec.encodeStatusPayload(
                 status: .badRequest,
@@ -681,6 +716,80 @@ private final class BoxServerHandler: ChannelInboundHandler {
         }
     }
 
+    private func handleLocate(payload: inout ByteBuffer, frame: BoxCodec.Frame, remote: SocketAddress, context: ChannelHandlerContext) throws {
+        let locatePayload = try BoxCodec.decodeLocatePayload(from: &payload)
+        let allocator = self.allocator
+        let logger = self.logger
+        let authorizer = self.authorizer
+        let resolver = self.locationResolver
+        let encoder = self.jsonEncoder
+        let eventLoop = context.eventLoop
+        let contextBox = UncheckedSendableBox(context)
+        let remoteAddress = remote
+        let requestId = frame.requestId
+        let requesterNode = frame.nodeId
+        let requesterUser = frame.userId
+        let targetNode = locatePayload.nodeUUID
+
+        Task {
+            let permitted = await authorizer(requesterNode, requesterUser)
+            guard permitted else {
+                eventLoop.execute {
+                    logger.debug(
+                        "locate request rejected",
+                        metadata: [
+                            "requestNode": .string(requesterNode.uuidString),
+                            "requestUser": .string(requesterUser.uuidString)
+                        ]
+                    )
+                    let statusPayload = BoxCodec.encodeStatusPayload(status: .unauthorized, message: "unknown-client", allocator: allocator)
+                    let ctx = contextBox.value
+                    self.send(command: .status, requestId: requestId, payload: statusPayload, to: remoteAddress, context: ctx)
+                }
+                return
+            }
+
+            if let record = await resolver(targetNode) {
+                eventLoop.execute {
+                    do {
+                        let data = try encoder.encode(record)
+                        logger.debug(
+                            "locate request served",
+                            metadata: [
+                                "target": .string(record.nodeUUID.uuidString),
+                                "requestNode": .string(requesterNode.uuidString)
+                            ]
+                        )
+                        let responsePayload = BoxCodec.encodePutPayload(
+                            BoxCodec.PutPayload(queuePath: "/location", contentType: "application/json; charset=utf-8", data: [UInt8](data)),
+                            allocator: allocator
+                        )
+                        let ctx = contextBox.value
+                        self.send(command: .put, requestId: requestId, payload: responsePayload, to: remoteAddress, context: ctx)
+                    } catch {
+                        logger.error("failed to encode location record", metadata: ["error": .string("\(error)")])
+                        let statusPayload = BoxCodec.encodeStatusPayload(status: .internalError, message: "encoding-error", allocator: allocator)
+                        let ctx = contextBox.value
+                        self.send(command: .status, requestId: requestId, payload: statusPayload, to: remoteAddress, context: ctx)
+                    }
+                }
+            } else {
+                eventLoop.execute {
+                    logger.debug(
+                        "locate target missing",
+                        metadata: [
+                            "target": .string(targetNode.uuidString),
+                            "requestNode": .string(requesterNode.uuidString)
+                        ]
+                    )
+                    let statusPayload = BoxCodec.encodeStatusPayload(status: .notFound, message: "node-not-found", allocator: allocator)
+                    let ctx = contextBox.value
+                    self.send(command: .status, requestId: requestId, payload: statusPayload, to: remoteAddress, context: ctx)
+                }
+            }
+        }
+    }
+
     private func send(command: BoxCodec.Command, requestId: UUID, payload: ByteBuffer, to remote: SocketAddress, context: ChannelHandlerContext) {
         let (nodeId, userId) = identityProvider()
         let frame = BoxCodec.Frame(command: command, requestId: requestId, nodeId: nodeId, userId: userId, payload: payload)
@@ -694,27 +803,30 @@ extension BoxServerHandler: @unchecked Sendable {}
 
 /// Dispatches admin commands to the appropriate runtime closures.
 struct BoxAdminCommandDispatcher: Sendable {
-    private let statusProvider: @Sendable () -> String
-    private let logTargetUpdater: @Sendable (String) -> String
-    private let reloadConfiguration: @Sendable (String?) -> String
-    private let statsProvider: @Sendable () -> String
+    private let statusProvider: @Sendable () async -> String
+    private let logTargetUpdater: @Sendable (String) async -> String
+    private let reloadConfiguration: @Sendable (String?) async -> String
+    private let statsProvider: @Sendable () async -> String
+    private let locateNode: @Sendable (UUID) async -> String
 
     init(
-        statusProvider: @escaping @Sendable () -> String,
-        logTargetUpdater: @escaping @Sendable (String) -> String,
-        reloadConfiguration: @escaping @Sendable (String?) -> String,
-        statsProvider: @escaping @Sendable () -> String
+        statusProvider: @escaping @Sendable () async -> String,
+        logTargetUpdater: @escaping @Sendable (String) async -> String,
+        reloadConfiguration: @escaping @Sendable (String?) async -> String,
+        statsProvider: @escaping @Sendable () async -> String,
+        locateNode: @escaping @Sendable (UUID) async -> String
     ) {
         self.statusProvider = statusProvider
         self.logTargetUpdater = logTargetUpdater
         self.reloadConfiguration = reloadConfiguration
         self.statsProvider = statsProvider
+        self.locateNode = locateNode
     }
 
     /// Processes a raw admin command string and returns the JSON response payload.
     /// - Parameter rawValue: Command string as received on the transport.
     /// - Returns: JSON response (without trailing newline).
-    func process(_ rawValue: String) -> String {
+    func process(_ rawValue: String) async -> String {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return adminResponse(["status": "error", "message": "empty-command"])
@@ -722,15 +834,17 @@ struct BoxAdminCommandDispatcher: Sendable {
         let command = parse(trimmed)
         switch command {
         case .status:
-            return statusProvider()
+            return await statusProvider()
         case .ping:
             return adminResponse(["status": "ok", "message": "pong"])
         case .logTarget(let target):
-            return logTargetUpdater(target)
+            return await logTargetUpdater(target)
         case .reloadConfig(let path):
-            return reloadConfiguration(path)
+            return await reloadConfiguration(path)
         case .stats:
-            return statsProvider()
+            return await statsProvider()
+        case .locate(let node):
+            return await locateNode(node)
         case .invalid(let message):
             return adminResponse(["status": "error", "message": message])
         case .unknown(let value):
@@ -774,6 +888,23 @@ struct BoxAdminCommandDispatcher: Sendable {
         if command == "stats" {
             return .stats
         }
+        if command.hasPrefix("locate") {
+            let remainder = command.dropFirst("locate".count).trimmingCharacters(in: .whitespaces)
+            guard !remainder.isEmpty else {
+                return .invalid("missing-locate-target")
+            }
+            if remainder.hasPrefix("{") {
+                guard let nodeString = extractStringField(from: String(remainder), field: "node"),
+                      let uuid = UUID(uuidString: nodeString) else {
+                    return .invalid("invalid-locate-payload")
+                }
+                return .locate(uuid)
+            }
+            guard let uuid = UUID(uuidString: remainder) else {
+                return .invalid("invalid-node-uuid")
+            }
+            return .locate(uuid)
+        }
         return .unknown(command)
     }
 
@@ -811,22 +942,6 @@ private final class BoxAdminChannelHandler: ChannelInboundHandler {
         self.dispatcher = dispatcher
     }
 
-    convenience init(
-        logger: Logger,
-        statusProvider: @escaping @Sendable () -> String,
-        logTargetUpdater: @escaping @Sendable (String) -> String,
-        reloadConfiguration: @escaping @Sendable (String?) -> String,
-        statsProvider: @escaping @Sendable () -> String
-    ) {
-        let dispatcher = BoxAdminCommandDispatcher(
-            statusProvider: statusProvider,
-            logTargetUpdater: logTargetUpdater,
-            reloadConfiguration: reloadConfiguration,
-            statsProvider: statsProvider
-        )
-        self.init(logger: logger, dispatcher: dispatcher)
-    }
-
     func channelActive(context: ChannelHandlerContext) {
         logger.debug("admin connection accepted")
     }
@@ -837,8 +952,15 @@ private final class BoxAdminChannelHandler: ChannelInboundHandler {
             context.close(promise: nil)
             return
         }
-        let response = dispatcher.process(command)
-        write(response: response, context: context)
+        let dispatcher = self.dispatcher
+        let contextBox = UncheckedSendableBox(context)
+        let eventLoop = context.eventLoop
+        Task {
+            let response = await dispatcher.process(command)
+            eventLoop.execute {
+                self.write(response: response, context: contextBox.value)
+            }
+        }
     }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {
@@ -864,6 +986,7 @@ private enum BoxAdminParsedCommand {
     case logTarget(String)
     case reloadConfig(String?)
     case stats
+    case locate(UUID)
     case invalid(String)
     case unknown(String)
 }
@@ -894,9 +1017,7 @@ private final class BoxAdminNamedPipeServer: @unchecked Sendable {
         let pipePath = path
         task = Task.detached { [weak self] in
             guard let self else { return }
-            pipePath.withCString(encodedAs: UTF16.self) { pointer in
-                self.runLoop(pipeName: pointer)
-            }
+            await self.runLoop(path: pipePath)
         }
     }
 
@@ -913,22 +1034,24 @@ private final class BoxAdminNamedPipeServer: @unchecked Sendable {
         }
     }
 
-    private func runLoop(pipeName: UnsafePointer<WCHAR>) {
+    private func runLoop(path: String) async {
         let bufferSize: DWORD = 4096
         if securityAttributes == nil {
             logger.warning("admin pipe security: using default ACL (Windows descriptor creation failed)")
         }
         while !shouldStop.withLockedValue({ $0 }) {
-            let handle = CreateNamedPipeW(
-                pipeName,
-                DWORD(PIPE_ACCESS_DUPLEX),
-                DWORD(PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT),
-                DWORD(1),
-                bufferSize,
-                bufferSize,
-                DWORD(0),
-                securityAttributes
-            )
+            let handle: HANDLE = path.withCString(encodedAs: UTF16.self) { pointer in
+                CreateNamedPipeW(
+                    pointer,
+                    DWORD(PIPE_ACCESS_DUPLEX),
+                    DWORD(PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT),
+                    DWORD(1),
+                    bufferSize,
+                    bufferSize,
+                    DWORD(0),
+                    securityAttributes
+                )
+            }
 
             if handle == INVALID_HANDLE_VALUE {
                 let error = GetLastError()
@@ -962,7 +1085,7 @@ private final class BoxAdminNamedPipeServer: @unchecked Sendable {
 
             let commandData = buffer.prefix(Int(bytesRead))
             let command = String(bytes: commandData, encoding: .utf8) ?? ""
-            let responsePayload = dispatcher.process(command)
+            let responsePayload = await dispatcher.process(command)
             let response = responsePayload.hasSuffix("\n") ? responsePayload : responsePayload + "\n"
             let responseBytes = Array(response.utf8)
             var bytesWritten: DWORD = 0
@@ -1133,6 +1256,9 @@ private func queueMetrics(at root: URL) -> QueueMetrics {
     return QueueMetrics(count: queueCount, objectCount: objectCount, freeBytes: freeBytes)
 }
 
+/// Executes an async operation synchronously using a semaphore bridge.
+/// - Parameter operation: Asynchronous closure whose result is required synchronously.
+/// - Returns: Result of the asynchronous operation.
 /// Binds the admin channel on the provided UNIX domain socket path.
 /// - Parameters:
 ///   - eventLoopGroup: Event loop group used for the server bootstrap.
@@ -1147,16 +1273,18 @@ private func startAdminChannel(
     on eventLoopGroup: EventLoopGroup,
     socketPath: String,
     logger: Logger,
-    statusProvider: @escaping @Sendable () -> String,
-    logTargetUpdater: @escaping @Sendable (String) -> String,
-    reloadConfiguration: @escaping @Sendable (String?) -> String,
-    statsProvider: @escaping @Sendable () -> String
+    statusProvider: @escaping @Sendable () async -> String,
+    logTargetUpdater: @escaping @Sendable (String) async -> String,
+    reloadConfiguration: @escaping @Sendable (String?) async -> String,
+    statsProvider: @escaping @Sendable () async -> String,
+    locateProvider: @escaping @Sendable (UUID) async -> String
 ) async throws -> BoxAdminChannelHandle {
     let dispatcher = BoxAdminCommandDispatcher(
         statusProvider: statusProvider,
         logTargetUpdater: logTargetUpdater,
         reloadConfiguration: reloadConfiguration,
-        statsProvider: statsProvider
+        statsProvider: statsProvider,
+        locateNode: locateProvider
     )
 
     #if os(Windows)
@@ -1169,8 +1297,9 @@ private func startAdminChannel(
             try FileManager.default.removeItem(atPath: socketPath)
         } catch {
             let nsError = error as NSError
-            let isMissingFile = nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileNoSuchFileError
-            if !isMissingFile {
+            let isCocoaMissing = nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileNoSuchFileError
+            let isPosixMissing = nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT)
+            if !(isCocoaMissing || isPosixMissing) {
                 throw error
             }
         }
@@ -1358,6 +1487,28 @@ private func adminConnectivityPayload(from record: LocationServiceNodeRecord) ->
     ]
     if let error = record.connectivity.ipv6ProbeError {
         payload["ipv6ProbeError"] = error
+    }
+    return payload
+}
+
+/// Converts a full Location Service record into an admin payload dictionary.
+/// - Parameter record: Record to serialise.
+/// - Returns: Dictionary ready for JSON serialisation.
+private func adminLocationRecordPayload(from record: LocationServiceNodeRecord) -> [String: Any] {
+    var payload: [String: Any] = [
+        "nodeUUID": record.nodeUUID.uuidString,
+        "userUUID": record.userUUID.uuidString,
+        "online": record.online,
+        "since": Int(record.since),
+        "lastSeen": Int(record.lastSeen),
+        "addresses": adminAddressesPayload(from: record),
+        "connectivity": adminConnectivityPayload(from: record)
+    ]
+    if let key = record.nodePublicKey {
+        payload["nodePublicKey"] = key
+    }
+    if let tags = record.tags, !tags.isEmpty {
+        payload["tags"] = tags
     }
     return payload
 }

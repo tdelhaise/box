@@ -11,7 +11,7 @@ swift run box --server        # équivalent à --server/-s
 swift run box                 # mode client par défaut
 ```
 - Par défaut, le serveur se lie à toutes les interfaces (`0.0.0.0`). Utilisez `--address <ip>` pour restreindre l'écoute.
-- `BoxCommandParser` résout la ligne de commande et délègue à `BoxServer` ou `BoxClient`. Les options actuelles couvrent `--server/-s`, `--port`, `--address`, `--config` (PLIST), `--log-level`, `--log-target (stderr|stdout|file:<path>)`, `--enable-port-mapping`/`--no-enable-port-mapping`, `--put /queue[:type] --data "..."` et `--get /queue`.
+- `BoxCommandParser` résout la ligne de commande et délègue à `BoxServer` ou `BoxClient`. Les options actuelles couvrent `--server/-s`, `--port`, `--address`, `--config` (PLIST), `--log-level`, `--log-target (stderr|stdout|file:<path>)`, `--enable-port-mapping`/`--no-enable-port-mapping`, `--put /queue[:type] --data "..."`, `--get /queue` et `--locate <node-uuid>` (requête Location Service via UDP).
 - `box admin status` interroge le socket Unix local (`~/.box/run/boxd.socket`) et renvoie un JSON de statut.
 - `BoxCodec` encapsule le framing v1 (HELLO/STATUS/PUT/GET) avec en-tête enrichi (`request_id` UUID, `node_id`, `user_id`) et peut être réutilisé dans n’importe quel handler SwiftNIO fondé sur `ByteBuffer`.
 - Les journaux vont par défaut dans `~/.box/logs/` (`box.log` pour le client, `boxd.log` pour le serveur). Les cibles `stderr`/`stdout` restent disponibles via `--log-target` ou `Box.plist` et chaque entrée est horodatée (ISO 8601 + millisecondes) tout en exposant niveau, composant et contexte (`fichier:ligne`, fonction, thread, métadonnées).
@@ -29,11 +29,11 @@ swift run box                 # mode client par défaut
 
 ### Avancement 2025-10-14
 
-- Transport d’administration unifié: `box admin` s’appuie désormais sur une abstraction commune (socket Unix `~/.box/run/boxd.socket` ou named pipe Windows `\\.\pipe\boxd-admin`) et prend en charge `status`, `ping`, `log-target`, `reload-config` et `stats`.
+- Transport d’administration unifié: `box admin` s’appuie désormais sur une abstraction commune (socket Unix `~/.box/run/boxd.socket` ou named pipe Windows `\\.\pipe\boxd-admin`) et prend en charge `status`, `ping`, `log-target`, `reload-config`, `stats` **et `locate <node-uuid>`** (résolution Location Service côté serveur).
 - Rechargement dynamique des configurations PLIST serveur/client avec priorité CLI > env > fichier, mise à jour des cibles Puppy (`stderr|stdout|file:`) et journalisation centralisée via `BoxLogging`.
 - Un fichier de configuration unique `~/.box/Box.plist` est généré au premier lancement. Il contient trois sections : `common` (UUID de nœud `node_uuid` et UUID d’utilisateur `user_uuid` partagés entre client et serveur), `server` (port, `log_level`, `log_target`, options de transport, `admin_channel`) et `client` (adresse/port par défaut, niveau et cible de log). Client et serveur se synchronisent sur ces identités persistantes et `box admin status` expose le `node_uuid` actif.
 - Stockage persistant: le serveur initialise une hiérarchie `~/.box/queues/` dès le premier démarrage, garantit la présence d’une file `INBOX` et persiste chaque message sous forme de fichier JSON (`timestamp-<uuid>.json`) enrichi avec le couple (`node_id`,`user_id`). `box admin status` et `box admin stats` exposent le chemin racine, le nombre de files (minimum 1 grâce à `INBOX`), le nombre d’objets et l’espace disque libre disponible.
-- Tests Swift couvrant les commandes d’administration côté répartiteur (`BoxAdminDispatcherTests`) et les parcours ping/log-target/reload-config via socket Unix (`BoxAdminIntegrationTests`). Les prochains jalons porteront sur des tests d’intégration CLI↔️serveur et la réintégration Noise/libsodium.
+- Tests Swift couvrant les commandes d’administration côté répartiteur (`BoxAdminDispatcherTests`), les parcours ping/log-target/reload-config via socket Unix (`BoxAdminIntegrationTests`), les échanges client↔️serveur HELLO/PUT/GET sur UDP (`BoxClientServerIntegrationTests`) **et** la commande `locate` côté admin/UDP (autorisation par nœud/utilisateur). Les prochains jalons porteront sur l’orchestration complète via la CLI (`swift run box …`) et la réintégration Noise/libsodium.
 
 ### Exemples (Swift cleartext)
 
@@ -57,7 +57,13 @@ Terminal 2 — client GET:
 swift run box --address 127.0.0.1 --port 12567 --get /demo
 ```
 
+Terminal 2 — client LOCATE (résolution Location Service):
+```bash
+swift run box --address 127.0.0.1 --port 12567 --locate CA62C378-4525-4B40-8656-D10B555704BE
+```
+
 Les logs indiquent la progression HELLO → STATUS → action. Les réponses GET affichent la taille et le type du contenu stocké en mémoire.
+La commande `--locate` (comme `box admin locate`) ne renvoie des informations que si le serveur connaît l’identité (couple `node_id`/`user_id`) du client ; dans le cas contraire la réponse est `unauthorized` côté UDP et aucun détail n’est divulgué.
 
 ### Configuration (PLIST)
 
@@ -76,6 +82,7 @@ Les logs indiquent la progression HELLO → STATUS → action. Les réponses GET
 - `swift run box admin log-target <stderr|stdout|file:/chemin>` : met à jour dynamiquement la cible de journalisation Puppy.
 - `swift run box admin reload-config [--configuration <plist>]` : recharge le PLIST serveur, met à jour le niveau/cible de log et rafraîchit les drapeaux d’exécution (CLI > config > valeur par défaut).
 - `swift run box admin stats` : renvoie un instantané JSON (port, transport, cible de log, compte d’objets, compteur de reload et dernier statut).
+- `swift run box admin locate <node-uuid>` : renvoie le dernier enregistrement Location Service connu pour le nœud (ou une erreur `node-not-found`).
 
 > Remarque : la communication admin repose sur un socket Unix (`~/.box/run/boxd.socket`) sur Linux/macOS et sur un named pipe Windows (`\\.\pipe\boxd-admin`).
 

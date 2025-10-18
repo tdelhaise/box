@@ -88,6 +88,8 @@ final class BoxClientHandler: ChannelInboundHandler {
         case waitingForPutAck
         /// Waiting for the GET response (PUT data or STATUS).
         case waitingForGetResponse
+        /// Waiting for the locate response (PUT with record or STATUS error).
+        case waitingForLocateResponse
         /// Operation completed.
         case completed
     }
@@ -194,6 +196,8 @@ final class BoxClientHandler: ChannelInboundHandler {
             try handlePutAck(frame: frame, context: context)
         case .waitingForGetResponse:
             try handleGetResponse(frame: frame, context: context)
+        case .waitingForLocateResponse:
+            try handleLocateResponse(frame: frame, context: context)
         case .completed:
             break
         }
@@ -250,6 +254,14 @@ final class BoxClientHandler: ChannelInboundHandler {
                 context: context
             )
             stage = .waitingForGetResponse
+        case let .locate(node):
+            let locatePayload = BoxCodec.LocatePayload(nodeUUID: node)
+            let buffer = BoxCodec.encodeLocatePayload(locatePayload, allocator: allocator)
+            send(
+                frame: BoxCodec.Frame(command: .locate, requestId: nextRequestId(), nodeId: nodeId, userId: userId, payload: buffer),
+                context: context
+            )
+            stage = .waitingForLocateResponse
         }
     }
 
@@ -294,6 +306,53 @@ final class BoxClientHandler: ChannelInboundHandler {
             return
         }
         succeedAndClose(context: context)
+    }
+
+    /// Processes the response to a Locate command (either PUT payload or STATUS error).
+    private func handleLocateResponse(frame: BoxCodec.Frame, context: ChannelHandlerContext) throws {
+        switch frame.command {
+        case .put:
+            var payload = frame.payload
+            let putPayload = try BoxCodec.decodePutPayload(from: &payload)
+            let data = Data(putPayload.data)
+            if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
+               let dictionary = jsonObject as? [String: Any] {
+                logger.info(
+                    "LOCATE response",
+                    metadata: [
+                        "node": "\(dictionary["node_uuid"] ?? putPayload.queuePath)",
+                        "contentType": "\(putPayload.contentType)"
+                    ]
+                )
+            } else {
+                logger.info(
+                    "LOCATE response (raw)",
+                    metadata: [
+                        "bytes": "\(putPayload.data.count)",
+                        "contentType": "\(putPayload.contentType)"
+                    ]
+                )
+            }
+            succeedAndClose(context: context)
+        case .status:
+            var payload = frame.payload
+            let statusPayload = try BoxCodec.decodeStatusPayload(from: &payload)
+            logger.error(
+                "LOCATE request failed",
+                metadata: [
+                    "status": "\(statusPayload.status)",
+                    "message": "\(statusPayload.message)"
+                ]
+            )
+            let error = NSError(
+                domain: "BoxClientLocate",
+                code: Int(statusPayload.status.rawValue),
+                userInfo: [NSLocalizedDescriptionKey: statusPayload.message]
+            )
+            failAndClose(error: error, context: context)
+        default:
+            logger.warning("Unexpected command while awaiting LOCATE response", metadata: ["command": "\(frame.command)"])
+        }
     }
 
     /// Serialises and sends a frame to the remote endpoint.

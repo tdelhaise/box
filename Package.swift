@@ -63,7 +63,7 @@ let package = Package(
         ),
         .testTarget(
             name: "BoxAppTests",
-            dependencies: ["BoxCore", "BoxServer"],
+            dependencies: ["BoxCore", "BoxServer", "BoxClient"],
             path: "swift/Tests/BoxAppTests"
         )
     ]

@@ -13,7 +13,7 @@ Immediate TODOs (Swift track)
    - [x] Implémenter le serveur UDP SwiftNIO pour HELLO/STATUS/PUT/GET.
    - [x] Implémenter le client UDP SwiftNIO équivalent et tests unitaires du codec.
    - [x] Resynchroniser README/DEVELOPMENT_STRATEGY après validation.
-   - [ ] Ajouter des tests d’intégration end-to-end (Swift) automatisés.
+   - [x] Ajouter des tests d’intégration end-to-end (Swift) automatisés (`BoxClientServerIntegrationTests`).
 
 2) Swift S3 — Configuration + canal admin (Issue #14)
    - [x] Charger `~/.box/box.plist` (PropertyListDecoder) avec priorité CLI/env.
@@ -23,6 +23,7 @@ Immediate TODOs (Swift track)
    - [x] Étendre l’arbre de commandes `box admin` :
      - [x] Enregistrer `status|ping|log-target|reload-config|stats` dans `CommandConfiguration` (payload JSON pour les paramètres).
      - [x] Mettre à jour l’aide CLI et la validation (payload JSON, alias `--configuration` et réponses utilisateur).
+     - [x] Ajouter `locate <uuid>` côté CLI/admin (résolution Location Service) avec contrôle d’autorisation nœud/utilisateur.
    - [x] Factoriser le handler admin côté serveur :
      - [x] Créer un répartiteur structuré pour `status`/`ping`/`log-target` (+ analyse JSON optionnelle).
      - [x] Implémenter `reload-config` (relecture PLIST, état runtime) et `stats` (instantané runtime JSON).
@@ -35,7 +36,8 @@ Immediate TODOs (Swift track)
      - [x] Ajouter des tests unitaires pour les commandes admin (mock de transport) couvrant `ping`, `log-target`, `reload-config`, `stats`.
    - [x] Stabiliser les tests d’intégration `BoxAdminIntegrationTests` (transport Swift) et les exécuter en CI; un futur travail couvrira l’orchestration complète via la CLI.
      - [ ] Couvrir la génération automatique des PLIST de configuration côté CLI (vérifier la présence du `node_uuid`).
-    - [x] Adapter la Location Service à l’instantané de connectivité (`addresses[]`, `connectivity.has_global_ipv6`, `port_mapping.*`) et livrer un prototype Swift + documentation consommable par les clients mobiles.
+   - [x] Adapter la Location Service à l’instantané de connectivité (`addresses[]`, `connectivity.has_global_ipv6`, `port_mapping.*`) et livrer un prototype Swift + documentation consommable par les clients mobiles.
+   - [x] Ajout de tests end-to-end UDP (`BoxClientServerIntegrationTests`) couvrant PUT/GET et LOCATE (succès + client non autorisé).
    - [x] Implémenter la hiérarchie de stockage `~/.box/queues/` avec la file `INBOX` obligatoire et exposer `queueCount`/`freeSpace` via `box admin status`.
      - [x] Mettre à jour README, DEVELOPMENT_STRATEGY et SPECS pour refléter les nouvelles commandes et matrices de plateformes.
 

@@ -109,6 +109,18 @@ actor LocationServiceCoordinator {
         await snapshot().first { $0.nodeUUID == nodeUUID }
     }
 
+    /// Returns whether the provided node/user identity is known to the Location Service.
+    /// - Parameters:
+    ///   - nodeUUID: Identifier of the requesting node.
+    ///   - userUUID: Identifier of the requesting user.
+    /// - Returns: `true` when the combination is known, `false` otherwise.
+    func authorize(nodeUUID: UUID, userUUID: UUID) async -> Bool {
+        guard let record = await resolve(nodeUUID: nodeUUID) else {
+            return false
+        }
+        return record.userUUID == userUUID
+    }
+
     private func decode(object: BoxStoredObject) -> LocationServiceNodeRecord? {
         guard object.contentType.lowercased().hasPrefix("application/json") else {
             return nil

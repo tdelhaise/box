@@ -17,6 +17,8 @@ public enum BoxClientAction: Sendable {
     case put(queuePath: String, contentType: String, data: [UInt8])
     /// Send a GET request for the supplied queue path.
     case get(queuePath: String)
+    /// Resolve a Location Service record for the supplied node identifier.
+    case locate(node: UUID)
 }
 
 /// Aggregates runtime options shared between the client and the server entry points.

@@ -44,6 +44,8 @@ public enum BoxCodec {
         case search = 6
         /// BYE command for teardown.
         case bye = 7
+        /// LOCATE command (Location Service query).
+        case locate = 8
     }
 
     /// Status codes used in HELLO/STATUS payloads.
@@ -161,6 +163,18 @@ public enum BoxCodec {
         /// - Parameter queuePath: Queue path requested by the client.
         public init(queuePath: String) {
             self.queuePath = queuePath
+        }
+    }
+
+    /// Payload of a LOCATE/SEARCH frame.
+    public struct LocatePayload {
+        /// Node identifier being resolved.
+        public var nodeUUID: UUID
+
+        /// Creates a new Locate payload representation.
+        /// - Parameter nodeUUID: Node identifier to resolve.
+        public init(nodeUUID: UUID) {
+            self.nodeUUID = nodeUUID
         }
     }
 
@@ -403,5 +417,30 @@ public enum BoxCodec {
             throw BoxCodecError.invalidUTF8
         }
         return GetPayload(queuePath: queuePath)
+    }
+
+    /// Encodes a Locate payload (target node UUID).
+    /// - Parameters:
+    ///   - payload: Typed Locate payload.
+    ///   - allocator: Byte buffer allocator from the channel.
+    /// - Returns: Encoded Locate payload buffer.
+    public static func encodeLocatePayload(
+        _ payload: LocatePayload,
+        allocator: ByteBufferAllocator
+    ) -> ByteBuffer {
+        var buffer = allocator.buffer(capacity: 16)
+        writeUUID(payload.nodeUUID, into: &buffer)
+        return buffer
+    }
+
+    /// Decodes a Locate payload from the supplied buffer slice.
+    /// - Parameter payload: Payload slice referencing the Locate buffer.
+    /// - Returns: Typed Locate payload.
+    /// - Throws: `BoxCodecError` when the payload is malformed.
+    public static func decodeLocatePayload(from payload: inout ByteBuffer) throws -> LocatePayload {
+        guard let nodeUUID = readUUID(from: &payload) else {
+            throw BoxCodecError.truncatedPayload
+        }
+        return LocatePayload(nodeUUID: nodeUUID)
     }
 }

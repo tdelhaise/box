@@ -59,6 +59,10 @@ public struct BoxCommandParser: AsyncParsableCommand {
     @Option(name: .customLong("get"), help: "GET queue path.")
     public var getQueue: String?
 
+    /// Optional Locate target node UUID.
+    @Option(name: .customLong("locate"), help: "Locate a node UUID via the remote Location Service.")
+    public var locateNode: String?
+
     /// Optional inline payload used for PUT.
     @Option(name: .customLong("data"), help: "Inline data used with --put (UTF-8).")
     public var dataString: String?
@@ -75,6 +79,10 @@ public struct BoxCommandParser: AsyncParsableCommand {
         let cliLogLevel = Logger.Level(logLevelString: logLevel)
         let cliLogTarget = try resolveLogTarget()
         let resolvedMode: BoxRuntimeMode = server ? .server : .client
+
+        if resolvedMode == .server, locateNode != nil {
+            throw ValidationError("--locate is only available in client mode.")
+        }
 
         let configurationResult = try BoxConfiguration.loadDefault(explicitPath: configurationPath)
         let configuration = configurationResult?.configuration
@@ -180,6 +188,10 @@ public struct BoxCommandParser: AsyncParsableCommand {
             return .handshake
         }
 
+        if locateNode != nil && (putDescriptor != nil || getQueue != nil) {
+            throw ValidationError("Cannot combine --locate with --put or --get.")
+        }
+
         if let descriptor = putDescriptor {
             guard getQueue == nil else {
                 throw ValidationError("Cannot combine --put and --get in the same invocation.")
@@ -201,6 +213,13 @@ public struct BoxCommandParser: AsyncParsableCommand {
                 throw ValidationError("--get queue path must start with '/'.")
             }
             return .get(queuePath: queuePath)
+        }
+
+        if let locateNode {
+            guard let uuid = UUID(uuidString: locateNode) else {
+                throw ValidationError("--locate expects a valid UUID.")
+            }
+            return .locate(node: uuid)
         }
 
         return .handshake
@@ -228,7 +247,7 @@ extension BoxCommandParser {
             CommandConfiguration(
                 commandName: "admin",
                 abstract: "Interact with the local admin channel.",
-                subcommands: [Status.self, Ping.self, LogTarget.self, ReloadConfig.self, Stats.self]
+                subcommands: [Status.self, Ping.self, LogTarget.self, ReloadConfig.self, Stats.self, Locate.self]
             )
         }
 
@@ -315,6 +334,25 @@ extension BoxCommandParser {
 
             public mutating func run() throws {
                 let response = try Admin.sendCommand("stats", socketOverride: socket)
+                Admin.writeResponse(response)
+            }
+        }
+
+        /// `box admin locate <node-uuid>` — resolves a node through the Location Service snapshot.
+        public struct Locate: AsyncParsableCommand {
+            @Option(name: .shortAndLong, help: "Admin socket path (defaults to ~/.box/run/boxd.socket).")
+            public var socket: String?
+
+            @Argument(help: "Node UUID to resolve.")
+            public var node: String
+
+            public init() {}
+
+            public mutating func run() throws {
+                guard UUID(uuidString: node) != nil else {
+                    throw ValidationError("locate expects a valid node UUID.")
+                }
+                let response = try Admin.sendCommand("locate \(node)", socketOverride: socket)
                 Admin.writeResponse(response)
             }
         }

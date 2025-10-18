@@ -960,7 +960,7 @@ Safety
 - Authentication/Authorization
   - Access is restricted by OS-level file/pipe permissions to the same non-privileged user that owns `boxd`.
   - `boxd` refuses admin-channel requests if the caller is not the same user.
-  - Swift rewrite (MVP 2025): admin commands are invoked as plain text lines (`status`, `ping`, `log-target <target|json>`, `reload-config [json]`, `stats`) returning newline-delimited JSON responses.
+  - Swift rewrite (MVP 2025): admin commands are invoked as plain text lines (`status`, `ping`, `log-target <target|json>`, `reload-config [json]`, `stats`, `locate <node-uuid>`) retournant un JSON terminé par un saut de ligne. La commande `locate` refuse de divulguer des informations si le couple `(node_id, user_id)` du demandeur n’a jamais été enregistré.
   - Implementation status (2025-10): socket Unix et named pipe Windows disponibles avec ACL restreintes; `log-target` pilote Puppy (`stderr|stdout|file:`) et `reload-config` relit les PLIST. Restent à intégrer: tests d’intégration CLI↔️serveur et les commandes NAT/LS décrites ci-dessous.
 
 - Message Format

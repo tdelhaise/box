@@ -129,105 +129,32 @@ final class BoxAdminIntegrationTests: XCTestCase {
         XCTAssertNotNil(coerceArrayOfDictionaries(statusAfter["addresses"]))
         XCTAssertNotNil(coerceDictionary(statusAfter["connectivity"]))
     }
+
+    func testAdminLocateReturnsServerRecord() async throws {
+        let context = try await startServer()
+        defer { context.tearDown() }
+
+        try await context.waitForAdminSocket()
+        let transport = BoxAdminTransportFactory.makeTransport(socketPath: context.socketPath)
+
+        let statusJSON = try decodeJSON(try transport.send(command: "status"))
+        let nodeUUID = try XCTUnwrap(statusJSON["nodeUUID"] as? String)
+
+        let locateJSON = try decodeJSON(try transport.send(command: "locate \(nodeUUID)"))
+        XCTAssertEqual(locateJSON["status"] as? String, "ok")
+        let record = try XCTUnwrap(coerceDictionary(locateJSON["record"]))
+        XCTAssertEqual(record["nodeUUID"] as? String, nodeUUID)
+        XCTAssertEqual(record["userUUID"] as? String, statusJSON["userUUID"] as? String)
+        XCTAssertNotNil(coerceArrayOfDictionaries(record["addresses"]))
+        XCTAssertNotNil(coerceDictionary(record["connectivity"]))
+
+        let missingJSON = try decodeJSON(try transport.send(command: "locate \(UUID().uuidString)"))
+        XCTAssertEqual(missingJSON["status"] as? String, "error")
+        XCTAssertEqual(missingJSON["message"] as? String, "node-not-found")
+    }
 }
 
 // MARK: - Helpers
-
-private struct ServerContext {
-    let homeDirectory: URL
-    let socketPath: String
-    let configurationURL: URL
-    let originalHome: String?
-    let serverTask: Task<Void, Error>
-
-    func waitForAdminSocket(timeout: TimeInterval = 10.0) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        var lastError: Error?
-        while Date() < deadline {
-            if FileManager.default.fileExists(atPath: socketPath) {
-                return
-            }
-            do {
-                let probeTransport = BoxAdminTransportFactory.makeTransport(socketPath: socketPath)
-                _ = try probeTransport.send(command: "ping")
-                return
-            } catch {
-                lastError = error
-            }
-            try await Task.sleep(nanoseconds: 50_000_000)
-        }
-        if let error = lastError {
-            throw error
-        }
-        throw NSError(domain: "BoxAdminIntegrationTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "admin socket not created in time"])
-    }
-
-    func tearDown() {
-        serverTask.cancel()
-        waitForTaskCancellation(serverTask)
-        if let originalHome {
-            setenv("HOME", originalHome, 1)
-        } else {
-            unsetenv("HOME")
-        }
-        try? FileManager.default.removeItem(at: homeDirectory)
-        BoxLogging.update(target: .stderr)
-        BoxLogging.update(level: .info)
-    }
-}
-
-private func startServer(configurationData: Data? = nil) async throws -> ServerContext {
-    let tempRoot = URL(fileURLWithPath: "/tmp", isDirectory: true)
-    let tempHome = tempRoot.appendingPathComponent("box-tests-\(UUID().uuidString)", isDirectory: true)
-    let originalHome = getenv("HOME").map { String(cString: $0) }
-    setenv("HOME", tempHome.path, 1)
-
-    let boxDirectory = tempHome.appendingPathComponent(".box", isDirectory: true)
-    let runDirectory = boxDirectory.appendingPathComponent("run", isDirectory: true)
-    try FileManager.default.createDirectory(at: runDirectory, withIntermediateDirectories: true)
-
-    let configurationURL = boxDirectory.appendingPathComponent("Box.plist")
-    if let configurationData {
-        try configurationData.write(to: configurationURL)
-    }
-    let configurationResult = try BoxConfiguration.load(from: configurationURL)
-    let configuration = configurationResult.configuration
-
-    BoxLogging.bootstrap(level: .info, target: .stderr)
-    BoxLogging.update(level: .info)
-    BoxLogging.update(target: .stderr)
-
-    let options = BoxRuntimeOptions(
-        mode: .server,
-        address: "127.0.0.1",
-        port: 0,
-        portOrigin: .cliFlag,
-        configurationPath: configurationURL.path,
-        adminChannelEnabled: true,
-        logLevel: .info,
-        logTarget: .stderr,
-        logLevelOrigin: .default,
-        logTargetOrigin: .default,
-        nodeId: configuration.common.nodeUUID,
-        userId: configuration.common.userUUID,
-        portMappingRequested: false,
-        clientAction: .handshake,
-        portMappingOrigin: .default
-    )
-
-    let task = Task {
-        try await BoxServer.run(with: options)
-    }
-
-    let socketPath = runDirectory.appendingPathComponent("boxd.socket").path
-    return ServerContext(
-        homeDirectory: tempHome,
-        socketPath: socketPath,
-        configurationURL: configurationURL,
-        originalHome: originalHome,
-        serverTask: task
-    )
-}
 
 private func decodeJSON(_ response: String) throws -> [String: Any] {
     let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -281,14 +208,4 @@ private func coerceArrayOfDictionaries(_ value: Any?) -> [[String: Any]]? {
         return result
     }
     return nil
-}
-
-private func waitForTaskCancellation(_ task: Task<Void, Error>, timeout: TimeInterval = 5.0) {
-    let group = DispatchGroup()
-    group.enter()
-    Task.detached {
-        defer { group.leave() }
-        _ = try? await task.value
-    }
-    _ = group.wait(timeout: .now() + timeout)
 }
