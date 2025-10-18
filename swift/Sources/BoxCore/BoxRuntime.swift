@@ -57,6 +57,15 @@ public struct BoxRuntimeOptions: Sendable {
         /// Runtime override applied dynamically (admin channel).
         case runtime
     }
+    /// Origin of the port mapping preference.
+    public enum PortMappingOrigin: Sendable {
+        /// Default (feature disabled).
+        case `default`
+        /// CLI `--enable-port-mapping` flag.
+        case cliFlag
+        /// Configuration file override.
+        case configuration
+    }
     /// Default client address when none is provided.
     public static let defaultClientAddress = "127.0.0.1"
     /// Default server bind address when none is provided.
@@ -65,8 +74,16 @@ public struct BoxRuntimeOptions: Sendable {
     public static let defaultAddress = BoxRuntimeOptions.defaultClientAddress
     /// Default UDP port when none is provided.
     public static let defaultPort: UInt16 = 12567
-    /// Default log target when none is provided.
-    public static let defaultLogTarget: BoxLogTarget = .stderr
+    /// Returns the default log target for the provided runtime mode.
+    /// - Parameter mode: Client or server mode.
+    /// - Returns: File-based log target when the logs directory is resolvable, otherwise stderr.
+    public static func defaultLogTarget(for mode: BoxRuntimeMode) -> BoxLogTarget {
+        let role: BoxPaths.LogFileRole = (mode == .server) ? .server : .client
+        if let url = BoxPaths.defaultLogFileURL(role: role) {
+            return .file(url.path)
+        }
+        return .stderr
+    }
 
     /// Indicates whether we should boot the server or the client.
     public var mode: BoxRuntimeMode
@@ -94,6 +111,10 @@ public struct BoxRuntimeOptions: Sendable {
     public var nodeId: UUID
     /// Stable user identifier on behalf of which this runtime acts.
     public var userId: UUID
+    /// Indicates whether automatic port mapping (PCP/NAT-PMP/UPnP) was requested.
+    public var portMappingRequested: Bool
+    /// Indicates how the port mapping preference was obtained.
+    public var portMappingOrigin: PortMappingOrigin
 
     /// Creates a new bundle of runtime options.
     /// - Parameters:
@@ -123,7 +144,9 @@ public struct BoxRuntimeOptions: Sendable {
         logTargetOrigin: LogTargetOrigin,
         nodeId: UUID,
         userId: UUID,
-        clientAction: BoxClientAction = .handshake
+        portMappingRequested: Bool,
+        clientAction: BoxClientAction = .handshake,
+        portMappingOrigin: PortMappingOrigin
     ) {
         self.mode = mode
         self.address = address
@@ -137,6 +160,8 @@ public struct BoxRuntimeOptions: Sendable {
         self.logTargetOrigin = logTargetOrigin
         self.nodeId = nodeId
         self.userId = userId
+        self.portMappingRequested = portMappingRequested
+        self.portMappingOrigin = portMappingOrigin
         self.clientAction = clientAction
     }
 }

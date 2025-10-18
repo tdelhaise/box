@@ -55,7 +55,7 @@ Swift Coding Style
 - API publique: types en `PascalCase`, méthodes/fonctions en `camelCase`. Les énumérations utilisent des cases explicites (`case server`, `case client`).
 - Documentation: commenter les types, méthodes et propriétés exposés avec `///` pour faciliter la revue et la génération automatique.
 - Concurrence: privilégier async/await et les primitives SwiftNIO (`EventLoopGroup`, `ChannelPipeline`). Éviter la création manuelle de threads.
-- Logging: utiliser swift-log (`Logger`) et configurer la sortie via `BoxCommandParser`. Pas d’appel direct à `print` pour les logs structurés.
+- Logging: utiliser swift-log (`Logger`) et configurer la sortie via `BoxCommandParser`. Pas d’appel direct à `print` pour les logs structurés. La cible par défaut est un fichier dans `~/.box/logs/` (`box.log` côté client, `boxd.log` côté serveur).
 - Tests: `XCTest` avec des cibles sous `swift/Tests`. Couvrir la logique de parsing, les services réseau et les intégrations crypto.
 
 C Coding Style

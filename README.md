@@ -11,11 +11,19 @@ swift run box --server        # équivalent à --server/-s
 swift run box                 # mode client par défaut
 ```
 - Par défaut, le serveur se lie à toutes les interfaces (`0.0.0.0`). Utilisez `--address <ip>` pour restreindre l'écoute.
-- `BoxCommandParser` résout la ligne de commande et délègue à `BoxServer` ou `BoxClient`. Les options actuelles couvrent `--server/-s`, `--port`, `--address`, `--config` (PLIST), `--log-level`, `--log-target (stderr|stdout|file:<path>)`, `--put /queue[:type] --data "..."` et `--get /queue`.
+- `BoxCommandParser` résout la ligne de commande et délègue à `BoxServer` ou `BoxClient`. Les options actuelles couvrent `--server/-s`, `--port`, `--address`, `--config` (PLIST), `--log-level`, `--log-target (stderr|stdout|file:<path>)`, `--enable-port-mapping`/`--no-enable-port-mapping`, `--put /queue[:type] --data "..."` et `--get /queue`.
 - `box admin status` interroge le socket Unix local (`~/.box/run/boxd.socket`) et renvoie un JSON de statut.
 - `BoxCodec` encapsule le framing v1 (HELLO/STATUS/PUT/GET) avec en-tête enrichi (`request_id` UUID, `node_id`, `user_id`) et peut être réutilisé dans n’importe quel handler SwiftNIO fondé sur `ByteBuffer`.
+- Les journaux vont par défaut dans `~/.box/logs/` (`box.log` pour le client, `boxd.log` pour le serveur). Les cibles `stderr`/`stdout` restent disponibles via `--log-target` ou `Box.plist`.
 - Le protocole est pour l’instant implémenté en clair le temps de porter l’ensemble des fonctionnalités. La réintégration Noise/libsodium arrivera une fois le socle Swift stabilisé.
 - Les fichiers de configuration basculent vers le format Property List (PLIST). La lecture TOML existante est gelée et sera réintroduite ultérieurement si nécessaire.
+
+### Connectivité & IPv6
+
+- IPv6 est privilégié : le serveur se lie simultanément sur `::` et `0.0.0.0`. Sur un Raspberry Pi ou une machine domestique recevant un préfixe IPv6 global, cela permet une exposition directe sans redirection NAT.
+- IPv4 reste un repli obligatoire. Si aucune adresse IPv6 globale n’est détectée, Box continue d’accepter les connexions en IPv4. Il conviendra alors de configurer une redirection UDP sur la box Internet ou d’utiliser un relais auto-hébergé. Une vérification de connectivité (détection d’adresse globale, avertissement dans les logs/admin) sera ajoutée avant l’intégration Noise/libsodium. Un module de port-mapping automatique (PCP/NAT-PMP/UPnP, opt-in) sera intégré à court terme pour demander l’ouverture du port UDP côté routeur résidentiel.
+- Les clients mobiles (iOS/Android) interrogeront la Location Service pour récupérer toutes les adresses publiées par le serveur (IPv6 en priorité, IPv4 en secours) et testeront les points de terminaison dans cet ordre.
+- Documentez ou forcez l’adresse publique via `Box.plist` si la machine est multi-homée ou derrière un relais, afin que la Location Service reflète correctement les routes accessibles depuis l’extérieur.
 
 ### Avancement 2025-10-14
 
@@ -53,11 +61,11 @@ Les logs indiquent la progression HELLO → STATUS → action. Les réponses GET
 
 - Fichier unique: `~/.box/Box.plist` (surcharge via `--config`). Structure :
   - `common`: `node_uuid` et `user_uuid` (UUID générés au premier lancement et réutilisés par le client comme par le serveur).
-  - `server`: `port`, `log_level`, `log_target`, paramètres de transport (`transport`, `transport_status`, `transport_put`, `transport_get`), `admin_channel`, options Noise futures.
-  - `client`: `address`, `port`, `log_level`, `log_target` par défaut pour le mode client.
+  - `server`: `port`, `log_level`, `log_target`, paramètres de transport (`transport`, `transport_status`, `transport_put`, `transport_get`), `admin_channel`, `port_mapping` (booléen), options Noise futures. La valeur par défaut `log_target` pointe vers `file:~/.box/logs/boxd.log` et `port_mapping` vaut `false` (activable via CLI ou PLIST).
+  - `client`: `address`, `port`, `log_level`, `log_target` par défaut pour le mode client (par défaut `file:~/.box/logs/box.log`).
 - Priorité des sources: CLI > variables d’environnement (`BOXD_PORT` pour le port serveur) > PLIST > valeurs par défaut (adresse `0.0.0.0` côté serveur, `127.0.0.1` côté client, port `12567`).
 - Les identifiants `node_uuid`/`user_uuid` sont consumés pour signer chaque trame réseau (via `BoxCodec`).
-- Un répertoire `~/.box` est créé au démarrage avec permissions strictes (`0700`) ainsi que `~/.box/run` (`0700`) pour héberger le socket admin (`0600`). Les journaux utilisent Puppy (`stderr` par défaut, configurable vers `stdout` ou un fichier).
+- Un répertoire `~/.box` est créé au démarrage avec permissions strictes (`0700`) ainsi que `~/.box/run` (`0700`) et `~/.box/logs/` (stockage des fichiers `box.log`/`boxd.log`). La journalisation repose sur Puppy via swift-log.
 
 ### Commandes d’administration
 

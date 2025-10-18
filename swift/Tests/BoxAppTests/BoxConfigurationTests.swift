@@ -18,13 +18,14 @@ final class BoxConfigurationTests: XCTestCase {
                 "user_uuid": userIdentifier.uuidString
             ],
             "server": [
-                "port": 15000,
-                "log_level": "debug",
-                "log_target": "stdout",
-                "transport": "noise",
-                "pre_share_key": "secret",
-                "admin_channel": false
-            ],
+            "port": 15000,
+            "log_level": "debug",
+            "log_target": "stdout",
+            "transport": "noise",
+            "pre_share_key": "secret",
+            "admin_channel": false,
+            "port_mapping": true
+        ],
             "client": [
                 "log_level": "error",
                 "log_target": "file:/tmp/box.log",
@@ -48,6 +49,7 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.server.transportGeneral, "noise")
         XCTAssertEqual(configuration.server.preShareKey, "secret")
         XCTAssertEqual(configuration.server.adminChannelEnabled, false)
+        XCTAssertEqual(configuration.server.portMappingEnabled, true)
 
         XCTAssertEqual(configuration.client.logLevel, Logger.Level.error)
         XCTAssertEqual(configuration.client.logTarget, "file:/tmp/box.log")
@@ -71,12 +73,33 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertNotNil(configuration.common.userUUID)
 
         XCTAssertEqual(configuration.server.logLevel, .info)
-        XCTAssertEqual(configuration.server.logTarget, "stderr")
+        let expectedServerTarget: String = {
+            switch BoxRuntimeOptions.defaultLogTarget(for: .server) {
+            case .stderr:
+                return "stderr"
+            case .stdout:
+                return "stdout"
+            case .file(let path):
+                return "file:\(path)"
+            }
+        }()
+        XCTAssertEqual(configuration.server.logTarget, expectedServerTarget)
         XCTAssertEqual(configuration.server.adminChannelEnabled, true)
         XCTAssertEqual(configuration.server.port, BoxRuntimeOptions.defaultPort)
+        XCTAssertEqual(configuration.server.portMappingEnabled ?? false, false)
 
         XCTAssertEqual(configuration.client.logLevel, .info)
-        XCTAssertEqual(configuration.client.logTarget, "stderr")
+        let expectedClientTarget: String = {
+            switch BoxRuntimeOptions.defaultLogTarget(for: .client) {
+            case .stderr:
+                return "stderr"
+            case .stdout:
+                return "stdout"
+            case .file(let path):
+                return "file:\(path)"
+            }
+        }()
+        XCTAssertEqual(configuration.client.logTarget, expectedClientTarget)
         XCTAssertEqual(configuration.client.address, BoxRuntimeOptions.defaultClientAddress)
         XCTAssertEqual(configuration.client.port, BoxRuntimeOptions.defaultPort)
 
@@ -114,6 +137,7 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.client.logLevel, .info)
         XCTAssertNotNil(configuration.common.nodeUUID)
         XCTAssertNotNil(configuration.common.userUUID)
+        XCTAssertEqual(configuration.server.portMappingEnabled ?? false, false)
 
         let persisted = try Data(contentsOf: plistURL)
         let updatedPlist = try PropertyListSerialization.propertyList(from: persisted, options: [], format: nil) as? [String: Any]

@@ -61,6 +61,31 @@ public enum BoxPaths {
         boxDirectory()?.appendingPathComponent("queues", isDirectory: true)
     }
 
+    /// Resolves the directory storing log files (`~/.box/logs`).
+    public static func logsDirectory() -> URL? {
+        boxDirectory()?.appendingPathComponent("logs", isDirectory: true)
+    }
+
+    /// Enumerates the supported default log file roles.
+    public enum LogFileRole {
+        case client
+        case server
+    }
+
+    /// Computes the default log file location for the supplied role.
+    /// - Parameter role: Identifies whether the client or server log file is requested.
+    /// - Returns: URL to the log file when derivable.
+    public static func defaultLogFileURL(role: LogFileRole) -> URL? {
+        let fileName: String
+        switch role {
+        case .client:
+            fileName = "box.log"
+        case .server:
+            fileName = "boxd.log"
+        }
+        return logsDirectory()?.appendingPathComponent(fileName, isDirectory: false)
+    }
+
     /// Resolves the default admin socket path (`~/.box/run/boxd.socket`).
     /// - Returns: Absolute path to the admin socket when derivable.
     public static func adminSocketPath() -> String? {

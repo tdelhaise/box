@@ -13,6 +13,15 @@ import WinSDK
 import Darwin
 #endif
 
+private struct ConnectivitySnapshot: Sendable {
+    var globalIPv6Addresses: [String]
+    var detectionErrorDescription: String?
+
+    var hasGlobalIPv6: Bool {
+        !globalIPv6Addresses.isEmpty
+    }
+}
+
 /// SwiftNIO based UDP server implementing the Box protocol in cleartext mode.
 public enum BoxServer {
     /// Boots the UDP server and keeps running until the channel is closed or the task is cancelled.
@@ -53,6 +62,20 @@ public enum BoxServer {
         let serverConfiguration = configuration?.server
         let commonConfiguration = configuration?.common
 
+        let connectivity = probeConnectivity(logger: logger)
+        if let errorDescription = connectivity.detectionErrorDescription {
+            logger.debug("connectivity probe failed", metadata: ["error": .string(errorDescription)])
+        } else if connectivity.hasGlobalIPv6 {
+            logger.info(
+                "detected global IPv6 address(es)",
+                metadata: [
+                    "ipv6": .array(connectivity.globalIPv6Addresses.map { Logger.MetadataValue.string($0) })
+                ]
+            )
+        } else {
+            logger.warning("no global IPv6 address detected; IPv4 port mapping or relay will be required for remote access")
+        }
+
         if portOrigin == .default, let configPort = serverConfiguration?.port {
             effectivePort = configPort
             portOrigin = .configuration
@@ -86,6 +109,9 @@ public enum BoxServer {
 
         let selectedTransport = serverConfiguration?.transportGeneral
 
+        let portMappingRequested = options.portMappingRequested
+        let portMappingOrigin = options.portMappingOrigin
+
         let effectiveNodeId = commonConfiguration?.nodeUUID ?? options.nodeId
         let effectiveUserId = commonConfiguration?.userUUID ?? options.userId
 
@@ -106,7 +132,11 @@ public enum BoxServer {
             reloadCount: 0,
             lastReloadTimestamp: nil,
             lastReloadStatus: "never",
-            lastReloadError: nil
+            lastReloadError: nil,
+            hasGlobalIPv6: connectivity.hasGlobalIPv6,
+            globalIPv6Addresses: connectivity.globalIPv6Addresses,
+            portMappingRequested: portMappingRequested,
+            portMappingOrigin: portMappingOrigin
         )
         let runtimeStateBox = NIOLockedValueBox(initialRuntimeState)
 
@@ -120,10 +150,14 @@ public enum BoxServer {
             logTargetOrigin: logTargetOrigin,
             configurationPresent: configurationResult != nil,
             adminChannelEnabled: adminChannelEnabled,
-            transport: selectedTransport
+            transport: selectedTransport,
+            connectivity: connectivity,
+            portMappingRequested: portMappingRequested,
+            portMappingOrigin: portMappingOrigin
         )
 
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+        var portMappingCoordinator: PortMappingCoordinator?
         let store = try await BoxServerStore(root: queueRoot)
         let statusProvider: @Sendable () -> String = {
             let snapshot = runtimeStateBox.withLockedValue { $0 }
@@ -223,6 +257,16 @@ public enum BoxServer {
                     }
                     if let adminEnabled = loadedServer.adminChannelEnabled {
                         state.adminChannelEnabled = adminEnabled
+                    }
+
+                    if state.portMappingOrigin != .cliFlag {
+                        if let mappingValue = loadedServer.portMappingEnabled {
+                            state.portMappingRequested = mappingValue
+                            state.portMappingOrigin = .configuration
+                        } else if state.portMappingOrigin == .configuration {
+                            state.portMappingRequested = false
+                            state.portMappingOrigin = .default
+                        }
                     }
 
                     return targetCandidate
@@ -338,6 +382,11 @@ public enum BoxServer {
                     state.port = finalPort
                 }
             }
+            if portMappingRequested && portMappingCoordinator == nil {
+                let coordinator = PortMappingCoordinator(logger: logger, port: effectivePort, origin: portMappingOrigin)
+                coordinator.start()
+                portMappingCoordinator = coordinator
+            }
             var metadata: Logger.Metadata = [
                 "address": .string(resolvedHost),
                 "port": .string("\(effectivePort)")
@@ -374,10 +423,12 @@ public enum BoxServer {
                 await waitForAdminChannelShutdown(handle)
             }
 
+            portMappingCoordinator?.stop()
             logger.info("server stopped")
             try await eventLoopGroup.shutdownGracefully()
         } catch {
             logger.error("server failed: \(error)")
+            portMappingCoordinator?.stop()
             if let handle = adminChannelBox.withLockedValue({ $0 }) {
                 initiateAdminChannelShutdown(handle)
                 await waitForAdminChannelShutdown(handle)
@@ -407,6 +458,10 @@ private struct BoxServerRuntimeState: Sendable {
     var lastReloadTimestamp: Date?
     var lastReloadStatus: String
     var lastReloadError: String?
+    var hasGlobalIPv6: Bool
+    var globalIPv6Addresses: [String]
+    var portMappingRequested: Bool
+    var portMappingOrigin: BoxRuntimeOptions.PortMappingOrigin
 }
 
 /// Represents an active admin channel implementation (NIO channel or Windows named pipe).
@@ -950,12 +1005,15 @@ private func enforceNonRoot(logger: Logger) throws {
 ///   - home: Home directory resolved earlier.
 ///   - logger: Logger used for warnings when the path cannot be resolved.
 private func ensureBoxDirectories(home: URL, logger: Logger) throws {
-    guard let boxDirectory = BoxPaths.boxDirectory(), let runDirectory = BoxPaths.runDirectory() else {
+    guard let boxDirectory = BoxPaths.boxDirectory(),
+          let runDirectory = BoxPaths.runDirectory(),
+          let logsDirectory = BoxPaths.logsDirectory() else {
         logger.warning("unable to resolve ~/.box directories")
         return
     }
     try createDirectoryIfNeeded(at: boxDirectory)
     try createDirectoryIfNeeded(at: runDirectory)
+    try createDirectoryIfNeeded(at: logsDirectory)
 }
 
 /// Creates a directory if missing and enforces `0700` permissions.
@@ -1209,21 +1267,170 @@ private func logStartupSummary(
     logTargetOrigin: BoxRuntimeOptions.LogTargetOrigin,
     configurationPresent: Bool,
     adminChannelEnabled: Bool,
-    transport: String?
+    transport: String?,
+    connectivity: ConnectivitySnapshot,
+    portMappingRequested: Bool,
+    portMappingOrigin: BoxRuntimeOptions.PortMappingOrigin
 ) {
+    var metadata: Logger.Metadata = [
+        "port": "\(port)",
+        "portOrigin": "\(portOrigin)",
+        "logLevel": "\(logLevel.rawValue)",
+        "logLevelOrigin": "\(logLevelOrigin)",
+        "logTarget": "\(logTargetDescription(logTarget))",
+        "config": configurationPresent ? "present" : "absent",
+        "admin": adminChannelEnabled ? "enabled" : "disabled",
+        "transport": .string(transport ?? "clear"),
+        "portMapping": .string(portMappingRequested ? "requested" : "disabled"),
+        "portMappingOrigin": .string("\(portMappingOrigin)")
+    ]
+
+    if connectivity.hasGlobalIPv6 {
+        metadata["ipv6"] = .array(connectivity.globalIPv6Addresses.map { Logger.MetadataValue.string($0) })
+    } else if let error = connectivity.detectionErrorDescription {
+        metadata["ipv6"] = .string("probe-error")
+        metadata["ipv6Error"] = .string(error)
+    } else {
+        metadata["ipv6"] = .string("none")
+    }
+
     logger.info(
         "server start",
-        metadata: [
-            "port": "\(port)",
-            "portOrigin": "\(portOrigin)",
-            "logLevel": "\(logLevel.rawValue)",
-            "logLevelOrigin": "\(logLevelOrigin)",
-            "logTarget": "\(logTargetDescription(logTarget))",
-            "config": configurationPresent ? "present" : "absent",
-            "admin": adminChannelEnabled ? "enabled" : "disabled",
-            "transport": .string(transport ?? "clear")
-        ]
+        metadata: metadata
     )
+}
+
+private func probeConnectivity(logger: Logger) -> ConnectivitySnapshot {
+#if os(Windows)
+    return ConnectivitySnapshot(globalIPv6Addresses: [], detectionErrorDescription: "connectivity-probe-not-supported")
+#else
+    var ifaddrPointer: UnsafeMutablePointer<ifaddrs>?
+    guard getifaddrs(&ifaddrPointer) == 0, let basePointer = ifaddrPointer else {
+        let message = String(cString: strerror(errno))
+        return ConnectivitySnapshot(globalIPv6Addresses: [], detectionErrorDescription: message)
+    }
+    defer { freeifaddrs(basePointer) }
+
+    var addresses = Set<String>()
+    var cursor = basePointer
+
+    while true {
+        let rawFlags = UInt32(cursor.pointee.ifa_flags)
+        let flags = Int32(bitPattern: rawFlags)
+        guard (flags & IFF_UP) != 0 else {
+            if let next = cursor.pointee.ifa_next { cursor = next; continue } else { break }
+        }
+        guard (flags & IFF_LOOPBACK) == 0 else {
+            if let next = cursor.pointee.ifa_next { cursor = next; continue } else { break }
+        }
+        guard let addr = cursor.pointee.ifa_addr else {
+            if let next = cursor.pointee.ifa_next { cursor = next; continue } else { break }
+        }
+
+        if Int32(addr.pointee.sa_family) == AF_INET6 {
+            let addressPointer = UnsafePointer<sockaddr>(addr)
+            let ipv6Address = addressPointer.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { $0.pointee.sin6_addr }
+            if isGlobalUnicastIPv6(ipv6Address), let host = numericHostString(for: addressPointer) {
+                addresses.insert(host)
+            }
+        }
+
+        if let next = cursor.pointee.ifa_next {
+            cursor = next
+        } else {
+            break
+        }
+    }
+
+    return ConnectivitySnapshot(globalIPv6Addresses: Array(addresses).sorted(), detectionErrorDescription: nil)
+#endif
+}
+
+#if !os(Windows)
+private func numericHostString(for address: UnsafePointer<sockaddr>) -> String? {
+    let length: socklen_t
+    switch Int32(address.pointee.sa_family) {
+    case AF_INET:
+        length = socklen_t(MemoryLayout<sockaddr_in>.size)
+    case AF_INET6:
+        length = socklen_t(MemoryLayout<sockaddr_in6>.size)
+    default:
+        return nil
+    }
+
+    var hostBuffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+    let result = getnameinfo(address, length, &hostBuffer, socklen_t(hostBuffer.count), nil, 0, NI_NUMERICHOST)
+    guard result == 0 else {
+        return nil
+    }
+    let trimmedBytes = hostBuffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+    var host = String(decoding: trimmedBytes, as: UTF8.self)
+    if let percentIndex = host.firstIndex(of: "%") {
+        host = String(host[..<percentIndex])
+    }
+    return host
+}
+
+private func isGlobalUnicastIPv6(_ address: in6_addr) -> Bool {
+    return withUnsafeBytes(of: address) { rawBuffer -> Bool in
+        let bytes = rawBuffer.bindMemory(to: UInt8.self)
+        guard bytes.count == 16 else { return false }
+
+        var allZero = true
+        for byte in bytes {
+            if byte != 0 {
+                allZero = false
+                break
+            }
+        }
+        if allZero {
+            return false
+        }
+
+        var isLoopback = true
+        for index in 0..<15 {
+            if bytes[index] != 0 {
+                isLoopback = false
+                break
+            }
+        }
+        if isLoopback && bytes[15] == 1 {
+            return false
+        }
+
+        if bytes[0] == 0xff { return false }
+        if bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80 { return false }
+        if (bytes[0] & 0xfe) == 0xfc { return false }
+
+        return true
+    }
+}
+#endif
+
+private final class PortMappingCoordinator: @unchecked Sendable {
+    private let logger: Logger
+    private let port: UInt16
+    private let origin: BoxRuntimeOptions.PortMappingOrigin
+
+    init(logger: Logger, port: UInt16, origin: BoxRuntimeOptions.PortMappingOrigin) {
+        self.logger = logger
+        self.port = port
+        self.origin = origin
+    }
+
+    func start() {
+        logger.info(
+            "port mapping requested (not yet implemented)",
+            metadata: [
+                "port": "\(port)",
+                "origin": "\(origin)"
+            ]
+        )
+    }
+
+    func stop() {
+        logger.debug("port mapping coordinator stopped")
+    }
 }
 
 private func logTargetDescription(_ target: BoxLogTarget) -> String {

@@ -34,6 +34,8 @@ Coding Conventions (highlights)
 - Security posture: default‑deny ACLs, adhere to Noise + XChaCha crypto roadmap, and follow non‑root policy.
 - Admin channel (Unix/Windows): socket `~/.box/run/boxd.socket` ou named pipe `\\.\pipe\boxd-admin`, commandes `status|ping|log-target|reload-config|stats` via `box admin …`.
 - Config PLIST defaults: un fichier unique `~/.box/Box.plist` est généré avec les sections `common` (UUID de nœud et d’utilisateur partagés), `server` et `client`. Ne supprimez jamais ce fichier côté agent.
+- Logging: par défaut les journaux sont écrits dans `~/.box/logs/` (`box.log` pour le client, `boxd.log` pour le serveur). Utilisez `--log-target` ou `Box.plist` pour modifier la destination.
+- Réseau: privilégiez l’IPv6 global. Vérifiez que la machine hôte obtient une adresse IPv6 routable ; sinon, indiquez dans `Box.plist` les adresses publiques ou guides de port forwarding pour l’IPv4. L’option `--enable-port-mapping` (ou `port_mapping = true` dans `Box.plist`) demandera prochainement une ouverture PCP/NAT-PMP/UPnP côté routeur (fonctionnalité encore en phase de scaffolding).
 - Stockage: les files résident dans `~/.box/queues/`; assurez-vous que `INBOX/` reste présent (les tests/implémentations doivent échouer si la création échoue).
 
 Platform Notes

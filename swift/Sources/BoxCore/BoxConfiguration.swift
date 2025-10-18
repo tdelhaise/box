@@ -23,6 +23,7 @@ public struct BoxConfiguration: Sendable {
         public var preShareKey: String?
         public var noisePattern: String?
         public var adminChannelEnabled: Bool?
+        public var portMappingEnabled: Bool?
 
         public init(
             port: UInt16? = nil,
@@ -34,7 +35,8 @@ public struct BoxConfiguration: Sendable {
             transportGet: String? = nil,
             preShareKey: String? = nil,
             noisePattern: String? = nil,
-            adminChannelEnabled: Bool? = nil
+            adminChannelEnabled: Bool? = nil,
+            portMappingEnabled: Bool? = nil
         ) {
             self.port = port
             self.logLevel = logLevel
@@ -46,6 +48,7 @@ public struct BoxConfiguration: Sendable {
             self.preShareKey = preShareKey
             self.noisePattern = noisePattern
             self.adminChannelEnabled = adminChannelEnabled
+            self.portMappingEnabled = portMappingEnabled
         }
     }
 
@@ -100,16 +103,17 @@ public extension BoxConfiguration {
     static func load(from url: URL) throws -> BoxConfigurationLoadResult {
         let fileManager = FileManager.default
         var wasCreated = false
+        let baseDirectory = url.deletingLastPathComponent()
 
         if !fileManager.fileExists(atPath: url.path) {
-            let defaultPlist = ConfigurationPlist.default()
+            let defaultPlist = ConfigurationPlist.default(configurationURL: url)
             try persist(plist: defaultPlist, to: url)
             wasCreated = true
         }
 
         let data = try Data(contentsOf: url)
         if data.isEmpty {
-            let defaultPlist = ConfigurationPlist.default()
+            let defaultPlist = ConfigurationPlist.default(configurationURL: url)
             try persist(plist: defaultPlist, to: url)
             return BoxConfigurationLoadResult(
                 configuration: BoxConfiguration(plist: defaultPlist),
@@ -144,11 +148,14 @@ public extension BoxConfiguration {
         }
 
         if plist.client == nil {
-            plist.client = ConfigurationPlist.Client.default()
+            plist.client = ConfigurationPlist.Client.default(baseDirectory: baseDirectory)
             mutated = true
         }
         if plist.server == nil {
-            plist.server = ConfigurationPlist.Server.default()
+            plist.server = ConfigurationPlist.Server.default(baseDirectory: baseDirectory)
+            mutated = true
+        } else if plist.server?.portMapping == nil {
+            plist.server?.portMapping = false
             mutated = true
         }
 
@@ -178,12 +185,13 @@ public extension BoxConfiguration {
 
 private extension BoxConfiguration {
     init(plist: ConfigurationPlist) {
+        let defaultBaseDirectory = BoxPaths.boxDirectory()
         let commonSection = plist.common ?? ConfigurationPlist.Common(nodeUUID: UUID().uuidString, userUUID: UUID().uuidString)
         let nodeUUID = commonSection.nodeUUID.flatMap(UUID.init(uuidString:)) ?? UUID()
         let userUUID = commonSection.userUUID.flatMap(UUID.init(uuidString:)) ?? UUID()
         self.common = Common(nodeUUID: nodeUUID, userUUID: userUUID)
 
-        let serverSection = plist.server ?? ConfigurationPlist.Server.default()
+        let serverSection = plist.server ?? ConfigurationPlist.Server.default(baseDirectory: defaultBaseDirectory)
         self.server = Server(
             port: serverSection.port,
             logLevel: serverSection.logLevel.flatMap { Logger.Level(logLevelString: $0) },
@@ -194,10 +202,11 @@ private extension BoxConfiguration {
             transportGet: serverSection.transportGet,
             preShareKey: serverSection.preShareKey,
             noisePattern: serverSection.noisePattern,
-            adminChannelEnabled: serverSection.adminChannelEnabled
+            adminChannelEnabled: serverSection.adminChannelEnabled,
+            portMappingEnabled: serverSection.portMapping
         )
 
-        let clientSection = plist.client ?? ConfigurationPlist.Client.default()
+        let clientSection = plist.client ?? ConfigurationPlist.Client.default(baseDirectory: defaultBaseDirectory)
         self.client = Client(
             logLevel: clientSection.logLevel.flatMap { Logger.Level(logLevelString: $0) },
             logTarget: clientSection.logTarget,
@@ -222,7 +231,8 @@ private extension BoxConfiguration {
                 transportGet: server.transportGet,
                 preShareKey: server.preShareKey,
                 noisePattern: server.noisePattern,
-                adminChannelEnabled: server.adminChannelEnabled
+                adminChannelEnabled: server.adminChannelEnabled,
+                portMapping: server.portMappingEnabled
             ),
             client: ConfigurationPlist.Client(
                 logLevel: client.logLevel?.rawValue,
@@ -256,6 +266,7 @@ private struct ConfigurationPlist: Codable {
         var preShareKey: String?
         var noisePattern: String?
         var adminChannelEnabled: Bool?
+        var portMapping: Bool?
 
         enum CodingKeys: String, CodingKey {
             case port
@@ -268,20 +279,23 @@ private struct ConfigurationPlist: Codable {
             case preShareKey = "pre_share_key"
             case noisePattern = "noise_pattern"
             case adminChannelEnabled = "admin_channel"
+            case portMapping = "port_mapping"
         }
 
-        static func `default`() -> Server {
-            Server(
+        static func `default`(baseDirectory: URL? = nil) -> Server {
+            let targetString = defaultLogTargetString(for: .server, baseDirectory: baseDirectory)
+            return Server(
                 port: BoxRuntimeOptions.defaultPort,
                 logLevel: Logger.Level.info.rawValue,
-                logTarget: BoxRuntimeOptions.defaultLogTarget.description,
+                logTarget: targetString,
                 transport: "clear",
                 transportStatus: nil,
                 transportPut: nil,
                 transportGet: nil,
                 preShareKey: nil,
                 noisePattern: nil,
-                adminChannelEnabled: true
+                adminChannelEnabled: true,
+                portMapping: false
             )
         }
     }
@@ -299,10 +313,11 @@ private struct ConfigurationPlist: Codable {
             case port
         }
 
-        static func `default`() -> Client {
-            Client(
+        static func `default`(baseDirectory: URL? = nil) -> Client {
+            let targetString = defaultLogTargetString(for: .client, baseDirectory: baseDirectory)
+            return Client(
                 logLevel: Logger.Level.info.rawValue,
-                logTarget: BoxRuntimeOptions.defaultLogTarget.description,
+                logTarget: targetString,
                 address: BoxRuntimeOptions.defaultClientAddress,
                 port: BoxRuntimeOptions.defaultPort
             )
@@ -313,15 +328,29 @@ private struct ConfigurationPlist: Codable {
     var server: Server?
     var client: Client?
 
-    static func `default`() -> ConfigurationPlist {
-        ConfigurationPlist(
+    static func `default`(configurationURL: URL? = nil) -> ConfigurationPlist {
+        let baseDirectory = configurationURL?.deletingLastPathComponent()
+        return ConfigurationPlist(
             common: Common(
                 nodeUUID: UUID().uuidString,
                 userUUID: UUID().uuidString
             ),
-            server: Server.default(),
-            client: Client.default()
+            server: Server.default(baseDirectory: baseDirectory),
+            client: Client.default(baseDirectory: baseDirectory)
         )
+    }
+
+    private static func defaultLogTargetString(for mode: BoxRuntimeMode, baseDirectory: URL?) -> String {
+        let defaultTarget = BoxRuntimeOptions.defaultLogTarget(for: mode)
+        if case .file = defaultTarget {
+            return defaultTarget.description
+        }
+        if let baseDirectory {
+            let fileName = (mode == .server) ? "boxd.log" : "box.log"
+            let fallbackPath = baseDirectory.appendingPathComponent(fileName, isDirectory: false).path
+            return "file:\(fallbackPath)"
+        }
+        return defaultTarget.description
     }
 }
 

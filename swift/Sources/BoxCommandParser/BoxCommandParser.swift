@@ -63,6 +63,10 @@ public struct BoxCommandParser: AsyncParsableCommand {
     @Option(name: .customLong("data"), help: "Inline data used with --put (UTF-8).")
     public var dataString: String?
 
+    /// Opt-in flag enabling automatic port mapping (PCP/NAT-PMP/UPnP) for server mode.
+    @Flag(name: .customLong("enable-port-mapping"), inversion: .prefixedNo, help: "Attempt automatic port mapping via PCP/NAT-PMP/UPnP (server mode).")
+    public var enablePortMapping: Bool = false
+
     /// Default memberwise initializer required by swift-argument-parser.
     public init() {}
 
@@ -74,14 +78,16 @@ public struct BoxCommandParser: AsyncParsableCommand {
 
         let configurationResult = try BoxConfiguration.loadDefault(explicitPath: configurationPath)
         let configuration = configurationResult?.configuration
-        let clientConfiguration = (resolvedMode == .client) ? configuration?.client : nil
+        let clientConfiguration = configuration?.client
+        let serverConfiguration = configuration?.server
         let commonConfiguration = configuration?.common
 
         let (effectiveLogLevel, logLevelOrigin): (Logger.Level, BoxRuntimeOptions.LogLevelOrigin) = {
             if logLevel != nil {
                 return (cliLogLevel, .cliFlag)
             }
-            if let configLevel = clientConfiguration?.logLevel {
+            let configLevel = (resolvedMode == .server) ? serverConfiguration?.logLevel : clientConfiguration?.logLevel
+            if let configLevel {
                 return (configLevel, .configuration)
             }
             return (.info, .default)
@@ -91,11 +97,12 @@ public struct BoxCommandParser: AsyncParsableCommand {
             if let cliTarget = cliLogTarget {
                 return (cliTarget, .cliFlag)
             }
-            if let configTarget = clientConfiguration?.logTarget,
+            let configTargetString = (resolvedMode == .server) ? serverConfiguration?.logTarget : clientConfiguration?.logTarget
+            if let configTarget = configTargetString,
                let parsed = BoxLogTarget.parse(configTarget) {
                 return (parsed, .configuration)
             }
-            return (BoxRuntimeOptions.defaultLogTarget, .default)
+            return (BoxRuntimeOptions.defaultLogTarget(for: resolvedMode), .default)
         }()
 
         let effectiveNodeId = commonConfiguration?.nodeUUID ?? UUID()
@@ -125,6 +132,19 @@ public struct BoxCommandParser: AsyncParsableCommand {
             return (BoxRuntimeOptions.defaultPort, .default)
         }()
 
+        let (portMappingRequested, portMappingOrigin): (Bool, BoxRuntimeOptions.PortMappingOrigin) = {
+            guard resolvedMode == .server else {
+                return (false, .default)
+            }
+            if enablePortMapping {
+                return (true, .cliFlag)
+            }
+            if let configValue = serverConfiguration?.portMappingEnabled {
+                return (configValue, .configuration)
+            }
+            return (false, .default)
+        }()
+
         let runtimeOptions = BoxRuntimeOptions(
             mode: resolvedMode,
             address: effectiveAddress,
@@ -138,7 +158,9 @@ public struct BoxCommandParser: AsyncParsableCommand {
             logTargetOrigin: logTargetOrigin,
             nodeId: effectiveNodeId,
             userId: effectiveUserId,
-            clientAction: try resolveClientAction(for: resolvedMode)
+            portMappingRequested: portMappingRequested,
+            clientAction: try resolveClientAction(for: resolvedMode),
+            portMappingOrigin: portMappingOrigin
         )
 
         switch resolvedMode {

@@ -161,7 +161,7 @@ Future work:
   - Keep multiple bootstrap endpoints to improve reachability.
 
 - NAT/Firewall notes:
-  - Prefer IPv6 with globally routable addresses. If using IPv4, configure port forwarding on the gateway for the UDP port used by `boxd`.
+  - Prefer IPv6 with globally routable addresses. If using IPv4, configure port forwarding on the gateway for the UDP port used by `boxd`. Un module automatique PCP/NAT-PMP/UPnP (opt-in) est prévu pour demander l’ouverture du port côté routeur lorsqu’il est compatible.
   - Ensure firewall allows inbound UDP on the configured port.
 
 6.5 Bootstrap URI Specification
@@ -613,8 +613,8 @@ PUT example
 
 - Configuration: Property List (PLIST) XML avec trois sections obligatoires:
   - `common`: `node_uuid` (UUID), `user_uuid` (UUID). Générés au premier lancement; réutilisés par client et serveur.
-  - `server`: `port` (UInt16), `log_level` (`trace|debug|info|warn|error|critical`), `log_target` (`stderr|stdout|file:<path>`), paramètres de transport (`transport`, `transport_status`, `transport_put`, `transport_get`), `admin_channel` (booléen), options Noise (`pre_share_key`, `noise_pattern`).
-  - `client`: `address` (IPv4/IPv6 ou nom), `port` (UInt16), `log_level`, `log_target`.
+  - `server`: `port` (UInt16), `log_level` (`trace|debug|info|warn|error|critical`), `log_target` (`stderr|stdout|file:<path>` — par défaut `file:~/.box/logs/boxd.log`), paramètres de transport (`transport`, `transport_status`, `transport_put`, `transport_get`), `admin_channel` (booléen), options Noise (`pre_share_key`, `noise_pattern`).
+  - `client`: `address` (IPv4/IPv6 ou nom), `port` (UInt16), `log_level`, `log_target` (par défaut `file:~/.box/logs/box.log`).
 - Données internes: fichiers JSON par message dans `~/.box/queues/<queue>/` (cf. section 10), encodés en UTF‑8/base64.
 
 11.4 Exemple minimal `~/.box/Box.plist`
@@ -633,16 +633,17 @@ PUT example
   <dict>
     <key>port</key><integer>12567</integer>
     <key>log_level</key><string>info</string>
-    <key>log_target</key><string>stderr</string>
+    <key>log_target</key><string>file:/Users/you/.box/logs/boxd.log</string>
     <key>admin_channel</key><true/>
     <key>transport</key><string>clear</string>
+    <key>port_mapping</key><false/>
   </dict>
   <key>client</key>
   <dict>
     <key>address</key><string>127.0.0.1</string>
     <key>port</key><integer>12567</integer>
     <key>log_level</key><string>info</string>
-    <key>log_target</key><string>stderr</string>
+    <key>log_target</key><string>file:/Users/you/.box/logs/box.log</string>
   </dict>
 </dict>
 </plist>
