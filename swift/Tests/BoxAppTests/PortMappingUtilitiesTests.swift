@@ -54,5 +54,19 @@ final class PortMappingUtilitiesTests: XCTestCase {
         let escaped = PortMappingUtilities.escapeXML(original)
         XCTAssertEqual(escaped, "&lt;tag attr=&quot;value&quot;&gt;Tom &amp; Jerry&apos;s&lt;/tag&gt;")
     }
+
+    func testDecodeLittleEndianIPv4() {
+        XCTAssertEqual(PortMappingUtilities.decodeLittleEndianIPv4("0102A8C0"), "192.168.2.1")
+        XCTAssertNil(PortMappingUtilities.decodeLittleEndianIPv4("XYZ"))
+    }
+
+    func testDefaultGatewayParsingFromProcNetRoute() {
+        let contents = """
+Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT
+eth0\t00000000\t0101A8C0\t0003\t0\t0\t0\t00000000\t0\t0\t0
+eth0\t0000A8C0\t00000000\t0001\t0\t0\t0\t00FFFFFF\t0\t0\t0
+"""
+        XCTAssertEqual(PortMappingUtilities.defaultGateway(fromProcNetRoute: contents), "192.168.1.1")
+    }
 }
 #endif

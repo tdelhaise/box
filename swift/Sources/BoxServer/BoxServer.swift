@@ -3,6 +3,9 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+#if canImport(SystemConfiguration)
+import SystemConfiguration
+#endif
 import Logging
 import NIOConcurrencyHelpers
 import NIOCore
@@ -142,6 +145,12 @@ public enum BoxServer {
             ipv6DetectionError: connectivity.detectionErrorDescription,
             portMappingRequested: portMappingRequested,
             portMappingOrigin: portMappingOrigin,
+            portMappingBackend: nil,
+            portMappingExternalPort: nil,
+            portMappingGateway: nil,
+            portMappingService: nil,
+            portMappingLeaseSeconds: nil,
+            portMappingLastRefresh: nil,
             onlineSince: startupTimestamp,
             lastPresenceUpdate: nil
         )
@@ -288,6 +297,14 @@ public enum BoxServer {
                         } else if state.portMappingOrigin == .configuration {
                             state.portMappingRequested = false
                             state.portMappingOrigin = .default
+                        }
+                        if !state.portMappingRequested {
+                            state.portMappingBackend = nil
+                            state.portMappingExternalPort = nil
+                            state.portMappingGateway = nil
+                            state.portMappingService = nil
+                            state.portMappingLeaseSeconds = nil
+                            state.portMappingLastRefresh = nil
                         }
                     }
 
@@ -450,7 +467,30 @@ public enum BoxServer {
                 }
             }
             if portMappingRequested && portMappingCoordinator == nil {
-                let coordinator = PortMappingCoordinator(logger: logger, port: effectivePort, origin: portMappingOrigin)
+                let coordinator = PortMappingCoordinator(
+                    logger: logger,
+                    port: effectivePort,
+                    origin: portMappingOrigin
+                ) { snapshot in
+                    runtimeStateBox.withLockedValue { state in
+                        if let snapshot {
+                            state.portMappingBackend = snapshot.backend
+                            state.portMappingExternalPort = snapshot.externalPort
+                            state.portMappingGateway = snapshot.gateway
+                            state.portMappingService = snapshot.service
+                            state.portMappingLeaseSeconds = snapshot.lifetime
+                            state.portMappingLastRefresh = snapshot.refreshedAt
+                        } else {
+                            state.portMappingBackend = nil
+                            state.portMappingExternalPort = nil
+                            state.portMappingGateway = nil
+                            state.portMappingService = nil
+                            state.portMappingLeaseSeconds = nil
+                            state.portMappingLastRefresh = nil
+                        }
+                    }
+                    _ = publishLocationSnapshot(snapshot != nil ? "port-mapping-refresh" : "port-mapping-clear")
+                }
                 coordinator.start()
                 portMappingCoordinator = coordinator
             }
@@ -530,6 +570,12 @@ private struct BoxServerRuntimeState: Sendable {
     var ipv6DetectionError: String?
     var portMappingRequested: Bool
     var portMappingOrigin: BoxRuntimeOptions.PortMappingOrigin
+    var portMappingBackend: String?
+    var portMappingExternalPort: UInt16?
+    var portMappingGateway: String?
+    var portMappingService: String?
+    var portMappingLeaseSeconds: UInt32?
+    var portMappingLastRefresh: Date?
     var onlineSince: Date
     var lastPresenceUpdate: Date?
 }
@@ -1350,6 +1396,42 @@ private func renderStatus(state: BoxServerRuntimeState, logTarget: BoxLogTarget)
         "portMappingEnabled": state.portMappingRequested,
         "portMappingOrigin": "\(state.portMappingOrigin)"
     ]
+    if let backend = state.portMappingBackend {
+        payload["portMappingBackend"] = backend
+    }
+    if let external = state.portMappingExternalPort {
+        payload["portMappingExternalPort"] = Int(external)
+    }
+    if let gateway = state.portMappingGateway {
+        payload["portMappingGateway"] = gateway
+    }
+    if let service = state.portMappingService {
+        payload["portMappingService"] = service
+    }
+    if let lease = state.portMappingLeaseSeconds {
+        payload["portMappingLeaseSeconds"] = lease
+    }
+    if let refreshed = state.portMappingLastRefresh {
+        payload["portMappingRefreshedAt"] = iso8601String(refreshed)
+    }
+    if let backend = state.portMappingBackend {
+        payload["portMappingBackend"] = backend
+    }
+    if let external = state.portMappingExternalPort {
+        payload["portMappingExternalPort"] = Int(external)
+    }
+    if let gateway = state.portMappingGateway {
+        payload["portMappingGateway"] = gateway
+    }
+    if let service = state.portMappingService {
+        payload["portMappingService"] = service
+    }
+    if let lease = state.portMappingLeaseSeconds {
+        payload["portMappingLeaseSeconds"] = lease
+    }
+    if let refreshed = state.portMappingLastRefresh {
+        payload["portMappingRefreshedAt"] = iso8601String(refreshed)
+    }
     if let path = state.configurationPath {
         payload["configPath"] = path
     }
@@ -1456,13 +1538,14 @@ private func renderStats(state: BoxServerRuntimeState, logTarget: BoxLogTarget) 
 private func locationServiceRecord(from state: BoxServerRuntimeState) -> LocationServiceNodeRecord {
     let sinceTimestamp = millisecondsSince1970(state.onlineSince)
     let lastSeenDate = state.lastPresenceUpdate ?? Date()
+    let portMappingActive = state.portMappingBackend != nil
     return LocationServiceNodeRecord.make(
         userUUID: state.userIdentifier,
         nodeUUID: state.nodeIdentifier,
         port: state.port,
         probedGlobalIPv6: state.globalIPv6Addresses,
         ipv6Error: state.ipv6DetectionError,
-        portMappingEnabled: state.portMappingRequested,
+        portMappingEnabled: portMappingActive,
         portMappingOrigin: state.portMappingOrigin,
         since: sinceTimestamp,
         lastSeen: millisecondsSince1970(lastSeenDate)
@@ -1703,10 +1786,45 @@ private func isGlobalUnicastIPv6(_ address: in6_addr) -> Bool {
 #endif
 
 private final class PortMappingCoordinator: @unchecked Sendable {
-    private struct MappingHandle: Sendable {
-        let service: UPnPServiceDescription
-        let internalClient: String
+    struct MappingSnapshot: Sendable {
+        let backend: String
         let externalPort: UInt16
+        let gateway: String?
+        let service: String?
+        let lifetime: UInt32
+        let refreshedAt: Date
+    }
+
+    private enum Backend: Sendable {
+        case upnp(service: UPnPServiceDescription, internalClient: String)
+        case natpmp(gateway: String)
+
+        var identifier: String {
+            switch self {
+            case .upnp: return "upnp"
+            case .natpmp: return "natpmp"
+            }
+        }
+
+        var gateway: String? {
+            switch self {
+            case .upnp: return nil
+            case .natpmp(let gateway): return gateway
+            }
+        }
+
+        var serviceDescription: String? {
+            switch self {
+            case .upnp(let service, _): return service.serviceType
+            case .natpmp: return nil
+            }
+        }
+    }
+
+    private struct MappingHandle: Sendable {
+        let backend: Backend
+        let externalPort: UInt16
+        let lifetime: UInt32
     }
 
     private let logger: Logger
@@ -1715,11 +1833,18 @@ private final class PortMappingCoordinator: @unchecked Sendable {
     private let leaseDuration: UInt32 = 3_600
     private var task: Task<Void, Never>?
     private let state = NIOLockedValueBox<MappingHandle?>(nil)
+    private let onStateChange: @Sendable (MappingSnapshot?) -> Void
 
-    init(logger: Logger, port: UInt16, origin: BoxRuntimeOptions.PortMappingOrigin) {
+    init(
+        logger: Logger,
+        port: UInt16,
+        origin: BoxRuntimeOptions.PortMappingOrigin,
+        onStateChange: @escaping @Sendable (MappingSnapshot?) -> Void
+    ) {
         self.logger = logger
         self.port = port
         self.origin = origin
+        self.onStateChange = onStateChange
     }
 
     func start() {
@@ -1744,12 +1869,14 @@ private final class PortMappingCoordinator: @unchecked Sendable {
 #if !os(Windows)
         task?.cancel()
         task = nil
+#endif
         if let handle = state.withLockedValue({ $0 }) {
             Task.detached { [weak self] in
                 await self?.removeMapping(handle)
             }
+        } else {
+            onStateChange(nil)
         }
-#endif
         logger.debug("port mapping coordinator stopped")
     }
 
@@ -1758,19 +1885,92 @@ private final class PortMappingCoordinator: @unchecked Sendable {
         do {
             guard let localAddress = try firstNonLoopbackIPv4Address() else {
                 logger.info("port mapping skipped: no non-loopback IPv4 address detected")
+                onStateChange(nil)
                 return
             }
             try Task.checkCancellation()
 
-            guard let service = try await discoverService() else {
-                logger.info("port mapping skipped: no UPnP gateway discovered")
+            if let handle = await attemptUPnP(localAddress: localAddress) {
+                await maintainMapping(initial: handle)
                 return
+            }
+
+            if let handle = try attemptNATPMP() {
+                await maintainMapping(initial: handle)
+                return
+            }
+
+            logger.info("port mapping skipped: no supported gateway found")
+            onStateChange(nil)
+        } catch {
+            if Task.isCancelled { return }
+            logger.warning("port mapping aborted", metadata: ["error": .string("\(error)")])
+            onStateChange(nil)
+        }
+    }
+
+    private func maintainMapping(initial handle: MappingHandle) async {
+        var currentHandle = handle
+        publish(handle: currentHandle)
+        defer {
+            Task {
+                await removeMapping(currentHandle)
+            }
+        }
+
+        while !Task.isCancelled {
+            let refreshSeconds = max(Int(currentHandle.lifetime / 2), 60)
+            do {
+                try await Task.sleep(nanoseconds: UInt64(refreshSeconds) * 1_000_000_000)
+            } catch {
+                if Task.isCancelled { return }
+            }
+
+            do {
+                currentHandle = try await refreshMapping(currentHandle)
+                publish(handle: currentHandle)
+            } catch {
+                if Task.isCancelled { return }
+                logger.warning("port mapping refresh failed", metadata: ["error": .string("\(error)"), "backend": .string(currentHandle.backend.identifier)])
+                return
+            }
+        }
+    }
+
+    private func publish(handle: MappingHandle) {
+        let snapshot = MappingSnapshot(
+            backend: handle.backend.identifier,
+            externalPort: handle.externalPort,
+            gateway: handle.backend.gateway,
+            service: handle.backend.serviceDescription,
+            lifetime: handle.lifetime,
+            refreshedAt: Date()
+        )
+        state.withLockedValue { $0 = handle }
+        onStateChange(snapshot)
+    }
+
+    private func refreshMapping(_ handle: MappingHandle) async throws -> MappingHandle {
+        switch handle.backend {
+        case .upnp(let service, let client):
+            try await addPortMapping(service: service, internalClient: client)
+            return MappingHandle(backend: handle.backend, externalPort: handle.externalPort, lifetime: handle.lifetime)
+        case .natpmp(let gateway):
+            let external = try performNATPMPMapping(gateway: gateway, lifetime: handle.lifetime)
+            return MappingHandle(backend: .natpmp(gateway: gateway), externalPort: external, lifetime: handle.lifetime)
+        }
+    }
+
+    private func attemptUPnP(localAddress: String) async -> MappingHandle? {
+        do {
+            guard let service = try await discoverService() else {
+                logger.debug("UPnP gateway not discovered")
+                return nil
             }
             try Task.checkCancellation()
 
             do {
                 try await addPortMapping(service: service, internalClient: localAddress)
-                state.withLockedValue { $0 = MappingHandle(service: service, internalClient: localAddress, externalPort: port) }
                 logger.info(
                     "UPnP port mapping established",
                     metadata: [
@@ -1779,17 +1979,35 @@ private final class PortMappingCoordinator: @unchecked Sendable {
                         "service": .string(service.serviceType)
                     ]
                 )
+                return MappingHandle(backend: .upnp(service: service, internalClient: localAddress), externalPort: port, lifetime: leaseDuration)
             } catch {
-                if Task.isCancelled { return }
+                if Task.isCancelled { return nil }
                 logger.warning(
                     "failed to create UPnP port mapping",
                     metadata: ["error": .string("\(error)"), "service": .string(service.serviceType)]
                 )
             }
         } catch {
-            if Task.isCancelled { return }
-            logger.warning("port mapping aborted", metadata: ["error": .string("\(error)")])
+            if Task.isCancelled { return nil }
+            logger.warning("UPnP discovery failed", metadata: ["error": .string("\(error)")])
         }
+        return nil
+    }
+
+    private func attemptNATPMP() throws -> MappingHandle? {
+        guard let gateway = defaultGatewayIPv4() else {
+            logger.debug("NAT-PMP gateway not detected")
+            return nil
+        }
+        let externalPort = try performNATPMPMapping(gateway: gateway, lifetime: leaseDuration)
+        logger.info(
+            "NAT-PMP port mapping established",
+            metadata: [
+                "externalPort": "\(externalPort)",
+                "gateway": .string(gateway)
+            ]
+        )
+        return MappingHandle(backend: .natpmp(gateway: gateway), externalPort: externalPort, lifetime: leaseDuration)
     }
 
     private func discoverService() async throws -> UPnPServiceDescription? {
@@ -1822,22 +2040,33 @@ private final class PortMappingCoordinator: @unchecked Sendable {
     }
 
     private func removeMapping(_ handle: MappingHandle) async {
-        let arguments = [
-            "NewRemoteHost": "",
-            "NewExternalPort": "\(handle.externalPort)",
-            "NewProtocol": "UDP"
-        ]
-        do {
-            _ = try await sendSOAPRequest(
-                action: "DeletePortMapping",
-                arguments: arguments,
-                service: handle.service
-            )
-            logger.debug("UPnP port mapping removed", metadata: ["port": "\(handle.externalPort)"])
-        } catch {
-            logger.debug("unable to remove UPnP port mapping", metadata: ["error": .string("\(error)")])
+        switch handle.backend {
+        case .upnp(let service, _):
+            let arguments = [
+                "NewRemoteHost": "",
+                "NewExternalPort": "\(handle.externalPort)",
+                "NewProtocol": "UDP"
+            ]
+            do {
+                _ = try await sendSOAPRequest(
+                    action: "DeletePortMapping",
+                    arguments: arguments,
+                    service: service
+                )
+                logger.debug("UPnP port mapping removed", metadata: ["port": "\(handle.externalPort)"])
+            } catch {
+                logger.debug("unable to remove UPnP port mapping", metadata: ["error": .string("\(error)")])
+            }
+        case .natpmp(let gateway):
+            do {
+                try performNATPMPDeletion(gateway: gateway, externalPort: handle.externalPort)
+                logger.debug("NAT-PMP port mapping removed", metadata: ["port": "\(handle.externalPort)"])
+            } catch {
+                logger.debug("unable to remove NAT-PMP port mapping", metadata: ["error": .string("\(error)")])
+            }
         }
         state.withLockedValue { $0 = nil }
+        onStateChange(nil)
     }
 
     private func discoverDeviceDescriptionURL() throws -> URL? {
@@ -2017,6 +2246,118 @@ private final class PortMappingCoordinator: @unchecked Sendable {
         }
         return nil
     }
+
+    private func performNATPMPMapping(gateway: String, lifetime: UInt32) throws -> UInt16 {
+        let socketDescriptor = socket(AF_INET, Int32(SOCK_DGRAM), Int32(IPPROTO_UDP))
+        guard socketDescriptor >= 0 else {
+            throw PortMappingError.socket(errno)
+        }
+        defer { close(socketDescriptor) }
+
+        var timeout = timeval(tv_sec: 3, tv_usec: 0)
+        withUnsafeBytes(of: &timeout) { buffer in
+            _ = setsockopt(socketDescriptor, SOL_SOCKET, SO_RCVTIMEO, buffer.baseAddress, socklen_t(buffer.count))
+        }
+
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(UInt16(5351).bigEndian)
+        guard inet_pton(AF_INET, gateway, &addr.sin_addr) == 1 else {
+            throw PortMappingError.network("invalid-gateway-address")
+        }
+
+        var request = [UInt8](repeating: 0, count: 12)
+        request[0] = 0
+        request[1] = 1
+        request[4] = UInt8(port >> 8)
+        request[5] = UInt8(port & 0xff)
+        request[6] = UInt8(port >> 8)
+        request[7] = UInt8(port & 0xff)
+        request[8] = UInt8((lifetime >> 24) & 0xff)
+        request[9] = UInt8((lifetime >> 16) & 0xff)
+        request[10] = UInt8((lifetime >> 8) & 0xff)
+        request[11] = UInt8(lifetime & 0xff)
+
+        let sent = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                sendto(socketDescriptor, request, request.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        if sent < 0 {
+            throw PortMappingError.socket(errno)
+        }
+
+        var buffer = [UInt8](repeating: 0, count: 32)
+        let bytesRead = recv(socketDescriptor, &buffer, buffer.count, 0)
+        guard bytesRead >= 16 else {
+            throw PortMappingError.natpmp("short-response")
+        }
+        guard buffer[0] == 0 else {
+            throw PortMappingError.natpmp("unsupported-version")
+        }
+        guard buffer[1] == 0x81 else {
+            throw PortMappingError.natpmp("unexpected-opcode")
+        }
+        let resultCode = (UInt16(buffer[2]) << 8) | UInt16(buffer[3])
+        guard resultCode == 0 else {
+            throw PortMappingError.natpmp("result-\(resultCode)")
+        }
+        let externalPort = (UInt16(buffer[8]) << 8) | UInt16(buffer[9])
+        return externalPort
+    }
+
+    private func performNATPMPDeletion(gateway: String, externalPort: UInt16) throws {
+        let socketDescriptor = socket(AF_INET, Int32(SOCK_DGRAM), Int32(IPPROTO_UDP))
+        guard socketDescriptor >= 0 else {
+            throw PortMappingError.socket(errno)
+        }
+        defer { close(socketDescriptor) }
+
+        var timeout = timeval(tv_sec: 2, tv_usec: 0)
+        withUnsafeBytes(of: &timeout) { buffer in
+            _ = setsockopt(socketDescriptor, SOL_SOCKET, SO_RCVTIMEO, buffer.baseAddress, socklen_t(buffer.count))
+        }
+
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(UInt16(5351).bigEndian)
+        guard inet_pton(AF_INET, gateway, &addr.sin_addr) == 1 else {
+            throw PortMappingError.network("invalid-gateway-address")
+        }
+
+        var request = [UInt8](repeating: 0, count: 12)
+        request[0] = 0
+        request[1] = 1
+        request[4] = UInt8(port >> 8)
+        request[5] = UInt8(port & 0xff)
+        request[6] = UInt8(externalPort >> 8)
+        request[7] = UInt8(externalPort & 0xff)
+
+        let sent = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                sendto(socketDescriptor, request, request.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        if sent < 0 {
+            throw PortMappingError.socket(errno)
+        }
+    }
+
+    private func defaultGatewayIPv4() -> String? {
+#if os(Linux)
+        guard let contents = try? String(contentsOfFile: "/proc/net/route") else { return nil }
+        return PortMappingUtilities.defaultGateway(fromProcNetRoute: contents)
+#elseif canImport(SystemConfiguration)
+        guard let store = SCDynamicStoreCreate(nil, "box.portmapping" as CFString, nil, nil),
+              let value = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv4" as CFString) as? [String: Any],
+              let router = value["Router"] as? String else {
+            return nil
+        }
+        return router
+#else
+        return nil
+#endif
+    }
 #endif
 }
 
@@ -2031,6 +2372,7 @@ private enum PortMappingError: Error, CustomStringConvertible {
     case httpError
     case soapFault(code: Int, payload: Data)
     case network(String)
+    case natpmp(String)
 
     var description: String {
         switch self {
@@ -2042,6 +2384,8 @@ private enum PortMappingError: Error, CustomStringConvertible {
             return "soap-fault(\(code))"
         case .network(let message):
             return "network-error(\(message))"
+        case .natpmp(let message):
+            return "natpmp-error(\(message))"
         }
     }
 }
@@ -2076,6 +2420,32 @@ internal enum PortMappingUtilities {
             }
         }
         return result
+    }
+
+    static func decodeLittleEndianIPv4(_ hex: String) -> String? {
+        guard hex.count == 8, let value = UInt32(hex, radix: 16) else { return nil }
+        let byte0 = UInt8(value & 0xFF)
+        let byte1 = UInt8((value >> 8) & 0xFF)
+        let byte2 = UInt8((value >> 16) & 0xFF)
+        let byte3 = UInt8((value >> 24) & 0xFF)
+        return "\(byte0).\(byte1).\(byte2).\(byte3)"
+    }
+
+    static func defaultGateway(fromProcNetRoute contents: String) -> String? {
+        let lines = contents.split(whereSeparator: \.isNewline)
+        guard lines.count > 1 else { return nil }
+        for line in lines.dropFirst() {
+            let columns = line.split(whereSeparator: { $0 == "\t" || $0 == " " })
+            guard columns.count >= 3 else { continue }
+            let destinationHex = String(columns[1])
+            let gatewayHex = String(columns[2])
+            if destinationHex.caseInsensitiveCompare("00000000") == .orderedSame {
+                if let address = decodeLittleEndianIPv4(gatewayHex) {
+                    return address
+                }
+            }
+        }
+        return nil
     }
 }
 

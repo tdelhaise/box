@@ -644,7 +644,7 @@ PUT example
 - Register/update presence in embedded LS on start and periodically (keep‑alive with last_seen). Presence is also published into `/uuid`.
 - Enforce ACLs per queue and per user/node.
 - Persist objects sous `~/.box/queues/<queue>/timestamp-UUID.json` (payload base64 + métadonnées incluant `content_type`, `node_id`, `user_id`, `created_at`). **Exception :** la file `/uuid` écrit directement `<uuid>.json` afin que les identifiants de nœud ou d’utilisateur soient mis à jour en place sans proliférer de doublons. Le daemon DOIT provisionner cette hiérarchie au premier démarrage, créer la file `INBOX/` et refuser de démarrer si la création échoue. Les informations LS (`/uuid`, `/location`) sont également stockées via ces files (`/uuid` hébergeant à la fois les enregistrements de nœud et un index utilisateur).
-- When `port_mapping = true` (ou `--enable-port-mapping`), tenter automatiquement une ouverture UPnP: envoyer `M-SEARCH` (IGD), récupérer le service `WANIPConnection`/`WANPPPConnection`, invoquer `AddPortMapping` (UDP) avec une durée de bail configurable (actuellement 3600 s) et journaliser succès/échecs. Suppression via `DeletePortMapping` à l’arrêt. PCP/NAT-PMP restent à intégrer.
+- When `port_mapping = true` (ou `--enable-port-mapping`), tenter automatiquement une ouverture: d’abord UPnP (`M-SEARCH` IGD → `AddPortMapping` UDP, bail 3600 s), puis en repli NAT-PMP (`MAP`/`UNMAP` vers la passerelle par défaut). Chaque étape doit être journalisée et le mapping retiré (`DeletePortMapping` / NAT-PMP lifetime 0) à l’arrêt. PCP reste à intégrer.
 - Optional at‑rest encryption with a server‑managed key.
 - Rate limiting and DoS protection per source.
 
