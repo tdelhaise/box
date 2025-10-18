@@ -32,6 +32,7 @@
 //  - purge(queue: String)
 //
 import Foundation
+import Logging
 
 // MARK: - Models
 
@@ -116,13 +117,16 @@ public actor BoxServerStore {
 	private let fm = FileManager.default
 	private let encoder = JSONEncoder()
 	private let decoder = JSONDecoder()
+	private let logger: Logger
 	
-	public init(root: URL) async throws {
+	public init(root: URL, logger: Logger = .init(label: "box.server.store")) async throws {
 		self.root = root
+		self.logger = logger
 		encoder.outputFormatting = [.withoutEscapingSlashes, .sortedKeys]
 		encoder.dateEncodingStrategy = .iso8601
 		decoder.dateDecodingStrategy = .iso8601
 		try await ensureDirectoryExists(root)
+		logger.info("store initialized", metadata: ["root": .string(root.path)])
 	}
 	
 	// MARK: - Queue lifecycle
@@ -132,6 +136,10 @@ public actor BoxServerStore {
 		let sanitized = try sanitizeQueueName(name)
 		let url = root.appendingPathComponent(sanitized, isDirectory: true)
 		try await ensureDirectoryExists(url)
+		if !fm.fileExists(atPath: url.path) {
+			try await ensureDirectoryExists(url)
+			logger.info("queue directory created", metadata: ["queue": .string(sanitized), "path": .string(url.path)])
+		}
 		return url
 	}
 	
@@ -143,6 +151,7 @@ public actor BoxServerStore {
 	
 	@discardableResult
 	public func put(_ object: BoxStoredObject, into queue: String) async throws -> UUID {
+		do {
 		let qurl = try await ensureQueue(queue)
 		let filename = makeFilename(for: object)
 		let fileURL = qurl.appendingPathComponent(filename)
@@ -153,42 +162,72 @@ public actor BoxServerStore {
 			createdAt: object.createdAt,
 			nodeId: object.nodeId,
 			userId: object.userId,
-			userMetadata: object.userMetadata
-		)
+			userMetadata: object.userMetadata )
 		let data = try encoder.encode(disk)
-		try atomicWrite(data: data, to: fileURL)
-		return object.id
-	}
+		logger.debug("put", metadata: [
+			"queue": .string(queue),
+			"id": .string(object.id.uuidString),
+			"bytes": .stringConvertible(object.data.count),
+			"file": .string(fileURL.lastPathComponent)
+			])
+			try atomicWrite(data: data, to: fileURL)
+			return object.id
+		} catch {
+			logger.error("put failed", metadata: ["queue": .string(queue),
+												  "id": .string(object.id.uuidString),
+												  "error": .string("\(error)")])
+				throw error
+		}
+}
 	
 	public func get(queue: String, id: UUID) async throws -> BoxStoredObject {
-		let qurl = root.appendingPathComponent(try sanitizeQueueName(queue), isDirectory: true)
-		guard fm.fileExists(atPath: qurl.path) else { throw BoxStoreError.queueNotFound(queue) }
-		let url = try findFileURL(for: id, in: qurl)
-		return try readObject(from: url)
+		do {
+			let qurl = root.appendingPathComponent(try sanitizeQueueName(queue), isDirectory: true)
+			guard fm.fileExists(atPath: qurl.path) else { throw BoxStoreError.queueNotFound(queue) }
+			let url = try findFileURL(for: id, in: qurl)
+			logger.debug("get", metadata: ["queue": .string(queue), "id": .string(id.uuidString), "file": .string(url.lastPathComponent)])
+			return try readObject(from: url)
+		} catch {
+			logger.error("get failed", metadata: ["queue": .string(queue), "id": .string(id.uuidString), "error": .string("\(error)")])
+			throw error
+		}
 	}
 	
 	// Renvoie et supprime le plus ancien message (ordre déterminé par le préfixe timestamp du nom de fichier)
 	public func popOldest(from queue: String) async throws -> BoxStoredObject? {
-		let qurl = root.appendingPathComponent(try sanitizeQueueName(queue), isDirectory: true)
-		guard fm.fileExists(atPath: qurl.path) else { throw BoxStoreError.queueNotFound(queue) }
-		let files = try fm.contentsOfDirectory(at: qurl, includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }
-		guard let first = files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }).first else { return nil }
-		let obj = try readObject(from: first)
-		try fm.removeItem(at: first)
-		return obj
+		do {
+			let qurl = root.appendingPathComponent(try sanitizeQueueName(queue), isDirectory: true)
+			guard fm.fileExists(atPath: qurl.path) else { throw BoxStoreError.queueNotFound(queue) }
+			let files = try fm.contentsOfDirectory(at: qurl, includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }
+			guard let first = files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }).first else { return nil }
+			logger.debug("pop oldest", metadata: ["queue": .string(queue), "file": .string(first.lastPathComponent)])
+			let obj = try readObject(from: first)
+			try fm.removeItem(at: first)
+			return obj
+		} catch {
+				logger.error("pop failed", metadata: ["queue": .string(queue), "error": .string("\(error)")])
+				throw error
+		}
 	}
 	
 	public func remove(queue: String, id: UUID) async throws {
-		let qurl = root.appendingPathComponent(try sanitizeQueueName(queue), isDirectory: true)
-		guard fm.fileExists(atPath: qurl.path) else { throw BoxStoreError.queueNotFound(queue) }
-		let url = try findFileURL(for: id, in: qurl)
-		try fm.removeItem(at: url)
+		do {
+			let qurl = root.appendingPathComponent(try sanitizeQueueName(queue), isDirectory: true)
+			guard fm.fileExists(atPath: qurl.path) else { throw BoxStoreError.queueNotFound(queue) }
+			let url = try findFileURL(for: id, in: qurl)
+			logger.debug("remove", metadata: ["queue": .string(queue), "id": .string(id.uuidString), "file": .string(url.lastPathComponent)])
+			try fm.removeItem(at: url)
+		} catch {
+			logger.error("remove failed", metadata: ["queue": .string(queue), "id": .string(id.uuidString), "error": .string("\(error)")])
+			throw error
+        }
 	}
 	
 	public func purge(queue: String) async throws {
 		let qurl = root.appendingPathComponent(try sanitizeQueueName(queue), isDirectory: true)
 		guard fm.fileExists(atPath: qurl.path) else { return }
 		let urls = try fm.contentsOfDirectory(at: qurl, includingPropertiesForKeys: nil)
+		logger.info("purge", metadata: ["queue": .string(queue), "count": .stringConvertible(urls.count)])
 		for u in urls { try? fm.removeItem(at: u) }
 	}
 	
@@ -266,11 +305,15 @@ public actor BoxServerStore {
 	}
 	
 	private func sanitizeQueueName(_ name: String) throws -> String {
-		let invalid = CharacterSet(charactersIn: "/:\\?%*|\"<>")
-		if name.isEmpty || name.rangeOfCharacter(from: invalid) != nil {
+		// Tolère un slash de tête: "/inbox" -> "inbox", mais interdit les slashes internes.
+		var n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+		if n.hasPrefix("/") { while n.hasPrefix("/") { n.removeFirst() } }
+		let invalid = CharacterSet(charactersIn: "/:\\\\?%*|\\\"<>")
+		guard !n.isEmpty, n.rangeOfCharacter(from: invalid) == nil else {
+			logger.warning("invalid queue name", metadata: ["name": .string(name)])
 			throw BoxStoreError.invalidQueueName(name)
 		}
-		return name
+		return n
 	}
 	
 	private func makeFilename(for object: BoxStoredObject) -> String {
