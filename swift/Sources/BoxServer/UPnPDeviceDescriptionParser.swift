@@ -1,5 +1,8 @@
 #if !os(Windows)
 import Foundation
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
 
 final class UPnPDeviceDescriptionParser: NSObject, XMLParserDelegate {
     private let baseURL: URL
