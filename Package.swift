@@ -19,7 +19,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.60.0"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.5.3"),
         .package(url: "https://github.com/sushichop/Puppy.git", branch: "main"),
-        .package(url: "git@github.com:apple/swift-foundation-xml.git", from: "0.2.0")
+        .package(url: "https://github.com/apple/swift-foundation-xml.git", from: "0.2.0")
     ],
     targets: [
         .executableTarget(
