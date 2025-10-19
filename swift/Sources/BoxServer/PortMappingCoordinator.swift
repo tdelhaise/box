@@ -753,10 +753,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
     }
 
     private func performSSDPDiscovery() throws -> Data? {
-        let socketDescriptor = socket(AF_INET, Int32(SOCK_DGRAM), Int32(IPPROTO_UDP))
-        guard socketDescriptor >= 0 else {
-            throw PortMappingError.socket(errno)
-        }
+        let socketDescriptor = try createUDPSocket()
         defer { close(socketDescriptor) }
 
         var enable: Int32 = 1
@@ -837,10 +834,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
     }
 
     private func performNATPMPMapping(gateway: String, lifetime: UInt32) throws -> (externalPort: UInt16, lifetime: UInt32) {
-        let socketDescriptor = socket(AF_INET, Int32(SOCK_DGRAM), Int32(IPPROTO_UDP))
-        guard socketDescriptor >= 0 else {
-            throw PortMappingError.socket(errno)
-        }
+        let socketDescriptor = try createUDPSocket()
         defer { close(socketDescriptor) }
 
         var timeout = timeval(tv_sec: 3, tv_usec: 0)
@@ -897,10 +891,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
     }
 
     private func performNATPMPDeletion(gateway: String, externalPort: UInt16) throws {
-        let socketDescriptor = socket(AF_INET, Int32(SOCK_DGRAM), Int32(IPPROTO_UDP))
-        guard socketDescriptor >= 0 else {
-            throw PortMappingError.socket(errno)
-        }
+        let socketDescriptor = try createUDPSocket()
         defer { close(socketDescriptor) }
 
         var timeout = timeval(tv_sec: 2, tv_usec: 0)
@@ -934,10 +925,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
     }
 
     private func performPCPMapping(context: inout PCPContext, lifetime: UInt32) throws -> (externalPort: UInt16, lifetime: UInt32, externalIPv4: String?) {
-        let socketDescriptor = socket(AF_INET, Int32(SOCK_DGRAM), Int32(IPPROTO_UDP))
-        guard socketDescriptor >= 0 else {
-            throw PortMappingError.socket(errno)
-        }
+        let socketDescriptor = try createUDPSocket()
         defer { close(socketDescriptor) }
 
         var timeout = timeval(tv_sec: 3, tv_usec: 0)
@@ -1078,11 +1066,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
         remotePeerPort: UInt16,
         lifetime: UInt32
     ) throws -> UInt32 {
-        let socketDescriptor = socket(AF_INET, Int32(SOCK_DGRAM), Int32(IPPROTO_UDP))
-        guard socketDescriptor >= 0 else {
-            throw PortMappingError.socket(errno)
-        }
-        defer { close(socketDescriptor) }
+        let socketDescriptor = try createUDPSocket()        defer { close(socketDescriptor) }
 
         var timeout = timeval(tv_sec: 3, tv_usec: 0)
         withUnsafeBytes(of: &timeout) { buffer in
@@ -1164,6 +1148,19 @@ final class PortMappingCoordinator: @unchecked Sendable {
 #endif
     }
 #endif
+
+    private func createUDPSocket() throws -> Int32 {
+        #if os(Linux)
+        let sockDGRAM = Int32(SOCK_DGRAM.rawValue)
+        #else
+        let sockDGRAM = SOCK_DGRAM
+        #endif
+        let socketDescriptor = socket(AF_INET, sockDGRAM, Int32(IPPROTO_UDP))
+        guard socketDescriptor >= 0 else {
+            throw PortMappingError.socket(errno)
+        }
+        return socketDescriptor
+    }
 }
 
 
