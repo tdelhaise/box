@@ -33,6 +33,8 @@ let package = Package(
             ],
             path: "swift/Sources/BoxCommandParser"
         ),
+        .target(
+            name: "BoxServer",
             dependencies: [
                 "BoxCore",
                 .product(name: "NIO", package: "swift-nio"),
