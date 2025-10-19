@@ -82,7 +82,8 @@ struct ServerContext {
 /// - Parameter configurationData: Optional raw PLIST data used to seed `Box.plist`.
 /// - Returns: A context object describing the spawned server instance.
 func startServer(configurationData: Data? = nil, forcedPort: UInt16? = nil, adminChannelEnabled: Bool = true) async throws -> ServerContext {
-    let tempRoot = URL(fileURLWithPath: "/tmp", isDirectory: true)
+    let tempRoot = URL(fileURLWithPath: ".build/tmp", isDirectory: true)
+    try? FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
     let tempHome = tempRoot.appendingPathComponent("box-tests-\(UUID().uuidString)", isDirectory: true)
     let originalHome = getenv("HOME").map { String(cString: $0) }
     setenv("HOME", tempHome.path, 1)
