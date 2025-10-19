@@ -24,7 +24,9 @@ final class BoxConfigurationTests: XCTestCase {
             "transport": "noise",
             "pre_share_key": "secret",
             "admin_channel": false,
-            "port_mapping": true
+            "port_mapping": true,
+            "external_address": "198.51.100.4",
+            "external_port": 16000
         ],
             "client": [
                 "log_level": "error",
@@ -50,6 +52,8 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.server.preShareKey, "secret")
         XCTAssertEqual(configuration.server.adminChannelEnabled, false)
         XCTAssertEqual(configuration.server.portMappingEnabled, true)
+        XCTAssertEqual(configuration.server.externalAddress, "198.51.100.4")
+        XCTAssertEqual(configuration.server.externalPort, 16000)
 
         XCTAssertEqual(configuration.client.logLevel, Logger.Level.error)
         XCTAssertEqual(configuration.client.logTarget, "file:/tmp/box.log")
@@ -87,6 +91,8 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.server.adminChannelEnabled, true)
         XCTAssertEqual(configuration.server.port, BoxRuntimeOptions.defaultPort)
         XCTAssertEqual(configuration.server.portMappingEnabled ?? false, false)
+        XCTAssertNil(configuration.server.externalAddress)
+        XCTAssertNil(configuration.server.externalPort)
 
         XCTAssertEqual(configuration.client.logLevel, .info)
         let expectedClientTarget: String = {
@@ -138,6 +144,8 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertNotNil(configuration.common.nodeUUID)
         XCTAssertNotNil(configuration.common.userUUID)
         XCTAssertEqual(configuration.server.portMappingEnabled ?? false, false)
+        XCTAssertNil(configuration.server.externalAddress)
+        XCTAssertNil(configuration.server.externalPort)
 
         let persisted = try Data(contentsOf: plistURL)
         let updatedPlist = try PropertyListSerialization.propertyList(from: persisted, options: [], format: nil) as? [String: Any]

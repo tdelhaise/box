@@ -35,7 +35,7 @@ S3 — Configuration & Admin Channel
 - Recréer le socket d’administration Unix, refuser l’exécution en root et gérer les répertoires `~/.box`.
 - Exit: `box --server` expose `status` sur le canal admin; non-root enforcement vérifié.
   Progress: configuration `BoxConfiguration` unifiée (`~/.box/Box.plist`) avec sections `common` (UUID nœud/utilisateur), `server` et `client`, génération automatique des identités persistantes, priorité CLI/env conservée. Canal admin opérationnel (`status|ping|log-target|reload-config|stats`), enforcement non-root, répertoires `~/.box`/`run`/`logs` sécurisés. Stockage persistant sur disque via `BoxServerStore` (fichiers JSON par message, file `INBOX` créée automatiquement), exposition des métriques (`queueRoot`, `queueCount`, `objects`, espace libre) dans `status`/`stats`, et journaux redirigés par défaut vers `~/.box/logs/box(.d).log`. Les trames réseau incluent désormais `request_id`, `node_id`, `user_id` sous forme d’UUID.
-  Next: finaliser la publication Location Service (adapter le schéma LS aux nouveaux champs `addresses[]`/`connectivity`, produire un prototype Swift), orchestrer réellement le port-mapping PCP/NAT-PMP/UPnP lorsque `port_mapping` est activé, étendre les tests d’intégration pour piloter le parcours via la CLI (`BoxCommandParser` → `BoxClient/BoxServer`, y compris `--locate`), préparer la réintégration Noise/libsodium (S4) et introduire la validation ACL côté Swift.
+Next: la publication Location Service tourne désormais sur le même builder que l’admin channel (`addresses[]` avec sources `probe|config|manual`, bloc `connectivity` enrichi, enregistrements nœud/utilisateur synchronisés). Le port‑mapping opt‑in pilote désormais UPnP → PCP (MAP + PEER) → NAT‑PMP avec télémetrie complète (`portMappingPeer*`, `manualExternal*`, `external_address`/`external_port` côté PLIST/CLI). À poursuivre : étendre les tests d’intégration pour piloter le parcours via la CLI (`BoxCommandParser` → `BoxClient/BoxServer`, y compris `--locate` et `nat-probe`), préparer la réintégration Noise/libsodium (S4) et introduire la validation ACL côté Swift.
 
 S4 — Crypto Reintegration
 - Intégrer libsodium via un module Swift (bindings) et rétablir le transport Noise NK/IK.
@@ -103,8 +103,8 @@ M6 — Authorization and ACLs
 - Exit criteria: requests from unauthorized peers are rejected with proper status; ACL changes take effect without restart.
 
 M7 — NAT Traversal and Connectivity Tools
-- Implement admin‑channel actions for NAT probe, map_create/map_delete, probe_peer, and LS publish.
-- Implement PCP → NAT‑PMP → UPnP mapping (opt‑in) and keepalives (configurable).
+- Implement admin-channel actions for NAT probe, map_create/map_delete, probe_peer, and LS publish. **Status:** nat-probe JSON + LS publication en place; reste à automatiser les tests CLI end-to-end.
+- Implement PCP → NAT‑PMP → UPnP mapping (opt‑in) and keepalives (configurable). **Status:** MAP+PEER + cleanup livrés (avec surcharges manuelles) ; keepalives/paramétrage à affiner selon feedback matériel.
 - Implement `box check connectivity` behavior and JSON output; document remediation guidance.
 - Optional: hole punching with rendezvous; optional user‑owned relay path (still E2E encrypted).
 - Exit criteria: connectivity tool reports IPv6 reachability; acquires IPv4 mapping where supported; publishes endpoints to LS on confirmation.

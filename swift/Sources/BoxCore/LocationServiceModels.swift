@@ -45,18 +45,81 @@ public struct LocationServiceNodeRecord: Codable, Sendable {
     public struct Connectivity: Codable, Sendable {
         /// Summarises the current port-mapping preference.
         public struct PortMapping: Codable, Sendable {
+            /// Represents the outcome of an auxiliary PCP PEER request.
+            public struct Peer: Codable, Sendable {
+                /// Human-readable status (`ok`, `error`, `skipped`).
+                public var status: String
+                /// Lease duration returned by the gateway (seconds).
+                public var lifetimeSeconds: UInt32?
+                /// Timestamp of the last update (milliseconds since epoch).
+                public var lastUpdated: UInt64?
+                /// Optional error description when the request fails.
+                public var error: String?
+
+                /// Creates a new peer mapping summary.
+                /// - Parameters:
+                ///   - status: Status string reported by the coordinator.
+                ///   - lifetimeSeconds: Lease duration reported by the gateway.
+                ///   - lastUpdated: Millisecond timestamp indicating when the status was observed.
+                ///   - error: Optional error description.
+                public init(
+                    status: String,
+                    lifetimeSeconds: UInt32? = nil,
+                    lastUpdated: UInt64? = nil,
+                    error: String? = nil
+                ) {
+                    self.status = status
+                    self.lifetimeSeconds = lifetimeSeconds
+                    self.lastUpdated = lastUpdated
+                    self.error = error
+                }
+
+                private enum CodingKeys: String, CodingKey {
+                    case status
+                    case lifetimeSeconds = "lifetime_seconds"
+                    case lastUpdated = "last_updated"
+                    case error
+                }
+            }
+
             /// Indicates whether port mapping has been requested.
             public var enabled: Bool
             /// Describes where the preference originates (`default`, `cli`, `config`).
             public var origin: String
+            /// External IPv4 reported by the mapping backend.
+            public var externalIPv4: String?
+            /// External UDP port reported by the mapping backend.
+            public var externalPort: UInt16?
+            /// Optional PCP PEER status.
+            public var peer: Peer?
 
             /// Creates a new summary for the port-mapping state.
             /// - Parameters:
             ///   - enabled: Whether port mapping is currently requested.
             ///   - origin: Human-readable origin string.
-            public init(enabled: Bool, origin: String) {
+            ///   - externalIPv4: External IPv4 address reported by the gateway.
+            ///   - externalPort: External UDP port reported by the gateway.
+            ///   - peer: Optional PCP PEER status.
+            public init(
+                enabled: Bool,
+                origin: String,
+                externalIPv4: String? = nil,
+                externalPort: UInt16? = nil,
+                peer: Peer? = nil
+            ) {
                 self.enabled = enabled
                 self.origin = origin
+                self.externalIPv4 = externalIPv4
+                self.externalPort = externalPort
+                self.peer = peer
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case enabled
+                case origin
+                case externalIPv4 = "external_ipv4"
+                case externalPort = "external_port"
+                case peer
             }
         }
 
@@ -177,6 +240,9 @@ public extension LocationServiceNodeRecord {
         portMappingEnabled: Bool,
         portMappingOrigin: BoxRuntimeOptions.PortMappingOrigin,
         additionalAddresses: [Address] = [],
+        portMappingExternalIPv4: String? = nil,
+        portMappingExternalPort: UInt16? = nil,
+        portMappingPeer: Connectivity.PortMapping.Peer? = nil,
         online: Bool = true,
         since: UInt64? = nil,
         lastSeen: UInt64? = nil,
@@ -198,7 +264,10 @@ public extension LocationServiceNodeRecord {
             ipv6ProbeError: ipv6Error,
             portMapping: Connectivity.PortMapping(
                 enabled: portMappingEnabled,
-                origin: portMappingOrigin.locationServiceValue
+                origin: portMappingOrigin.locationServiceValue,
+                externalIPv4: portMappingExternalIPv4,
+                externalPort: portMappingExternalPort,
+                peer: portMappingPeer
             )
         )
 

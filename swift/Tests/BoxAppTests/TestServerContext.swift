@@ -71,6 +71,7 @@ struct ServerContext {
         } else {
             unsetenv("HOME")
         }
+        unsetenv("BOX_SKIP_NAT_PROBE")
         try? FileManager.default.removeItem(at: homeDirectory)
         BoxLogging.update(target: .stderr)
         BoxLogging.update(level: .info)
@@ -85,6 +86,7 @@ func startServer(configurationData: Data? = nil, forcedPort: UInt16? = nil, admi
     let tempHome = tempRoot.appendingPathComponent("box-tests-\(UUID().uuidString)", isDirectory: true)
     let originalHome = getenv("HOME").map { String(cString: $0) }
     setenv("HOME", tempHome.path, 1)
+    setenv("BOX_SKIP_NAT_PROBE", "1", 1)
 
     let boxDirectory = tempHome.appendingPathComponent(".box", isDirectory: true)
     let runDirectory = boxDirectory.appendingPathComponent("run", isDirectory: true)

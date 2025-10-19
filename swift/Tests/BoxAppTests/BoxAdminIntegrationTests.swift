@@ -61,7 +61,7 @@ final class BoxAdminIntegrationTests: XCTestCase {
             XCTAssertNotNil(connectivity["globalIPv6"])
             let portMapping = coerceDictionary(connectivity["portMapping"])
             XCTAssertNotNil(portMapping)
-            XCTAssertNotNil(portMapping?["origin"] as? String)
+            XCTAssertNotNil(portMapping?["origin"])
             XCTAssertNotNil(portMapping?["enabled"])
         } else {
             XCTFail("connectivity payload missing from status response")
@@ -82,7 +82,7 @@ final class BoxAdminIntegrationTests: XCTestCase {
 
         let configurationResult = try BoxConfiguration.load(from: context.configurationURL)
         var configuration = configurationResult.configuration
-        configuration.server.logLevel = .debug
+        configuration.server.logLevel = Logger.Level.debug
         try configuration.save(to: context.configurationURL)
 
         let reloadResponse = try transport.send(command: "reload-config {\"path\":\"\(context.configurationURL.path)\"}")
@@ -154,7 +154,7 @@ final class BoxAdminIntegrationTests: XCTestCase {
         let userPayload = try XCTUnwrap(coerceDictionary(locateUserJSON["user"]))
         XCTAssertEqual(userPayload["userUUID"] as? String, userUUID)
         let nodeUUIDs = (userPayload["nodeUUIDs"] as? [String]) ?? (userPayload["nodeUUIDs"] as? [NSString])?.map { $0 as String }
-        XCTAssertEqual(nodeUUIDs, [nodeUUID])
+        XCTAssertEqual(nodeUUIDs, [nodeUUID] as [String])
         let userRecords = try XCTUnwrap(coerceArrayOfDictionaries(userPayload["records"]))
         XCTAssertEqual(userRecords.count, 1)
         XCTAssertEqual(userRecords.first?["nodeUUID"] as? String, nodeUUID)
@@ -162,6 +162,20 @@ final class BoxAdminIntegrationTests: XCTestCase {
         let missingJSON = try decodeJSON(try transport.send(command: "locate \(UUID().uuidString)"))
         XCTAssertEqual(missingJSON["status"] as? String, "error")
         XCTAssertEqual(missingJSON["message"] as? String, "node-not-found")
+    }
+
+    func testAdminNatProbeSkipsDuringTests() async throws {
+        let context = try await startServer()
+        defer { context.tearDown() }
+
+        try await context.waitForAdminSocket()
+        let transport = BoxAdminTransportFactory.makeTransport(socketPath: context.socketPath)
+
+        let probeJSON = try decodeJSON(try transport.send(command: "nat-probe"))
+        XCTAssertEqual(probeJSON["status"] as? String, "skipped")
+        let reports = coerceArrayOfDictionaries(probeJSON["reports"])
+        XCTAssertNotNil(reports)
+        XCTAssertEqual(reports?.count, 0)
     }
 }
 

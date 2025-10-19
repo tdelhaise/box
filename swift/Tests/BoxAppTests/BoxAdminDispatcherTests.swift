@@ -21,7 +21,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
                 XCTFail("stats should not be called")
                 return ""
             },
-            locateNode: { _ in "" }
+            locateNode: { _ in "" },
+            natProbe: { _ in "" }
         )
 
         let response = await dispatcher.process("status")
@@ -47,7 +48,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             },
             reloadConfiguration: { _ in "" },
             statsProvider: { "" },
-            locateNode: { _ in "" }
+            locateNode: { _ in "" },
+            natProbe: { _ in "" }
         )
 
         let response = await dispatcher.process("log-target stdout")
@@ -67,7 +69,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             },
             reloadConfiguration: { _ in "" },
             statsProvider: { "" },
-            locateNode: { _ in "" }
+            locateNode: { _ in "" },
+            natProbe: { _ in "" }
         )
 
         let response = await dispatcher.process("log-target {\"target\":\"stderr\"}")
@@ -87,7 +90,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
                 return "ok"
             },
             statsProvider: { "" },
-            locateNode: { _ in "" }
+            locateNode: { _ in "" },
+            natProbe: { _ in "" }
         )
 
         let response = await dispatcher.process("reload-config {\"path\":\"~/config.plist\"}")
@@ -124,10 +128,31 @@ final class BoxAdminDispatcherTests: XCTestCase {
                 expectation.fulfill()
                 return "{\"status\":\"ok\"}"
             },
-            locateNode: { _ in "" }
+            locateNode: { _ in "" },
+            natProbe: { _ in "" }
         )
 
         let response = await dispatcher.process("stats")
+        XCTAssertEqual(response, "{\"status\":\"ok\"}")
+        await fulfillment(of: [expectation], timeout: 0.1)
+    }
+
+    func testNatProbeInvokesClosure() async throws {
+        let expectation = expectation(description: "nat probe closure")
+        let dispatcher = BoxAdminCommandDispatcher(
+            statusProvider: { "" },
+            logTargetUpdater: { _ in "" },
+            reloadConfiguration: { _ in "" },
+            statsProvider: { "" },
+            locateNode: { _ in "" },
+            natProbe: { gateway in
+                expectation.fulfill()
+                XCTAssertEqual(gateway, "192.0.2.1")
+                return "{\"status\":\"ok\"}"
+            }
+        )
+
+        let response = await dispatcher.process("nat-probe 192.0.2.1")
         XCTAssertEqual(response, "{\"status\":\"ok\"}")
         await fulfillment(of: [expectation], timeout: 0.1)
     }
@@ -138,7 +163,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             logTargetUpdater: { _ in "log" },
             reloadConfiguration: { _ in "reload" },
             statsProvider: { "stats" },
-            locateNode: { _ in "locate" }
+            locateNode: { _ in "locate" },
+            natProbe: { _ in "probe" }
         )
     }
 }

@@ -91,8 +91,10 @@ Legacy backlog (C – référence)
    - [ ] Exit: unauthorized requests denied; examples from spec pass.
 
 8) NAT traversal tooling (Issue #19)
-   - [ ] Admin-channel NAT probe, PCP/NAT‑PMP/UPnP mapping, keepalives; `box check connectivity` JSON.
-   - [ ] Exit: IPv6 reachable detection; mapping acquired on supported gateways.
+ - [x] Admin-channel NAT probe, PCP/NAT‑PMP/UPnP mapping, keepalives; `box check connectivity` JSON. *(keepalives/CLI orchestration à finaliser)*
+ - [x] Add PCP PEER support for coordinated hole punching and surface external IPv4 candidates to clients. *(exposé via `portMappingPeer*`, `manualExternal*`, LS `addresses[]`)*
+ - [ ] Once UPnP-capable hardware is available, validate the automatic mapping sequence end-to-end (enable UPnP/PCP/NAT-PMP on the gateway, run `box admin nat-probe --gateway <gw>` and confirm status `ok`). Document any required router settings.
+ - [ ] Exit: IPv6 reachable detection; mapping acquired on supported gateways.
 
 Android Track (parallel)
 - [ ] Extend minimal C API with no-op JNI-callable methods (e.g., BFCoreSelfTest()).

@@ -31,3 +31,6 @@ DerivedData/
 *.xccheckout
 xcuserdata/
 *.patch
+GEMINI.md
+.gemini/
+gha-creds-*.json

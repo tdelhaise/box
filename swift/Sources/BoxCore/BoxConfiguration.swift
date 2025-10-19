@@ -24,6 +24,8 @@ public struct BoxConfiguration: Sendable {
         public var noisePattern: String?
         public var adminChannelEnabled: Bool?
         public var portMappingEnabled: Bool?
+        public var externalAddress: String?
+        public var externalPort: UInt16?
 
         public init(
             port: UInt16? = nil,
@@ -36,7 +38,9 @@ public struct BoxConfiguration: Sendable {
             preShareKey: String? = nil,
             noisePattern: String? = nil,
             adminChannelEnabled: Bool? = nil,
-            portMappingEnabled: Bool? = nil
+            portMappingEnabled: Bool? = nil,
+            externalAddress: String? = nil,
+            externalPort: UInt16? = nil
         ) {
             self.port = port
             self.logLevel = logLevel
@@ -49,6 +53,8 @@ public struct BoxConfiguration: Sendable {
             self.noisePattern = noisePattern
             self.adminChannelEnabled = adminChannelEnabled
             self.portMappingEnabled = portMappingEnabled
+            self.externalAddress = externalAddress
+            self.externalPort = externalPort
         }
     }
 
@@ -203,7 +209,9 @@ private extension BoxConfiguration {
             preShareKey: serverSection.preShareKey,
             noisePattern: serverSection.noisePattern,
             adminChannelEnabled: serverSection.adminChannelEnabled,
-            portMappingEnabled: serverSection.portMapping
+            portMappingEnabled: serverSection.portMapping,
+            externalAddress: serverSection.externalAddress,
+            externalPort: serverSection.externalPort
         )
 
         let clientSection = plist.client ?? ConfigurationPlist.Client.default(baseDirectory: defaultBaseDirectory)
@@ -232,7 +240,9 @@ private extension BoxConfiguration {
                 preShareKey: server.preShareKey,
                 noisePattern: server.noisePattern,
                 adminChannelEnabled: server.adminChannelEnabled,
-                portMapping: server.portMappingEnabled
+                portMapping: server.portMappingEnabled,
+                externalAddress: server.externalAddress,
+                externalPort: server.externalPort
             ),
             client: ConfigurationPlist.Client(
                 logLevel: client.logLevel?.rawValue,
@@ -267,6 +277,8 @@ private struct ConfigurationPlist: Codable {
         var noisePattern: String?
         var adminChannelEnabled: Bool?
         var portMapping: Bool?
+        var externalAddress: String?
+        var externalPort: UInt16?
 
         enum CodingKeys: String, CodingKey {
             case port
@@ -280,6 +292,8 @@ private struct ConfigurationPlist: Codable {
             case noisePattern = "noise_pattern"
             case adminChannelEnabled = "admin_channel"
             case portMapping = "port_mapping"
+            case externalAddress = "external_address"
+            case externalPort = "external_port"
         }
 
         static func `default`(baseDirectory: URL? = nil) -> Server {
@@ -295,7 +309,9 @@ private struct ConfigurationPlist: Codable {
                 preShareKey: nil,
                 noisePattern: nil,
                 adminChannelEnabled: true,
-                portMapping: false
+                portMapping: false,
+                externalAddress: nil,
+                externalPort: nil
             )
         }
     }

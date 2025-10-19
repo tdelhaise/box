@@ -234,6 +234,12 @@ Resolve by User UUID
             "port": 9988,
             "scope": "global",
             "source": "probe"
+          },
+          {
+            "ip": "198.51.100.10",
+            "port": 12567,
+            "scope": "global",
+            "source": "manual"
           }
         ],
         "node_public_key": "ed25519:8c1f...ab42",
@@ -244,8 +250,15 @@ Resolve by User UUID
           "has_global_ipv6": true,
           "global_ipv6": ["2001:db8::10"],
           "port_mapping": {
-            "enabled": false,
-            "origin": "default"
+            "enabled": true,
+            "origin": "default",
+            "external_ipv4": "198.51.100.10",
+            "external_port": 12567,
+            "peer": {
+              "status": "ok",
+              "lifetime_seconds": 3600,
+              "last_updated": 1736712389000
+            }
           }
         }
       }
@@ -289,7 +302,15 @@ Resolve by Node UUID
       ? "ipv6_probe_error": tstr-nonempty,
       "port_mapping": {
         "enabled": bool,
-        "origin": tstr-nonempty
+        "origin": tstr-nonempty,
+        ? "external_ipv4": tstr-nonempty,
+        ? "external_port": port,
+        ? "peer": {
+          "status": tstr-nonempty,
+          ? "lifetime_seconds": uint,
+          ? "last_updated": uint,
+          ? "error": tstr-nonempty
+        }
       }
     },
     ? "tags": { * tstr => tstr }
@@ -644,7 +665,7 @@ PUT example
 - Register/update presence in embedded LS on start and periodically (keep‑alive with last_seen). Presence is also published into `/uuid`.
 - Enforce ACLs per queue and per user/node.
 - Persist objects sous `~/.box/queues/<queue>/timestamp-UUID.json` (payload base64 + métadonnées incluant `content_type`, `node_id`, `user_id`, `created_at`). **Exception :** la file `/uuid` écrit directement `<uuid>.json` afin que les identifiants de nœud ou d’utilisateur soient mis à jour en place sans proliférer de doublons. Le daemon DOIT provisionner cette hiérarchie au premier démarrage, créer la file `INBOX/` et refuser de démarrer si la création échoue. Les informations LS (`/uuid`, `/location`) sont également stockées via ces files (`/uuid` hébergeant à la fois les enregistrements de nœud et un index utilisateur).
-- When `port_mapping = true` (ou `--enable-port-mapping`), tenter automatiquement une ouverture: d’abord UPnP (`M-SEARCH` IGD → `AddPortMapping` UDP, bail 3600 s), puis en repli NAT-PMP (`MAP`/`UNMAP` vers la passerelle par défaut). Chaque étape doit être journalisée et le mapping retiré (`DeletePortMapping` / NAT-PMP lifetime 0) à l’arrêt. PCP reste à intégrer.
+- When `port_mapping = true` (ou `--enable-port-mapping`), tenter automatiquement une ouverture: d’abord UPnP (`M-SEARCH` IGD → `AddPortMapping` UDP, bail 3600 s), puis PCP (`MAP` UDP/5351 avec nonce, refresh à mi-vie) *et* une requête `PEER` pour percer le pare-feu entrant, et enfin NAT-PMP (`MAP`/`UNMAP` vers la passerelle par défaut). Chaque étape doit être journalisée et le mapping retiré (`DeletePortMapping` / lifetime 0) à l’arrêt. Les réponses admin exposent `port_mapping_backend`, `port_mapping_external_port`, `port_mapping_external_ipv4`, `port_mapping_lease_seconds`, `port_mapping_refreshed_at`, `port_mapping_peer_status`, `port_mapping_peer_lifetime`, `port_mapping_peer_last_updated` et `port_mapping_peer_error` afin de suivre l’état courant. Les opérateurs peuvent fournir un fallback manuel (`external_address`, `external_port` dans `Box.plist` ou `--external-address/--external-port`) : l’admin channel restitue alors `manualExternalAddress|Port|Origin` et les enregistrements Location Service ajoutent des entrées `addresses[]` avec `source = manual` (CLI) ou `source = config` (PLIST).
 - Optional at‑rest encryption with a server‑managed key.
 - Rate limiting and DoS protection per source.
 

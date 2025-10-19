@@ -13,6 +13,12 @@ final class LocationServiceModelsTests: XCTestCase {
             scope: .lan,
             source: .config
         )
+        let peer = LocationServiceNodeRecord.Connectivity.PortMapping.Peer(
+            status: "ok",
+            lifetimeSeconds: 7_200,
+            lastUpdated: 9,
+            error: nil
+        )
 
         let record = LocationServiceNodeRecord.make(
             userUUID: userUUID,
@@ -23,6 +29,9 @@ final class LocationServiceModelsTests: XCTestCase {
             portMappingEnabled: true,
             portMappingOrigin: .cliFlag,
             additionalAddresses: [additional],
+            portMappingExternalIPv4: "198.51.100.10",
+            portMappingExternalPort: 13000,
+            portMappingPeer: peer,
             online: true,
             since: 1,
             lastSeen: 2,
@@ -38,6 +47,13 @@ final class LocationServiceModelsTests: XCTestCase {
         XCTAssertNil(record.connectivity.ipv6ProbeError)
         XCTAssertTrue(record.connectivity.portMapping.enabled)
         XCTAssertEqual(record.connectivity.portMapping.origin, "cli")
+        print("portMapping", record.connectivity.portMapping.externalIPv4 as Any, record.connectivity.portMapping.externalPort as Any)
+        XCTAssertEqual(record.connectivity.portMapping.externalIPv4, "198.51.100.10")
+        XCTAssertEqual(record.connectivity.portMapping.externalPort, 13000)
+        XCTAssertEqual(record.connectivity.portMapping.peer?.status, "ok")
+        XCTAssertEqual(record.connectivity.portMapping.peer?.lifetimeSeconds, 7_200)
+        XCTAssertEqual(record.connectivity.portMapping.peer?.lastUpdated, 9)
+        XCTAssertNil(record.connectivity.portMapping.peer?.error)
         XCTAssertEqual(record.since, 1)
         XCTAssertEqual(record.lastSeen, 2)
         XCTAssertEqual(record.tags?["role"], "primary")
@@ -63,6 +79,12 @@ final class LocationServiceModelsTests: XCTestCase {
         let portMapping = unwrapDictionary(connectivity?["port_mapping"])
         XCTAssertEqual(portMapping?["origin"] as? String, "cli")
         XCTAssertEqual(portMapping?["enabled"] as? Bool, true)
+        XCTAssertEqual(portMapping?["external_ipv4"] as? String, "198.51.100.10")
+        XCTAssertEqual((portMapping?["external_port"] as? NSNumber)?.intValue, 13000)
+        let peerJSON = unwrapDictionary(portMapping?["peer"])
+        XCTAssertEqual(peerJSON?["status"] as? String, "ok")
+        XCTAssertEqual((peerJSON?["lifetime_seconds"] as? NSNumber)?.intValue, 7_200)
+        XCTAssertEqual((peerJSON?["last_updated"] as? NSNumber)?.intValue, 9)
     }
 
     func testUserRecordMakeDeduplicatesAndSorts() throws {

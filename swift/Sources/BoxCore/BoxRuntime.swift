@@ -68,6 +68,15 @@ public struct BoxRuntimeOptions: Sendable {
         /// Configuration file override.
         case configuration
     }
+    /// Identifies how a manual external address override was provided.
+    public enum ExternalAddressOrigin: Sendable {
+        /// No manual override was supplied.
+        case `default`
+        /// Override provided via CLI flag.
+        case cliFlag
+        /// Override sourced from the configuration file.
+        case configuration
+    }
     /// Default client address when none is provided.
     public static let defaultClientAddress = "127.0.0.1"
     /// Default server bind address when none is provided.
@@ -117,6 +126,12 @@ public struct BoxRuntimeOptions: Sendable {
     public var portMappingRequested: Bool
     /// Indicates how the port mapping preference was obtained.
     public var portMappingOrigin: PortMappingOrigin
+    /// Manual external IP (if provided by the operator).
+    public var externalAddressOverride: String?
+    /// Manual external port (defaults to the runtime port when absent).
+    public var externalPortOverride: UInt16?
+    /// Origin of the manual external address override.
+    public var externalAddressOrigin: ExternalAddressOrigin
 
     /// Creates a new bundle of runtime options.
     /// - Parameters:
@@ -148,7 +163,10 @@ public struct BoxRuntimeOptions: Sendable {
         userId: UUID,
         portMappingRequested: Bool,
         clientAction: BoxClientAction = .handshake,
-        portMappingOrigin: PortMappingOrigin
+        portMappingOrigin: PortMappingOrigin,
+        externalAddressOverride: String? = nil,
+        externalPortOverride: UInt16? = nil,
+        externalAddressOrigin: ExternalAddressOrigin = .default
     ) {
         self.mode = mode
         self.address = address
@@ -165,6 +183,9 @@ public struct BoxRuntimeOptions: Sendable {
         self.portMappingRequested = portMappingRequested
         self.portMappingOrigin = portMappingOrigin
         self.clientAction = clientAction
+        self.externalAddressOverride = externalAddressOverride
+        self.externalPortOverride = externalPortOverride
+        self.externalAddressOrigin = externalAddressOrigin
     }
 }
 

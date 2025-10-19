@@ -71,6 +71,14 @@ public struct BoxCommandParser: AsyncParsableCommand {
     @Flag(name: .customLong("enable-port-mapping"), inversion: .prefixedNo, help: "Attempt automatic port mapping via PCP/NAT-PMP/UPnP (server mode).")
     public var enablePortMapping: Bool = false
 
+    /// Manual external address advertised when automatic detection is unavailable (server mode only).
+    @Option(name: .customLong("external-address"), help: "Manual external address advertised to peers (server mode).")
+    public var externalAddressOverride: String?
+
+    /// Manual external UDP port advertised together with `--external-address`.
+    @Option(name: .customLong("external-port"), help: "External UDP port advertised with --external-address (defaults to the effective port).")
+    public var externalPortOverride: UInt16?
+
     /// Default memberwise initializer required by swift-argument-parser.
     public init() {}
 
@@ -80,8 +88,20 @@ public struct BoxCommandParser: AsyncParsableCommand {
         let cliLogTarget = try resolveLogTarget()
         let resolvedMode: BoxRuntimeMode = server ? .server : .client
 
+        if externalPortOverride != nil, externalAddressOverride == nil {
+            throw ValidationError("--external-port requires --external-address.")
+        }
+
         if resolvedMode == .server, locateNode != nil {
             throw ValidationError("--locate is only available in client mode.")
+        }
+        if resolvedMode == .client {
+            if externalAddressOverride != nil {
+                throw ValidationError("--external-address is only available in server mode.")
+            }
+            if externalPortOverride != nil {
+                throw ValidationError("--external-port is only available in server mode.")
+            }
         }
 
         let configurationResult = try BoxConfiguration.loadDefault(explicitPath: configurationPath)
@@ -140,6 +160,22 @@ public struct BoxCommandParser: AsyncParsableCommand {
             return (BoxRuntimeOptions.defaultPort, .default)
         }()
 
+        let (manualExternalAddress, manualExternalPort, manualExternalOrigin): (String?, UInt16?, BoxRuntimeOptions.ExternalAddressOrigin) = {
+            guard resolvedMode == .server else {
+                return (nil, nil, .default)
+            }
+            if let cliAddressRaw = externalAddressOverride?.trimmingCharacters(in: .whitespacesAndNewlines), !cliAddressRaw.isEmpty {
+                let portValue = externalPortOverride ?? effectivePort
+                return (cliAddressRaw, portValue, .cliFlag)
+            }
+            if let configAddressRaw = serverConfiguration?.externalAddress?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !configAddressRaw.isEmpty {
+                let portValue = serverConfiguration?.externalPort ?? effectivePort
+                return (configAddressRaw, portValue, .configuration)
+            }
+            return (nil, nil, .default)
+        }()
+
         let (portMappingRequested, portMappingOrigin): (Bool, BoxRuntimeOptions.PortMappingOrigin) = {
             guard resolvedMode == .server else {
                 return (false, .default)
@@ -168,7 +204,10 @@ public struct BoxCommandParser: AsyncParsableCommand {
             userId: effectiveUserId,
             portMappingRequested: portMappingRequested,
             clientAction: try resolveClientAction(for: resolvedMode),
-            portMappingOrigin: portMappingOrigin
+            portMappingOrigin: portMappingOrigin,
+            externalAddressOverride: manualExternalAddress,
+            externalPortOverride: manualExternalPort,
+            externalAddressOrigin: manualExternalOrigin
         )
 
         switch resolvedMode {
@@ -247,7 +286,7 @@ extension BoxCommandParser {
             CommandConfiguration(
                 commandName: "admin",
                 abstract: "Interact with the local admin channel.",
-                subcommands: [Status.self, Ping.self, LogTarget.self, ReloadConfig.self, Stats.self, Locate.self]
+                subcommands: [Status.self, Ping.self, LogTarget.self, ReloadConfig.self, Stats.self, NatProbe.self, Locate.self]
             )
         }
 
@@ -334,6 +373,27 @@ extension BoxCommandParser {
 
             public mutating func run() throws {
                 let response = try Admin.sendCommand("stats", socketOverride: socket)
+                Admin.writeResponse(response)
+            }
+        }
+
+        /// `box admin nat-probe` — attempts port mapping through available backends (UPnP/PCP/NAT-PMP).
+        public struct NatProbe: AsyncParsableCommand {
+            @Option(name: .shortAndLong, help: "Admin socket path (defaults to ~/.box/run/boxd.socket).")
+            public var socket: String?
+
+            @Option(name: .shortAndLong, help: "Override gateway address (defaults to the system gateway).")
+            public var gateway: String?
+
+            public init() {}
+
+            public mutating func run() throws {
+                var command = "nat-probe"
+                if let gateway, !gateway.isEmpty {
+                    let payload = try Admin.encodeJSON(["gateway": gateway])
+                    command += " \(payload)"
+                }
+                let response = try Admin.sendCommand(command, socketOverride: socket)
                 Admin.writeResponse(response)
             }
         }

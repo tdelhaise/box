@@ -68,5 +68,28 @@ eth0\t0000A8C0\t00000000\t0001\t0\t0\t0\t00FFFFFF\t0\t0\t0
 """
         XCTAssertEqual(PortMappingUtilities.defaultGateway(fromProcNetRoute: contents), "192.168.1.1")
     }
+
+    func testIpv4MappedAddress() {
+        let mapped = PortMappingUtilities.ipv4MappedAddress("192.168.2.10")
+        XCTAssertEqual(mapped?.count, 16)
+        XCTAssertEqual(mapped?[10], 0xff)
+        XCTAssertEqual(mapped?[11], 0xff)
+        XCTAssertEqual(Array(mapped?.suffix(4) ?? []), [192, 168, 2, 10])
+        XCTAssertNil(PortMappingUtilities.ipv4MappedAddress("999.0.0.1"))
+    }
+
+    func testIpv6BytesToIPv4() {
+        let bytes: [UInt8] = Array(repeating: 0, count: 10) + [0xff, 0xff, 192, 168, 5, 20]
+        XCTAssertEqual(PortMappingUtilities.ipv6BytesToIPv4(bytes), "192.168.5.20")
+        XCTAssertNil(PortMappingUtilities.ipv6BytesToIPv4(Array(repeating: 0, count: 16)))
+    }
+
+    func testRandomNonceProducesDifferentValues() {
+        let nonceA = PortMappingUtilities.randomNonce(length: 12)
+        let nonceB = PortMappingUtilities.randomNonce(length: 12)
+        XCTAssertEqual(nonceA.count, 12)
+        XCTAssertEqual(nonceB.count, 12)
+        XCTAssertNotEqual(nonceA, nonceB)
+    }
 }
 #endif
