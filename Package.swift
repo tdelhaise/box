@@ -18,7 +18,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.60.0"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.5.3"),
-        .package(url: "https://github.com/sushichop/Puppy.git", branch: "main")
+        .package(url: "https://github.com/sushichop/Puppy.git", branch: "main"),
+        .package(url: "https://github.com/apple/swift-foundation-xml.git", from: "0.2.0")
     ],
     targets: [
         .executableTarget(
@@ -32,13 +33,12 @@ let package = Package(
             ],
             path: "swift/Sources/BoxCommandParser"
         ),
-        .target(
-            name: "BoxServer",
             dependencies: [
                 "BoxCore",
                 .product(name: "NIO", package: "swift-nio"),
                 .product(name: "Logging", package: "swift-log"),
-                .product(name: "NIOConcurrencyHelpers", package: "swift-nio")
+                .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
+                .product(name: "FoundationXML", package: "swift-foundation-xml")
             ],
             path: "swift/Sources/BoxServer"
         ),

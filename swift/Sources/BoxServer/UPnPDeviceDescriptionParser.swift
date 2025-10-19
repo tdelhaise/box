@@ -1,10 +1,7 @@
 #if !os(Windows)
 import Foundation
-#if canImport(FoundationXML)
 import FoundationXML
-#endif
 
-#if canImport(FoundationXML)
 final class UPnPDeviceDescriptionParser: NSObject, XMLParserDelegate {
     private let baseURL: URL
     private var services: [UPnPServiceDescription] = []
@@ -63,12 +60,4 @@ final class UPnPDeviceDescriptionParser: NSObject, XMLParserDelegate {
         currentElement = nil
     }
 }
-#else
-final class UPnPDeviceDescriptionParser {
-    init(baseURL: URL) {}
-    func parse(data: Data) throws -> [UPnPServiceDescription] {
-        return []
-    }
-}
-#endif
 #endif
