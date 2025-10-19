@@ -927,6 +927,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
     private func performPCPMapping(context: inout PCPContext, lifetime: UInt32) throws -> (externalPort: UInt16, lifetime: UInt32, externalIPv4: String?) {
         let socketDescriptor = try createUDPSocket()
         defer { close(socketDescriptor) }
+        defer { close(socketDescriptor) }
 
         var timeout = timeval(tv_sec: 3, tv_usec: 0)
         withUnsafeBytes(of: &timeout) { buffer in
@@ -1066,7 +1067,8 @@ final class PortMappingCoordinator: @unchecked Sendable {
         remotePeerPort: UInt16,
         lifetime: UInt32
     ) throws -> UInt32 {
-        let socketDescriptor = try createUDPSocket()        defer { close(socketDescriptor) }
+        let socketDescriptor = try createUDPSocket()
+        defer { close(socketDescriptor) }
 
         var timeout = timeval(tv_sec: 3, tv_usec: 0)
         withUnsafeBytes(of: &timeout) { buffer in
