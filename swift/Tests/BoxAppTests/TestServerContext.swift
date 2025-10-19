@@ -83,7 +83,7 @@ struct ServerContext {
 /// - Returns: A context object describing the spawned server instance.
 func startServer(configurationData: Data? = nil, forcedPort: UInt16? = nil, adminChannelEnabled: Bool = true) async throws -> ServerContext {
     let tempRoot = URL(fileURLWithPath: "tmp", isDirectory: true)
-    try? FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+    try? FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true, attributes: [FileAttributeKey.posixPermissions: 0o777])
     let tempHome = tempRoot.appendingPathComponent("box-tests-\(UUID().uuidString)", isDirectory: true)
     let originalHome = getenv("HOME").map { String(cString: $0) }
     setenv("HOME", tempHome.path, 1)
