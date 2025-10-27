@@ -187,16 +187,14 @@ final class BoxServerRuntimeController: @unchecked Sendable {
                 guard let self, let coordinator = self.locationCoordinator else {
                     return adminResponse(["status": "error", "message": "location-service-unavailable"])
                 }
+                if let record = await coordinator.resolve(nodeUUID: uuid) {
+                    return adminResponse(adminLocationRecordPayload(from: record))
+                }
                 let records = await coordinator.resolve(userUUID: uuid)
-                if records.isEmpty {
-                     if let record = await coordinator.resolve(nodeUUID: uuid) {
-                        return adminResponse(adminLocationRecordPayload(from: record))
-                     } else {
-                        return adminResponse(["status": "error", "message": "not-found"])
-                     }
-                } else {
+                if !records.isEmpty {
                     return adminResponse(adminLocationUserPayload(userUUID: uuid, records: records))
                 }
+                return adminResponse(["status": "error", "message": "node-not-found"])
             },
             natProbe: { [weak self] gateway in
                 await self?.handleNatProbe(gateway: gateway) ?? "{\"status\":\"error\",\"message\":\"shutting-down\"}"
@@ -227,7 +225,15 @@ final class BoxServerRuntimeController: @unchecked Sendable {
     }
 
     private func startPortMappingCoordinator() {
-        let (requested, origin, port) = state.withLockedValue { ($0.portMappingRequested, $0.portMappingOrigin, $0.port) }
+        let (requested, origin, port, nodeIdentifier, userIdentifier) = state.withLockedValue {
+            (
+                $0.portMappingRequested,
+                $0.portMappingOrigin,
+                $0.port,
+                $0.nodeIdentifier,
+                $0.userIdentifier
+            )
+        }
         guard requested else {
             logger.debug("port mapping disabled by configuration")
             return
@@ -236,6 +242,8 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             logger: logger,
             port: port,
             origin: origin,
+            nodeIdentifier: nodeIdentifier,
+            userIdentifier: userIdentifier,
             onStateChange: { [weak self] snapshot in
                 self?.updatePortMappingState(snapshot)
             }
@@ -256,6 +264,13 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             $0.portMappingPeerLifetime = snapshot?.peerLifetime
             $0.portMappingPeerLastUpdate = snapshot?.peerLastUpdate
             $0.portMappingPeerError = snapshot?.peerError
+            $0.portMappingStatus = snapshot?.status
+            $0.portMappingError = snapshot?.error
+            $0.portMappingErrorCode = snapshot?.errorCode
+            $0.portMappingReachabilityStatus = snapshot?.reachabilityStatus
+            $0.portMappingReachabilityCheckedAt = snapshot?.reachabilityCheckedAt
+            $0.portMappingReachabilityRoundTripMillis = snapshot?.reachabilityRoundTripMillis
+            $0.portMappingReachabilityError = snapshot?.reachabilityError
         }
         Task { [weak self] in
             await self?.publishPresence()
@@ -272,17 +287,28 @@ final class BoxServerRuntimeController: @unchecked Sendable {
         }
         BoxLogging.update(target: target)
         logger.info("log target updated", metadata: ["target": "\(logTargetDescription(target))", "origin": "admin"])
-        return "{\"status\":\"ok\"}"
+        let snapshot = state.withLockedValue { $0 }
+        let response: [String: Any] = [
+            "status": "ok",
+            "logTarget": logTargetDescription(snapshot.logTarget),
+            "logTargetOrigin": "\(snapshot.logTargetOrigin)"
+        ]
+        return adminResponse(response)
     }
 
     private func handleReload(path: String?) async -> String {
         let effectivePath = path ?? state.withLockedValue { $0.configurationPath }
         do {
             try await reloadConfiguration(path: effectivePath, initial: false)
-            let result: [String: Any] = [
-                "status": "ok",
-                "path": effectivePath ?? "none"
-            ]
+            let snapshot = state.withLockedValue { $0 }
+            let metrics = store.map { Self.queueMetrics(at: $0.root) } ?? QueueMetrics.zero
+            var result = statusDictionary(from: snapshot, metrics: metrics)
+            result["status"] = "ok"
+            result["path"] = effectivePath ?? "none"
+            if let record = buildLocationServiceRecord() {
+                result["addresses"] = adminAddressesPayload(from: record)
+                result["connectivity"] = adminConnectivityPayload(from: record)
+            }
             return adminResponse(result)
         } catch {
             let result: [String: Any] = [
@@ -307,6 +333,50 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             "reports": reports.map { $0.toDictionary() }
         ]
         return adminResponse(payload)
+    }
+
+    private func statusDictionary(from snapshot: BoxServerRuntimeState, metrics: QueueMetrics) -> [String: Any] {
+        [
+            "nodeUUID": snapshot.nodeIdentifier.uuidString,
+            "userUUID": snapshot.userIdentifier.uuidString,
+            "logLevel": "\(snapshot.logLevel)",
+            "logLevelOrigin": "\(snapshot.logLevelOrigin)",
+            "logTarget": logTargetDescription(snapshot.logTarget),
+            "logTargetOrigin": "\(snapshot.logTargetOrigin)",
+            "port": snapshot.port,
+            "portOrigin": "\(snapshot.portOrigin)",
+            "hasGlobalIPv6": snapshot.hasGlobalIPv6,
+            "globalIPv6Addresses": snapshot.globalIPv6Addresses,
+            "ipv6ProbeError": snapshot.ipv6DetectionError ?? NSNull(),
+            "portMappingEnabled": snapshot.portMappingRequested,
+            "portMappingOrigin": "\(snapshot.portMappingOrigin)",
+            "portMappingBackend": snapshot.portMappingBackend ?? NSNull(),
+            "portMappingExternalPort": snapshot.portMappingExternalPort ?? NSNull(),
+            "portMappingExternalIPv4": snapshot.portMappingExternalIPv4 ?? NSNull(),
+            "portMappingLeaseSeconds": snapshot.portMappingLeaseSeconds ?? NSNull(),
+            "portMappingRefreshedAt": snapshot.portMappingLastRefresh.map { iso8601String($0) } ?? NSNull(),
+            "portMappingPeerStatus": snapshot.portMappingPeerStatus ?? NSNull(),
+            "portMappingPeerLifetime": snapshot.portMappingPeerLifetime ?? NSNull(),
+            "portMappingPeerLastUpdated": snapshot.portMappingPeerLastUpdate.map { iso8601String($0) } ?? NSNull(),
+            "portMappingPeerError": snapshot.portMappingPeerError ?? NSNull(),
+            "portMappingStatus": snapshot.portMappingStatus ?? NSNull(),
+            "portMappingError": snapshot.portMappingError ?? NSNull(),
+            "portMappingErrorCode": snapshot.portMappingErrorCode ?? NSNull(),
+            "portMappingReachabilityStatus": snapshot.portMappingReachabilityStatus ?? NSNull(),
+            "portMappingReachabilityCheckedAt": snapshot.portMappingReachabilityCheckedAt.map { iso8601String($0) } ?? NSNull(),
+            "portMappingReachabilityRoundTripMillis": snapshot.portMappingReachabilityRoundTripMillis ?? NSNull(),
+            "portMappingReachabilityError": snapshot.portMappingReachabilityError ?? NSNull(),
+            "queueRoot": snapshot.queueRootPath ?? NSNull(),
+            "queueCount": metrics.count,
+            "objects": metrics.objectCount,
+            "queueFreeBytes": metrics.freeBytes ?? NSNull(),
+            "reloadCount": snapshot.reloadCount,
+            "lastReload": snapshot.lastReloadTimestamp.map { iso8601String($0) } ?? NSNull(),
+            "lastReloadStatus": snapshot.lastReloadStatus,
+            "lastReloadError": snapshot.lastReloadError ?? NSNull(),
+            "onlineSince": iso8601String(snapshot.onlineSince),
+            "lastPresenceUpdate": snapshot.lastPresenceUpdate.map { iso8601String($0) } ?? NSNull()
+        ]
     }
 
     private func reloadConfiguration(path: String?, initial: Bool) async throws {
@@ -372,42 +442,12 @@ final class BoxServerRuntimeController: @unchecked Sendable {
     private func renderStatus() -> String {
         let snapshot = state.withLockedValue { $0 }
         let metrics = store.map { Self.queueMetrics(at: $0.root) } ?? QueueMetrics.zero
-        let payload: [String: Any] = [
-            "status": "ok",
-            "nodeUUID": snapshot.nodeIdentifier.uuidString,
-            "userUUID": snapshot.userIdentifier.uuidString,
-            "logLevel": "\(snapshot.logLevel)",
-            "logLevelOrigin": "\(snapshot.logLevelOrigin)",
-            "logTarget": logTargetDescription(snapshot.logTarget),
-            "logTargetOrigin": "\(snapshot.logTargetOrigin)",
-            "port": snapshot.port,
-            "portOrigin": "\(snapshot.portOrigin)",
-            "hasGlobalIPv6": snapshot.hasGlobalIPv6,
-            "globalIPv6Addresses": snapshot.globalIPv6Addresses,
-            "ipv6ProbeError": snapshot.ipv6DetectionError ?? NSNull(),
-            "portMappingEnabled": snapshot.portMappingRequested,
-            "portMappingOrigin": "\(snapshot.portMappingOrigin)",
-            "portMappingBackend": snapshot.portMappingBackend ?? NSNull(),
-            "portMappingExternalPort": snapshot.portMappingExternalPort ?? NSNull(),
-            "portMappingExternalIPv4": snapshot.portMappingExternalIPv4 ?? NSNull(),
-            "portMappingLeaseSeconds": snapshot.portMappingLeaseSeconds ?? NSNull(),
-            "portMappingRefreshedAt": snapshot.portMappingLastRefresh.map { iso8601String($0) } ?? NSNull(),
-            "portMappingPeerStatus": snapshot.portMappingPeerStatus ?? NSNull(),
-            "portMappingPeerLifetime": snapshot.portMappingPeerLifetime ?? NSNull(),
-            "portMappingPeerLastUpdated": snapshot.portMappingPeerLastUpdate.map { iso8601String($0) } ?? NSNull(),
-            "portMappingPeerError": snapshot.portMappingPeerError ?? NSNull(),
-            "queueRoot": snapshot.queueRootPath ?? NSNull(),
-            "queueCount": metrics.count,
-            "objects": metrics.objectCount,
-            "queueFreeBytes": metrics.freeBytes ?? NSNull(),
-            "reloadCount": snapshot.reloadCount,
-            "lastReload": snapshot.lastReloadTimestamp.map { iso8601String($0) } ?? NSNull(),
-            "lastReloadStatus": snapshot.lastReloadStatus,
-            "lastReloadError": snapshot.lastReloadError ?? NSNull(),
-            "onlineSince": iso8601String(snapshot.onlineSince),
-            "lastPresenceUpdate": snapshot.lastPresenceUpdate.map { iso8601String($0) } ?? NSNull(),
-            "connectivity": adminConnectivityPayload(from: buildLocationServiceRecord()!)
-        ]
+        var payload = statusDictionary(from: snapshot, metrics: metrics)
+        payload["status"] = "ok"
+        if let record = buildLocationServiceRecord() {
+            payload["addresses"] = adminAddressesPayload(from: record)
+            payload["connectivity"] = adminConnectivityPayload(from: record)
+        }
         return adminResponse(payload)
     }
 
@@ -432,6 +472,31 @@ final class BoxServerRuntimeController: @unchecked Sendable {
 
     private func buildLocationServiceRecord() -> LocationServiceNodeRecord? {
         let snapshot = state.withLockedValue { $0 }
+        let peer: LocationServiceNodeRecord.Connectivity.PortMapping.Peer? = {
+            guard let status = snapshot.portMappingPeerStatus else { return nil }
+            let lastUpdated = snapshot.portMappingPeerLastUpdate.map { UInt64($0.timeIntervalSince1970 * 1000) }
+            return LocationServiceNodeRecord.Connectivity.PortMapping.Peer(
+                status: status,
+                lifetimeSeconds: snapshot.portMappingPeerLifetime,
+                lastUpdated: lastUpdated,
+                error: snapshot.portMappingPeerError
+            )
+        }()
+
+        let reachability: LocationServiceNodeRecord.Connectivity.PortMapping.Reachability? = {
+            guard let status = snapshot.portMappingReachabilityStatus else { return nil }
+            let lastChecked = snapshot.portMappingReachabilityCheckedAt.map { UInt64($0.timeIntervalSince1970 * 1000) }
+            let roundTrip = snapshot.portMappingReachabilityRoundTripMillis.flatMap { value -> UInt32? in
+                value >= 0 ? UInt32(clamping: value) : nil
+            }
+            return LocationServiceNodeRecord.Connectivity.PortMapping.Reachability(
+                status: status,
+                lastChecked: lastChecked,
+                roundTripMillis: roundTrip,
+                error: snapshot.portMappingReachabilityError
+            )
+        }()
+
         return LocationServiceNodeRecord.make(
             userUUID: snapshot.userIdentifier,
             nodeUUID: snapshot.nodeIdentifier,
@@ -443,7 +508,11 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             additionalAddresses: [],
             portMappingExternalIPv4: snapshot.portMappingExternalIPv4,
             portMappingExternalPort: snapshot.portMappingExternalPort,
-            portMappingPeer: nil,
+            portMappingPeer: peer,
+            portMappingStatus: snapshot.portMappingStatus,
+            portMappingError: snapshot.portMappingError,
+            portMappingErrorCode: snapshot.portMappingErrorCode,
+            portMappingReachability: reachability,
             online: true,
             since: UInt64(snapshot.onlineSince.timeIntervalSince1970 * 1000),
             lastSeen: snapshot.lastPresenceUpdate.map { UInt64($0.timeIntervalSince1970 * 1000) },
@@ -486,7 +555,7 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: attributes)
         }
         #if !os(Windows)
-        chmod(url.path, S_IRUSR | S_IWUSR)
+        chmod(url.path, S_IRWXU)
         #endif
     }
 
@@ -623,6 +692,30 @@ final class BoxServerRuntimeController: @unchecked Sendable {
                 peerPayload["error"] = error
             }
             portMappingPayload["peer"] = peerPayload
+        }
+        if let status = record.connectivity.portMapping.status {
+            portMappingPayload["status"] = status
+        }
+        if let error = record.connectivity.portMapping.error {
+            portMappingPayload["error"] = error
+        }
+        if let errorCode = record.connectivity.portMapping.errorCode {
+            portMappingPayload["errorCode"] = errorCode
+        }
+        if let reachability = record.connectivity.portMapping.reachability {
+            var reachabilityPayload: [String: Any] = [
+                "status": reachability.status
+            ]
+            if let lastChecked = reachability.lastChecked {
+                reachabilityPayload["lastChecked"] = lastChecked
+            }
+            if let roundTrip = reachability.roundTripMillis {
+                reachabilityPayload["roundTripMillis"] = roundTrip
+            }
+            if let error = reachability.error {
+                reachabilityPayload["error"] = error
+            }
+            portMappingPayload["reachability"] = reachabilityPayload
         }
         var payload: [String: Any] = [
             "hasGlobalIPv6": record.connectivity.hasGlobalIPv6,

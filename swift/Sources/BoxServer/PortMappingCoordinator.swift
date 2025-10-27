@@ -8,6 +8,7 @@ import SystemConfiguration
 #endif
 import Logging
 import NIOConcurrencyHelpers
+import NIOCore
 
 #if os(Linux)
 import Glibc
@@ -19,17 +20,31 @@ import Darwin
 
 final class PortMappingCoordinator: @unchecked Sendable {
     struct MappingSnapshot: Sendable {
-        let backend: String
-        let externalPort: UInt16
+        let status: String
+        let backend: String?
+        let externalPort: UInt16?
         let gateway: String?
         let service: String?
-        let lifetime: UInt32
-        let refreshedAt: Date
+        let lifetime: UInt32?
+        let refreshedAt: Date?
         let externalIPv4: String?
         let peerStatus: String?
         let peerLifetime: UInt32?
         let peerLastUpdate: Date?
         let peerError: String?
+        let error: String?
+        let errorCode: String?
+        let reachabilityStatus: String?
+        let reachabilityCheckedAt: Date?
+        let reachabilityRoundTripMillis: Int?
+        let reachabilityError: String?
+    }
+
+    struct ReachabilitySnapshot: Sendable {
+        let status: String
+        let lastChecked: Date
+        let roundTripMillis: Int?
+        let error: String?
     }
 
     struct ProbeReport: Sendable {
@@ -41,6 +56,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
         let gateway: String?
         let service: String?
         let error: String?
+        let errorCode: String?
         let peerStatus: String?
         let peerLifetime: UInt32?
         let peerLastUpdate: Date?
@@ -55,6 +71,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
             gateway: String? = nil,
             service: String? = nil,
             error: String? = nil,
+            errorCode: String? = nil,
             peerStatus: String? = nil,
             peerLifetime: UInt32? = nil,
             peerLastUpdate: Date? = nil,
@@ -68,6 +85,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
             self.gateway = gateway
             self.service = service
             self.error = error
+            self.errorCode = errorCode
             self.peerStatus = peerStatus
             self.peerLifetime = peerLifetime
             self.peerLastUpdate = peerLastUpdate
@@ -96,6 +114,9 @@ final class PortMappingCoordinator: @unchecked Sendable {
             }
             if let error {
                 payload["error"] = error
+            }
+            if let errorCode {
+                payload["errorCode"] = errorCode
             }
             if let peerStatus {
                 payload["peerStatus"] = peerStatus
@@ -136,8 +157,8 @@ final class PortMappingCoordinator: @unchecked Sendable {
     }
 
     private enum Backend: Sendable {
-        case upnp(service: UPnPServiceDescription, internalClient: String)
-        case natpmp(gateway: String)
+        case upnp(service: UPnPServiceDescription, internalClient: String, externalIPv4: String?)
+        case natpmp(gateway: String, externalIPv4: String?)
         case pcp(context: PCPContext)
 
         var identifier: String {
@@ -151,14 +172,14 @@ final class PortMappingCoordinator: @unchecked Sendable {
         var gateway: String? {
             switch self {
             case .upnp: return nil
-            case .natpmp(let gateway): return gateway
+            case .natpmp(let gateway, _): return gateway
             case .pcp(let context): return context.gateway
             }
         }
 
         var serviceDescription: String? {
             switch self {
-            case .upnp(let service, _): return service.serviceType
+            case .upnp(let service, _, _): return service.serviceType
             case .natpmp: return nil
             case .pcp: return nil
             }
@@ -166,8 +187,8 @@ final class PortMappingCoordinator: @unchecked Sendable {
 
         var externalIPv4: String? {
             switch self {
-            case .upnp: return nil
-            case .natpmp: return nil
+            case .upnp(_, _, let externalIPv4): return externalIPv4
+            case .natpmp(_, let externalIPv4): return externalIPv4
             case .pcp(let context): return context.externalIPv4
             }
         }
@@ -182,20 +203,27 @@ final class PortMappingCoordinator: @unchecked Sendable {
     private let logger: Logger
     private let port: UInt16
     private let origin: BoxRuntimeOptions.PortMappingOrigin
+    private let nodeIdentifier: UUID
+    private let userIdentifier: UUID
     private let leaseDuration: UInt32 = 3_600
     private var task: Task<Void, Never>?
     private let state = NIOLockedValueBox<MappingHandle?>(nil)
+    private let reachabilityState = NIOLockedValueBox<ReachabilitySnapshot?>(nil)
     private let onStateChange: @Sendable (MappingSnapshot?) -> Void
 
     init(
         logger: Logger,
         port: UInt16,
         origin: BoxRuntimeOptions.PortMappingOrigin,
+        nodeIdentifier: UUID,
+        userIdentifier: UUID,
         onStateChange: @escaping @Sendable (MappingSnapshot?) -> Void
     ) {
         self.logger = logger
         self.port = port
         self.origin = origin
+        self.nodeIdentifier = nodeIdentifier
+        self.userIdentifier = userIdentifier
         self.onStateChange = onStateChange
     }
 
@@ -224,10 +252,30 @@ final class PortMappingCoordinator: @unchecked Sendable {
 #endif
         if let handle = state.withLockedValue({ $0 }) {
             Task.detached { [weak self] in
-                await self?.removeMapping(handle)
+                guard let self else { return }
+                await self.removeMapping(handle)
+                self.publishStatus(
+                    status: "stopped",
+                    backend: handle.backend.identifier,
+                    gateway: handle.backend.gateway,
+                    service: handle.backend.serviceDescription,
+                    externalIPv4: handle.backend.externalIPv4,
+                    externalPort: handle.externalPort,
+                    lifetime: handle.lifetime,
+                    error: nil
+                )
             }
         } else {
-            onStateChange(nil)
+            publishStatus(
+                status: "stopped",
+                backend: nil,
+                gateway: nil,
+                service: nil,
+                externalIPv4: nil,
+                externalPort: nil,
+                lifetime: nil,
+                error: nil
+            )
         }
         logger.debug("port mapping coordinator stopped")
     }
@@ -237,7 +285,16 @@ final class PortMappingCoordinator: @unchecked Sendable {
         do {
             guard let localAddress = try firstNonLoopbackIPv4Address() else {
                 logger.info("port mapping skipped: no non-loopback IPv4 address detected")
-                onStateChange(nil)
+                publishStatus(
+                    status: "error",
+                    backend: nil,
+                    gateway: nil,
+                    service: nil,
+                    externalIPv4: nil,
+                    externalPort: nil,
+                    lifetime: nil,
+                    error: PortMappingError.backend("ipv4-not-detected")
+                )
                 return
             }
             try Task.checkCancellation()
@@ -249,6 +306,16 @@ final class PortMappingCoordinator: @unchecked Sendable {
             } catch {
                 if Task.isCancelled { return }
                 logger.debug("UPnP mapping attempt failed", metadata: ["error": .string("\(error)")])
+                publishStatus(
+                    status: "error",
+                    backend: "upnp",
+                    gateway: nil,
+                    service: nil,
+                    externalIPv4: nil,
+                    externalPort: nil,
+                    lifetime: nil,
+                    error: error
+                )
             }
 
             do {
@@ -258,6 +325,16 @@ final class PortMappingCoordinator: @unchecked Sendable {
             } catch {
                 if Task.isCancelled { return }
                 logger.debug("PCP mapping attempt failed", metadata: ["error": .string("\(error)")])
+                publishStatus(
+                    status: "error",
+                    backend: "pcp",
+                    gateway: nil,
+                    service: nil,
+                    externalIPv4: nil,
+                    externalPort: nil,
+                    lifetime: nil,
+                    error: error
+                )
             }
 
             do {
@@ -267,14 +344,42 @@ final class PortMappingCoordinator: @unchecked Sendable {
             } catch {
                 if Task.isCancelled { return }
                 logger.debug("NAT-PMP mapping attempt failed", metadata: ["error": .string("\(error)")])
+                publishStatus(
+                    status: "error",
+                    backend: "natpmp",
+                    gateway: nil,
+                    service: nil,
+                    externalIPv4: nil,
+                    externalPort: nil,
+                    lifetime: nil,
+                    error: error
+                )
             }
 
             logger.info("port mapping skipped: no supported gateway found")
-            onStateChange(nil)
+            publishStatus(
+                status: "skipped",
+                backend: nil,
+                gateway: nil,
+                service: nil,
+                externalIPv4: nil,
+                externalPort: nil,
+                lifetime: nil,
+                error: nil
+            )
         } catch {
             if Task.isCancelled { return }
             logger.warning("port mapping aborted", metadata: ["error": .string("\(error)")])
-            onStateChange(nil)
+            publishStatus(
+                status: "error",
+                backend: nil,
+                gateway: nil,
+                service: nil,
+                externalIPv4: nil,
+                externalPort: nil,
+                lifetime: nil,
+                error: error
+            )
         }
     }
 
@@ -285,10 +390,10 @@ final class PortMappingCoordinator: @unchecked Sendable {
         var reports: [ProbeReport] = []
         do {
             guard let localAddress = try firstNonLoopbackIPv4Address() else {
-                let failure = ProbeReport(backend: "upnp", status: "skipped", externalPort: nil, externalIPv4: nil, lifetime: nil, gateway: nil, service: nil, error: "ipv4-not-detected")
+                let failure = ProbeReport(backend: "upnp", status: "skipped", externalPort: nil, externalIPv4: nil, lifetime: nil, gateway: nil, service: nil, error: "ipv4-not-detected", errorCode: "preflight:ipv4-not-detected")
                 reports.append(failure)
-                reports.append(ProbeReport(backend: "pcp", status: "skipped", externalPort: nil, externalIPv4: nil, lifetime: nil, gateway: nil, service: nil, error: "ipv4-not-detected"))
-                reports.append(ProbeReport(backend: "natpmp", status: "skipped", externalPort: nil, externalIPv4: nil, lifetime: nil, gateway: nil, service: nil, error: "ipv4-not-detected"))
+                reports.append(ProbeReport(backend: "pcp", status: "skipped", externalPort: nil, externalIPv4: nil, lifetime: nil, gateway: nil, service: nil, error: "ipv4-not-detected", errorCode: "preflight:ipv4-not-detected"))
+                reports.append(ProbeReport(backend: "natpmp", status: "skipped", externalPort: nil, externalIPv4: nil, lifetime: nil, gateway: nil, service: nil, error: "ipv4-not-detected", errorCode: "preflight:ipv4-not-detected"))
                 return reports
             }
 
@@ -304,10 +409,12 @@ final class PortMappingCoordinator: @unchecked Sendable {
                         lifetime: handle.lifetime,
                         gateway: handle.backend.gateway,
                         service: handle.backend.serviceDescription,
-                        error: nil
+                        error: nil,
+                        errorCode: nil
                     )
                 )
             } catch {
+                let telemetry = errorTelemetry(for: error)
                 reports.append(
                     ProbeReport(
                         backend: "upnp",
@@ -317,7 +424,8 @@ final class PortMappingCoordinator: @unchecked Sendable {
                         lifetime: nil,
                         gateway: nil,
                         service: nil,
-                        error: "\(error)"
+                        error: telemetry.message,
+                        errorCode: telemetry.code
                     )
                 )
             }
@@ -345,6 +453,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
                         gateway: handle.backend.gateway,
                         service: handle.backend.serviceDescription,
                         error: nil,
+                        errorCode: nil,
                         peerStatus: peerStatus,
                         peerLifetime: peerLifetime,
                         peerLastUpdate: peerLastUpdate,
@@ -352,6 +461,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
                     )
                 )
             } catch {
+                let telemetry = errorTelemetry(for: error)
                 reports.append(
                     ProbeReport(
                         backend: "pcp",
@@ -361,7 +471,8 @@ final class PortMappingCoordinator: @unchecked Sendable {
                         lifetime: nil,
                         gateway: gatewayOverride ?? defaultGatewayIPv4(),
                         service: nil,
-                        error: "\(error)"
+                        error: telemetry.message,
+                        errorCode: telemetry.code
                     )
                 )
             }
@@ -378,10 +489,12 @@ final class PortMappingCoordinator: @unchecked Sendable {
                         lifetime: handle.lifetime,
                         gateway: handle.backend.gateway,
                         service: handle.backend.serviceDescription,
-                        error: nil
+                        error: nil,
+                        errorCode: nil
                     )
                 )
             } catch {
+                let telemetry = errorTelemetry(for: error)
                 reports.append(
                     ProbeReport(
                         backend: "natpmp",
@@ -391,11 +504,13 @@ final class PortMappingCoordinator: @unchecked Sendable {
                         lifetime: nil,
                         gateway: gatewayOverride ?? defaultGatewayIPv4(),
                         service: nil,
-                        error: "\(error)"
+                        error: telemetry.message,
+                        errorCode: telemetry.code
                     )
                 )
             }
         } catch {
+            let telemetry = errorTelemetry(for: error)
             reports.append(
                 ProbeReport(
                     backend: "upnp",
@@ -405,7 +520,8 @@ final class PortMappingCoordinator: @unchecked Sendable {
                     lifetime: nil,
                     gateway: nil,
                     service: nil,
-                    error: "\(error)"
+                    error: telemetry.message,
+                    errorCode: telemetry.code
                 )
             )
             reports.append(
@@ -417,7 +533,8 @@ final class PortMappingCoordinator: @unchecked Sendable {
                     lifetime: nil,
                     gateway: gatewayOverride ?? defaultGatewayIPv4(),
                     service: nil,
-                    error: "\(error)"
+                    error: telemetry.message,
+                    errorCode: telemetry.code
                 )
             )
             reports.append(
@@ -429,16 +546,150 @@ final class PortMappingCoordinator: @unchecked Sendable {
                     lifetime: nil,
                     gateway: gatewayOverride ?? defaultGatewayIPv4(),
                     service: nil,
-                    error: "\(error)"
+                    error: telemetry.message,
+                    errorCode: telemetry.code
                 )
             )
         }
         return reports
     }
 
+    private func errorTelemetry(for error: Error) -> (message: String, code: String) {
+        if let mappingError = error as? PortMappingError {
+            switch mappingError {
+            case .socket(let code):
+                return (mappingError.description, "socket:\(code)")
+            case .httpError:
+                return (mappingError.description, "http")
+            case .soapFault(let code, _):
+                return (mappingError.description, "soap:\(code)")
+            case .network(let message):
+                return ("network-error(\(message))", "network:\(message)")
+            case .natpmp(let message):
+                return ("natpmp-error(\(message))", "natpmp:\(message)")
+            case .pcp(let message):
+                return ("pcp-error(\(message))", "pcp:\(message)")
+            case .backend(let message):
+                return ("backend-error(\(message))", "backend:\(message)")
+            }
+        }
+        let nsError = error as NSError
+        let code = "\(nsError.domain)#\(nsError.code)"
+        return ("\(error)", code)
+    }
+
+    private func publishStatus(
+        status: String,
+        backend: String?,
+        gateway: String?,
+        service: String?,
+        externalIPv4: String?,
+        externalPort: UInt16?,
+        lifetime: UInt32?,
+        error: Error?
+    ) {
+        let telemetry = error.map { errorTelemetry(for: $0) }
+        reachabilityState.withLockedValue { $0 = nil }
+        state.withLockedValue { $0 = nil }
+        let snapshot = MappingSnapshot(
+            status: status,
+            backend: backend,
+            externalPort: externalPort,
+            gateway: gateway,
+            service: service,
+            lifetime: lifetime,
+            refreshedAt: Date(),
+            externalIPv4: externalIPv4,
+            peerStatus: nil,
+            peerLifetime: nil,
+            peerLastUpdate: nil,
+            peerError: nil,
+            error: telemetry?.message,
+            errorCode: telemetry?.code,
+            reachabilityStatus: nil,
+            reachabilityCheckedAt: nil,
+            reachabilityRoundTripMillis: nil,
+            reachabilityError: nil
+        )
+        onStateChange(snapshot)
+    }
+
+    private func buildSnapshot(handle: MappingHandle, status: String, error: Error?) -> MappingSnapshot {
+        let telemetry = error.map { errorTelemetry(for: $0) }
+        var peerStatus: String?
+        var peerLifetime: UInt32?
+        var peerLastUpdate: Date?
+        var peerError: String?
+        if case .pcp(let context) = handle.backend, let peer = context.peer {
+            peerStatus = peer.status
+            peerLifetime = peer.lifetime
+            peerLastUpdate = peer.lastUpdated
+            peerError = peer.error
+        }
+        let reachability = reachabilityState.withLockedValue { $0 }
+        return MappingSnapshot(
+            status: status,
+            backend: handle.backend.identifier,
+            externalPort: handle.externalPort,
+            gateway: handle.backend.gateway,
+            service: handle.backend.serviceDescription,
+            lifetime: handle.lifetime,
+            refreshedAt: Date(),
+            externalIPv4: handle.backend.externalIPv4,
+            peerStatus: peerStatus,
+            peerLifetime: peerLifetime,
+            peerLastUpdate: peerLastUpdate,
+            peerError: peerError,
+            error: telemetry?.message,
+            errorCode: telemetry?.code,
+            reachabilityStatus: reachability?.status,
+            reachabilityCheckedAt: reachability?.lastChecked,
+            reachabilityRoundTripMillis: reachability?.roundTripMillis,
+            reachabilityError: reachability?.error
+        )
+    }
+
+    private func publish(handle: MappingHandle, status: String = "ok", error: Error? = nil) {
+        let snapshot = buildSnapshot(handle: handle, status: status, error: error)
+        state.withLockedValue { $0 = handle }
+        onStateChange(snapshot)
+    }
+
+    private func scheduleReachabilityProbeIfNeeded(for handle: MappingHandle) {
+#if os(Windows)
+        return
+#else
+        guard let externalIPv4 = handle.backend.externalIPv4 else { return }
+        Task.detached { [weak self] in
+            guard let self else { return }
+            do {
+                let reachability = try self.performReachabilityProbe(externalIPv4: externalIPv4, externalPort: handle.externalPort)
+                self.reachabilityState.withLockedValue { $0 = reachability }
+                let currentHandle = self.state.withLockedValue { $0 }
+                guard let currentHandle else { return }
+                let snapshot = self.buildSnapshot(handle: currentHandle, status: "ok", error: nil)
+                self.onStateChange(snapshot)
+            } catch {
+                let failureSnapshot = ReachabilitySnapshot(
+                    status: "error",
+                    lastChecked: Date(),
+                    roundTripMillis: nil,
+                    error: "\(error)"
+                )
+                self.reachabilityState.withLockedValue { $0 = failureSnapshot }
+                let currentHandle = self.state.withLockedValue { $0 }
+                guard let currentHandle else { return }
+                let snapshot = self.buildSnapshot(handle: currentHandle, status: "ok", error: nil)
+                self.onStateChange(snapshot)
+            }
+        }
+#endif
+    }
+
     private func maintainMapping(initial handle: MappingHandle) async {
         var currentHandle = handle
         publish(handle: currentHandle)
+        scheduleReachabilityProbeIfNeeded(for: currentHandle)
         defer {
             let handleToRemove = currentHandle
             Task { [handleToRemove] in
@@ -457,51 +708,35 @@ final class PortMappingCoordinator: @unchecked Sendable {
             do {
                 currentHandle = try await refreshMapping(currentHandle)
                 publish(handle: currentHandle)
+                scheduleReachabilityProbeIfNeeded(for: currentHandle)
             } catch {
                 if Task.isCancelled { return }
                 logger.warning("port mapping refresh failed", metadata: ["error": .string("\(error)"), "backend": .string(currentHandle.backend.identifier)])
+                publishStatus(
+                    status: "error",
+                    backend: currentHandle.backend.identifier,
+                    gateway: currentHandle.backend.gateway,
+                    service: currentHandle.backend.serviceDescription,
+                    externalIPv4: currentHandle.backend.externalIPv4,
+                    externalPort: currentHandle.externalPort,
+                    lifetime: currentHandle.lifetime,
+                    error: error
+                )
                 return
             }
         }
     }
 
-    private func publish(handle: MappingHandle) {
-        var peerStatus: String?
-        var peerLifetime: UInt32?
-        var peerLastUpdate: Date?
-        var peerError: String?
-        if case .pcp(let context) = handle.backend, let peer = context.peer {
-            peerStatus = peer.status
-            peerLifetime = peer.lifetime
-            peerLastUpdate = peer.lastUpdated
-            peerError = peer.error
-        }
-        let snapshot = MappingSnapshot(
-            backend: handle.backend.identifier,
-            externalPort: handle.externalPort,
-            gateway: handle.backend.gateway,
-            service: handle.backend.serviceDescription,
-            lifetime: handle.lifetime,
-            refreshedAt: Date(),
-            externalIPv4: handle.backend.externalIPv4,
-            peerStatus: peerStatus,
-            peerLifetime: peerLifetime,
-            peerLastUpdate: peerLastUpdate,
-            peerError: peerError
-        )
-        state.withLockedValue { $0 = handle }
-        onStateChange(snapshot)
-    }
-
     private func refreshMapping(_ handle: MappingHandle) async throws -> MappingHandle {
         switch handle.backend {
-        case .upnp(let service, let client):
+        case .upnp(let service, let client, let externalIPv4):
             try await addPortMapping(service: service, internalClient: client)
-            return MappingHandle(backend: handle.backend, externalPort: handle.externalPort, lifetime: handle.lifetime)
-        case .natpmp(let gateway):
+            return MappingHandle(backend: .upnp(service: service, internalClient: client, externalIPv4: externalIPv4), externalPort: handle.externalPort, lifetime: handle.lifetime)
+        case .natpmp(let gateway, let previousIPv4):
             let result = try performNATPMPMapping(gateway: gateway, lifetime: handle.lifetime)
             let lifetime = result.lifetime > 0 ? result.lifetime : handle.lifetime
-            return MappingHandle(backend: .natpmp(gateway: gateway), externalPort: result.externalPort, lifetime: lifetime)
+            let externalIPv4 = result.externalIPv4 ?? previousIPv4
+            return MappingHandle(backend: .natpmp(gateway: gateway, externalIPv4: externalIPv4), externalPort: result.externalPort, lifetime: lifetime)
         case .pcp(var context):
             let result = try performPCPMapping(context: &context, lifetime: handle.lifetime)
             let lifetime = result.lifetime > 0 ? result.lifetime : handle.lifetime
@@ -517,15 +752,29 @@ final class PortMappingCoordinator: @unchecked Sendable {
         }
         try Task.checkCancellation()
         try await addPortMapping(service: service, internalClient: localAddress)
+        var externalIPv4: String?
+        do {
+            externalIPv4 = try await fetchExternalIPAddress(service: service)
+        } catch {
+            logger.debug(
+                "unable to resolve UPnP external address",
+                metadata: ["error": .string("\(error)")]
+            )
+        }
         logger.info(
             "UPnP port mapping established",
             metadata: [
                 "externalPort": "\(port)",
                 "internalClient": .string(localAddress),
-                "service": .string(service.serviceType)
+                "service": .string(service.serviceType),
+                "externalIPv4": .string(externalIPv4 ?? "unknown")
             ]
         )
-        return MappingHandle(backend: .upnp(service: service, internalClient: localAddress), externalPort: port, lifetime: leaseDuration)
+        return MappingHandle(
+            backend: .upnp(service: service, internalClient: localAddress, externalIPv4: externalIPv4),
+            externalPort: port,
+            lifetime: leaseDuration
+        )
     }
 
     private func attemptPCP(localAddress: String, gatewayOverride: String?) throws -> MappingHandle {
@@ -577,11 +826,16 @@ final class PortMappingCoordinator: @unchecked Sendable {
             "NAT-PMP port mapping established",
             metadata: [
                 "externalPort": "\(result.externalPort)",
-                "gateway": .string(gateway)
+                "gateway": .string(gateway),
+                "externalIPv4": .string(result.externalIPv4 ?? "unknown")
             ]
         )
         let lifetime = result.lifetime > 0 ? result.lifetime : leaseDuration
-        return MappingHandle(backend: .natpmp(gateway: gateway), externalPort: result.externalPort, lifetime: lifetime)
+        return MappingHandle(
+            backend: .natpmp(gateway: gateway, externalIPv4: result.externalIPv4),
+            externalPort: result.externalPort,
+            lifetime: lifetime
+        )
     }
 
     private func discoverService() async throws -> UPnPServiceDescription? {
@@ -613,9 +867,26 @@ final class PortMappingCoordinator: @unchecked Sendable {
         )
     }
 
+    private func fetchExternalIPAddress(service: UPnPServiceDescription) async throws -> String? {
+        let data = try await sendSOAPRequest(
+            action: "GetExternalIPAddress",
+            arguments: [:],
+            service: service
+        )
+        guard let xml = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        guard let start = xml.range(of: "<NewExternalIPAddress>"),
+              let end = xml.range(of: "</NewExternalIPAddress>", range: start.upperBound..<xml.endIndex) else {
+            return nil
+        }
+        let value = xml[start.upperBound..<end.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
     private func removeMapping(_ handle: MappingHandle) async {
         switch handle.backend {
-        case .upnp(let service, _):
+        case .upnp(let service, _, _):
             let arguments = [
                 "NewRemoteHost": "",
                 "NewExternalPort": "\(handle.externalPort)",
@@ -631,7 +902,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
             } catch {
                 logger.debug("unable to remove UPnP port mapping", metadata: ["error": .string("\(error)")])
             }
-        case .natpmp(let gateway):
+        case .natpmp(let gateway, _):
             do {
                 try performNATPMPDeletion(gateway: gateway, externalPort: handle.externalPort)
                 logger.debug("NAT-PMP port mapping removed", metadata: ["port": "\(handle.externalPort)"])
@@ -833,7 +1104,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
         return nil
     }
 
-    private func performNATPMPMapping(gateway: String, lifetime: UInt32) throws -> (externalPort: UInt16, lifetime: UInt32) {
+    private func performNATPMPMapping(gateway: String, lifetime: UInt32) throws -> (externalPort: UInt16, lifetime: UInt32, externalIPv4: String?) {
         let socketDescriptor = try createUDPSocket()
         defer { close(socketDescriptor) }
 
@@ -887,7 +1158,62 @@ final class PortMappingCoordinator: @unchecked Sendable {
         }
         let externalPort = (UInt16(buffer[8]) << 8) | UInt16(buffer[9])
         let assignedLifetime = UInt32(buffer[12]) << 24 | UInt32(buffer[13]) << 16 | UInt32(buffer[14]) << 8 | UInt32(buffer[15])
-        return (externalPort: externalPort, lifetime: assignedLifetime)
+        let externalIPv4 = try? queryNATPMPExternalAddress(gateway: gateway)
+        return (externalPort: externalPort, lifetime: assignedLifetime, externalIPv4: externalIPv4)
+    }
+
+    private func queryNATPMPExternalAddress(gateway: String) throws -> String? {
+        let socketDescriptor = try createUDPSocket()
+        defer { close(socketDescriptor) }
+
+        var timeout = timeval(tv_sec: 2, tv_usec: 0)
+        withUnsafeBytes(of: &timeout) { buffer in
+            _ = setsockopt(socketDescriptor, SOL_SOCKET, SO_RCVTIMEO, buffer.baseAddress, socklen_t(buffer.count))
+        }
+
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(UInt16(5351).bigEndian)
+        guard inet_pton(AF_INET, gateway, &addr.sin_addr) == 1 else {
+            throw PortMappingError.network("invalid-gateway-address")
+        }
+
+        var request = [UInt8](repeating: 0, count: 2)
+        let sent = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                sendto(socketDescriptor, &request, request.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        if sent < 0 {
+            throw PortMappingError.socket(errno)
+        }
+
+        var buffer = [UInt8](repeating: 0, count: 16)
+        let bytesRead = recv(socketDescriptor, &buffer, buffer.count, 0)
+        guard bytesRead >= 12 else {
+            throw PortMappingError.natpmp("address-short-response")
+        }
+        guard buffer[0] == 0, buffer[1] == 0x80 else {
+            throw PortMappingError.natpmp("address-unexpected-opcode")
+        }
+        let resultCode = (UInt16(buffer[2]) << 8) | UInt16(buffer[3])
+        guard resultCode == 0 else {
+            throw PortMappingError.natpmp("address-result-\(resultCode)")
+        }
+        let addressBytes = Array(buffer[8..<12])
+        var addrValue = in_addr()
+        addressBytes.withUnsafeBytes { pointer in
+            if let base = pointer.baseAddress {
+                memcpy(&addrValue.s_addr, base, 4)
+            }
+        }
+        var output = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+        guard inet_ntop(AF_INET, &addrValue, &output, socklen_t(INET_ADDRSTRLEN)) != nil else {
+            return nil
+        }
+        let bytes = output.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        guard !bytes.isEmpty else { return nil }
+        return String(decoding: bytes, as: UTF8.self)
     }
 
     private func performNATPMPDeletion(gateway: String, externalPort: UInt16) throws {
@@ -1134,6 +1460,95 @@ final class PortMappingCoordinator: @unchecked Sendable {
         _ = try performPCPMapping(context: &context, lifetime: 0)
     }
 
+    private func performReachabilityProbe(externalIPv4: String, externalPort: UInt16) throws -> ReachabilitySnapshot {
+#if os(Windows)
+        throw ReachabilityError.unsupportedPlatform
+#else
+        let socketDescriptor = try createUDPSocket()
+        defer { close(socketDescriptor) }
+
+        var timeout = timeval(tv_sec: 2, tv_usec: 0)
+        withUnsafeBytes(of: &timeout) { buffer in
+            _ = setsockopt(socketDescriptor, SOL_SOCKET, SO_RCVTIMEO, buffer.baseAddress, socklen_t(buffer.count))
+        }
+
+        var remoteAddress = sockaddr_in()
+        remoteAddress.sin_family = sa_family_t(AF_INET)
+        remoteAddress.sin_port = in_port_t(externalPort.bigEndian)
+        guard inet_pton(AF_INET, externalIPv4, &remoteAddress.sin_addr) == 1 else {
+            throw ReachabilityError.invalidAddress
+        }
+
+        let allocator = ByteBufferAllocator()
+        let requestId = UUID()
+        let helloPayload = try BoxCodec.encodeHelloPayload(status: .ok, versions: [1], allocator: allocator)
+        let frame = BoxCodec.Frame(
+            command: .hello,
+            requestId: requestId,
+            nodeId: nodeIdentifier,
+            userId: userIdentifier,
+            payload: helloPayload
+        )
+        let datagram = BoxCodec.encodeFrame(frame, allocator: allocator)
+        let start = Date()
+        let sent = datagram.withUnsafeReadableBytes { pointer -> Int in
+            guard let baseAddress = pointer.baseAddress else { return -1 }
+            return withUnsafePointer(to: &remoteAddress) {
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    sendto(socketDescriptor, baseAddress, pointer.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                }
+            }
+        }
+        if sent < 0 {
+            throw ReachabilityError.send(errno)
+        }
+
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        var sourceAddress = sockaddr_in()
+        var addressLength = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let bytesRead = withUnsafeMutablePointer(to: &sourceAddress) { pointer -> Int in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                recvfrom(socketDescriptor, &buffer, buffer.count, 0, sockaddrPointer, &addressLength)
+            }
+        }
+
+        if bytesRead < 0 {
+            if errno == EWOULDBLOCK || errno == EAGAIN {
+                throw ReachabilityError.timeout
+            }
+            throw ReachabilityError.receive(errno)
+        }
+        guard bytesRead > 0 else {
+            throw ReachabilityError.emptyResponse
+        }
+
+        var responseBuffer = allocator.buffer(capacity: bytesRead)
+        responseBuffer.writeBytes(buffer[0..<bytesRead])
+        var decodingBuffer = responseBuffer
+        let frameResponse: BoxCodec.Frame
+        do {
+            frameResponse = try BoxCodec.decodeFrame(from: &decodingBuffer)
+        } catch {
+            throw ReachabilityError.decodeFailed(error)
+        }
+        guard frameResponse.requestId == requestId else {
+            throw ReachabilityError.unexpectedResponse
+        }
+        guard frameResponse.command == .hello || frameResponse.command == .status else {
+            throw ReachabilityError.unsupportedCommand(frameResponse.command.rawValue)
+        }
+
+        let end = Date()
+        let elapsed = Int(end.timeIntervalSince(start) * 1_000)
+        return ReachabilitySnapshot(
+            status: "ok",
+            lastChecked: end,
+            roundTripMillis: elapsed,
+            error: nil
+        )
+#endif
+    }
+
     private func defaultGatewayIPv4() -> String? {
 #if os(Linux)
         guard let contents = try? String(contentsOfFile: "/proc/net/route") else { return nil }
@@ -1162,6 +1577,41 @@ final class PortMappingCoordinator: @unchecked Sendable {
             throw PortMappingError.socket(errno)
         }
         return socketDescriptor
+    }
+}
+
+enum ReachabilityError: Error, CustomStringConvertible {
+    case unsupportedPlatform
+    case invalidAddress
+    case send(Int32)
+    case receive(Int32)
+    case timeout
+    case emptyResponse
+    case decodeFailed(Error)
+    case unexpectedResponse
+    case unsupportedCommand(UInt32)
+
+    var description: String {
+        switch self {
+        case .unsupportedPlatform:
+            return "reachability-error(unsupported-platform)"
+        case .invalidAddress:
+            return "reachability-error(invalid-address)"
+        case .send(let code):
+            return "reachability-error(send-\(code))"
+        case .receive(let code):
+            return "reachability-error(recv-\(code))"
+        case .timeout:
+            return "reachability-error(timeout)"
+        case .emptyResponse:
+            return "reachability-error(empty-response)"
+        case .decodeFailed(let error):
+            return "reachability-error(decode-failed:\(error))"
+        case .unexpectedResponse:
+            return "reachability-error(unexpected-response)"
+        case .unsupportedCommand(let identifier):
+            return "reachability-error(unsupported-command-\(identifier))"
+        }
     }
 }
 

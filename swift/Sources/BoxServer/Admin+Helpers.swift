@@ -12,7 +12,7 @@ internal func adminResponse(_ payload: [String: Any]) -> String {
 }
 
 internal func adminLocationRecordPayload(from record: LocationServiceNodeRecord) -> [String: Any] {
-    var payload: [String: Any] = [
+    let payload: [String: Any] = [
         "status": "ok",
         "record": record.toDictionary()
     ]
@@ -20,7 +20,7 @@ internal func adminLocationRecordPayload(from record: LocationServiceNodeRecord)
 }
 
 internal func adminLocationUserPayload(userUUID: UUID, records: [LocationServiceNodeRecord]) -> [String: Any] {
-    var payload: [String: Any] = [
+    let payload: [String: Any] = [
         "status": "ok",
         "user": [
             "userUUID": userUUID.uuidString,
@@ -92,6 +92,18 @@ extension LocationServiceNodeRecord.Connectivity.PortMapping {
         if let peer {
             dict["peer"] = peer.toDictionary()
         }
+        if let status {
+            dict["status"] = status
+        }
+        if let error {
+            dict["error"] = error
+        }
+        if let errorCode {
+            dict["errorCode"] = errorCode
+        }
+        if let reachability {
+            dict["reachability"] = reachability.toDictionary()
+        }
         return dict
     }
 }
@@ -106,6 +118,24 @@ extension LocationServiceNodeRecord.Connectivity.PortMapping.Peer {
         }
         if let lastUpdated {
             dict["lastUpdated"] = lastUpdated
+        }
+        if let error {
+            dict["error"] = error
+        }
+        return dict
+    }
+}
+
+extension LocationServiceNodeRecord.Connectivity.PortMapping.Reachability {
+    func toDictionary() -> [String: Any] {
+        var dict: [String: Any] = [
+            "status": status
+        ]
+        if let lastChecked {
+            dict["lastChecked"] = lastChecked
+        }
+        if let roundTripMillis {
+            dict["roundTripMillis"] = roundTripMillis
         }
         if let error {
             dict["error"] = error

@@ -36,6 +36,13 @@ struct BoxServerRuntimeState: Sendable {
     var portMappingPeerLifetime: UInt32?
     var portMappingPeerLastUpdate: Date?
     var portMappingPeerError: String?
+    var portMappingStatus: String?
+    var portMappingError: String?
+    var portMappingErrorCode: String?
+    var portMappingReachabilityStatus: String?
+    var portMappingReachabilityCheckedAt: Date?
+    var portMappingReachabilityRoundTripMillis: Int?
+    var portMappingReachabilityError: String?
     var manualExternalAddress: String?
     var manualExternalPort: UInt16?
     var manualExternalOrigin: BoxRuntimeOptions.ExternalAddressOrigin

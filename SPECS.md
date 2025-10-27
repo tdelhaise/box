@@ -254,10 +254,16 @@ Resolve by User UUID
             "origin": "default",
             "external_ipv4": "198.51.100.10",
             "external_port": 12567,
+            "status": "ok",
             "peer": {
               "status": "ok",
               "lifetime_seconds": 3600,
               "last_updated": 1736712389000
+            },
+            "reachability": {
+              "status": "ok",
+              "last_checked": 1736712389456,
+              "round_trip_ms": 42
             }
           }
         }
@@ -305,10 +311,19 @@ Resolve by Node UUID
         "origin": tstr-nonempty,
         ? "external_ipv4": tstr-nonempty,
         ? "external_port": port,
+        ? "status": tstr-nonempty,
+        ? "error": tstr-nonempty,
+        ? "error_code": tstr-nonempty,
         ? "peer": {
           "status": tstr-nonempty,
           ? "lifetime_seconds": uint,
           ? "last_updated": uint,
+          ? "error": tstr-nonempty
+        },
+        ? "reachability": {
+          "status": tstr-nonempty,
+          ? "last_checked": uint,
+          ? "round_trip_ms": uint,
           ? "error": tstr-nonempty
         }
       }
@@ -665,7 +680,7 @@ PUT example
 - Register/update presence in embedded LS on start and periodically (keep‑alive with last_seen). Presence is also published into `/uuid`.
 - Enforce ACLs per queue and per user/node.
 - Persist objects sous `~/.box/queues/<queue>/timestamp-UUID.json` (payload base64 + métadonnées incluant `content_type`, `node_id`, `user_id`, `created_at`). **Exception :** la file `/uuid` écrit directement `<uuid>.json` afin que les identifiants de nœud ou d’utilisateur soient mis à jour en place sans proliférer de doublons. Le daemon DOIT provisionner cette hiérarchie au premier démarrage, créer la file `INBOX/` et refuser de démarrer si la création échoue. Les informations LS (`/uuid`, `/location`) sont également stockées via ces files (`/uuid` hébergeant à la fois les enregistrements de nœud et un index utilisateur).
-- When `port_mapping = true` (ou `--enable-port-mapping`), tenter automatiquement une ouverture: d’abord UPnP (`M-SEARCH` IGD → `AddPortMapping` UDP, bail 3600 s), puis PCP (`MAP` UDP/5351 avec nonce, refresh à mi-vie) *et* une requête `PEER` pour percer le pare-feu entrant, et enfin NAT-PMP (`MAP`/`UNMAP` vers la passerelle par défaut). Chaque étape doit être journalisée et le mapping retiré (`DeletePortMapping` / lifetime 0) à l’arrêt. Les réponses admin exposent `port_mapping_backend`, `port_mapping_external_port`, `port_mapping_external_ipv4`, `port_mapping_lease_seconds`, `port_mapping_refreshed_at`, `port_mapping_peer_status`, `port_mapping_peer_lifetime`, `port_mapping_peer_last_updated` et `port_mapping_peer_error` afin de suivre l’état courant. Les opérateurs peuvent fournir un fallback manuel (`external_address`, `external_port` dans `Box.plist` ou `--external-address/--external-port`) : l’admin channel restitue alors `manualExternalAddress|Port|Origin` et les enregistrements Location Service ajoutent des entrées `addresses[]` avec `source = manual` (CLI) ou `source = config` (PLIST).
+- When `port_mapping = true` (ou `--enable-port-mapping`), tenter automatiquement une ouverture : UPnP (`M-SEARCH` IGD → `AddPortMapping` UDP + `GetExternalIPAddress`), PCP (`MAP` UDP/5351 avec nonce, refresh à mi-vie) *et* une requête `PEER` pour percer le pare-feu entrant, puis NAT-PMP (`MAP`/`UNMAP` + `PublicAddress` vers la passerelle par défaut). Chaque étape doit être journalisée, retirée proprement (`DeletePortMapping` / lifetime 0) à l’arrêt, et expose un code d’erreur structuré. En cas de succès, la coordination lance une sonde reachability légère (HELLO UDP à l’adresse externe découverte) afin de vérifier que l’endpoint annoncé fonctionne réellement. Les réponses admin exposent `port_mapping_status`, `port_mapping_error`, `port_mapping_error_code`, `port_mapping_backend`, `port_mapping_external_port`, `port_mapping_external_ipv4`, `port_mapping_lease_seconds`, `port_mapping_refreshed_at`, `port_mapping_peer_status`, `port_mapping_peer_lifetime`, `port_mapping_peer_last_updated`, `port_mapping_peer_error`, `port_mapping_reachability_status`, `port_mapping_reachability_round_trip_millis`, `port_mapping_reachability_checked_at` et `port_mapping_reachability_error` pour suivre l’état courant. Les opérateurs peuvent fournir un fallback manuel (`external_address`, `external_port` dans `Box.plist` ou `--external-address/--external-port`) : l’admin channel restitue alors `manualExternalAddress|Port|Origin` et les enregistrements Location Service ajoutent des entrées `addresses[]` avec `source = manual` (CLI) ou `source = config` (PLIST).
 - Optional at‑rest encryption with a server‑managed key.
 - Rate limiting and DoS protection per source.
 

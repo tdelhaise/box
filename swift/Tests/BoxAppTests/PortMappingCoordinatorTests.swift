@@ -29,6 +29,7 @@ final class PortMappingCoordinatorTests: XCTestCase {
         XCTAssertEqual(dict["gateway"] as? String, "192.168.1.1")
         XCTAssertEqual(dict["service"] as? String, "test-service")
         XCTAssertNil(dict["error"])
+        XCTAssertNil(dict["errorCode"])
         XCTAssertEqual(dict["peerStatus"] as? String, "ok")
         XCTAssertEqual(dict["peerLifetime"] as? UInt32, 7200)
         XCTAssertNotNil(dict["peerLastUpdated"])
@@ -41,7 +42,13 @@ final class PortMappingCoordinatorTests: XCTestCase {
         defer { unsetenv("BOX_SKIP_NAT_PROBE") }
 
         let logger = Logger(label: "test")
-        let coordinator = PortMappingCoordinator(logger: logger, port: 1234, origin: .cliFlag) { _ in }
+        let coordinator = PortMappingCoordinator(
+            logger: logger,
+            port: 1234,
+            origin: .cliFlag,
+            nodeIdentifier: UUID(),
+            userIdentifier: UUID()
+        ) { _ in }
 
         let reports = await coordinator.probe(gatewayOverride: nil)
         XCTAssertTrue(reports.isEmpty, "Probe should return no reports when skipped via environment variable")

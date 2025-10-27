@@ -82,6 +82,43 @@ public struct LocationServiceNodeRecord: Codable, Sendable {
                 }
             }
 
+            /// Describes the reachability verification snapshot for the advertised external endpoint.
+            public struct Reachability: Codable, Sendable {
+                /// Status string (`ok`, `error`, `skipped`, etc.).
+                public var status: String
+                /// Millisecond timestamp of the last verification, when available.
+                public var lastChecked: UInt64?
+                /// Round-trip time reported by the probe, expressed in milliseconds.
+                public var roundTripMillis: UInt32?
+                /// Optional error description when the probe fails.
+                public var error: String?
+
+                /// Creates a reachability snapshot description.
+                /// - Parameters:
+                ///   - status: Status string reported by the coordinator.
+                ///   - lastChecked: Millisecond timestamp for the last probe execution.
+                ///   - roundTripMillis: Observed round-trip time.
+                ///   - error: Optional error description.
+                public init(
+                    status: String,
+                    lastChecked: UInt64? = nil,
+                    roundTripMillis: UInt32? = nil,
+                    error: String? = nil
+                ) {
+                    self.status = status
+                    self.lastChecked = lastChecked
+                    self.roundTripMillis = roundTripMillis
+                    self.error = error
+                }
+
+                private enum CodingKeys: String, CodingKey {
+                    case status
+                    case lastChecked = "last_checked"
+                    case roundTripMillis = "round_trip_ms"
+                    case error
+                }
+            }
+
             /// Indicates whether port mapping has been requested.
             public var enabled: Bool
             /// Describes where the preference originates (`default`, `cli`, `config`).
@@ -92,6 +129,14 @@ public struct LocationServiceNodeRecord: Codable, Sendable {
             public var externalPort: UInt16?
             /// Optional PCP PEER status.
             public var peer: Peer?
+            /// Optional status string for the mapping backend.
+            public var status: String?
+            /// Optional error description when the mapping attempt fails.
+            public var error: String?
+            /// Optional structured error code emitted by the coordinator.
+            public var errorCode: String?
+            /// Optional reachability probe outcome.
+            public var reachability: Reachability?
 
             /// Creates a new summary for the port-mapping state.
             /// - Parameters:
@@ -100,18 +145,30 @@ public struct LocationServiceNodeRecord: Codable, Sendable {
             ///   - externalIPv4: External IPv4 address reported by the gateway.
             ///   - externalPort: External UDP port reported by the gateway.
             ///   - peer: Optional PCP PEER status.
+            ///   - status: Optional backend status string.
+            ///   - error: Optional error description.
+            ///   - errorCode: Optional structured error code.
+            ///   - reachability: Optional reachability probe snapshot.
             public init(
                 enabled: Bool,
                 origin: String,
                 externalIPv4: String? = nil,
                 externalPort: UInt16? = nil,
-                peer: Peer? = nil
+                peer: Peer? = nil,
+                status: String? = nil,
+                error: String? = nil,
+                errorCode: String? = nil,
+                reachability: Reachability? = nil
             ) {
                 self.enabled = enabled
                 self.origin = origin
                 self.externalIPv4 = externalIPv4
                 self.externalPort = externalPort
                 self.peer = peer
+                self.status = status
+                self.error = error
+                self.errorCode = errorCode
+                self.reachability = reachability
             }
 
             private enum CodingKeys: String, CodingKey {
@@ -120,6 +177,10 @@ public struct LocationServiceNodeRecord: Codable, Sendable {
                 case externalIPv4 = "external_ipv4"
                 case externalPort = "external_port"
                 case peer
+                case status
+                case error
+                case errorCode = "error_code"
+                case reachability
             }
         }
 
@@ -243,6 +304,10 @@ public extension LocationServiceNodeRecord {
         portMappingExternalIPv4: String? = nil,
         portMappingExternalPort: UInt16? = nil,
         portMappingPeer: Connectivity.PortMapping.Peer? = nil,
+        portMappingStatus: String? = nil,
+        portMappingError: String? = nil,
+        portMappingErrorCode: String? = nil,
+        portMappingReachability: Connectivity.PortMapping.Reachability? = nil,
         online: Bool = true,
         since: UInt64? = nil,
         lastSeen: UInt64? = nil,
@@ -267,7 +332,11 @@ public extension LocationServiceNodeRecord {
                 origin: portMappingOrigin.locationServiceValue,
                 externalIPv4: portMappingExternalIPv4,
                 externalPort: portMappingExternalPort,
-                peer: portMappingPeer
+                peer: portMappingPeer,
+                status: portMappingStatus,
+                error: portMappingError,
+                errorCode: portMappingErrorCode,
+                reachability: portMappingReachability
             )
         )
 
