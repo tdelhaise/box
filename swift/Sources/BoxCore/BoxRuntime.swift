@@ -132,6 +132,8 @@ public struct BoxRuntimeOptions: Sendable {
     public var externalPortOverride: UInt16?
     /// Origin of the manual external address override.
     public var externalAddressOrigin: ExternalAddressOrigin
+    /// Set of queues that should retain messages after GET operations.
+    public var permanentQueues: Set<String>
 
     /// Creates a new bundle of runtime options.
     /// - Parameters:
@@ -166,7 +168,8 @@ public struct BoxRuntimeOptions: Sendable {
         portMappingOrigin: PortMappingOrigin,
         externalAddressOverride: String? = nil,
         externalPortOverride: UInt16? = nil,
-        externalAddressOrigin: ExternalAddressOrigin = .default
+        externalAddressOrigin: ExternalAddressOrigin = .default,
+        permanentQueues: Set<String> = []
     ) {
         self.mode = mode
         self.address = address
@@ -186,6 +189,7 @@ public struct BoxRuntimeOptions: Sendable {
         self.externalAddressOverride = externalAddressOverride
         self.externalPortOverride = externalPortOverride
         self.externalAddressOrigin = externalAddressOrigin
+        self.permanentQueues = permanentQueues
     }
 }
 

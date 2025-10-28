@@ -26,6 +26,7 @@ public struct BoxConfiguration: Sendable {
         public var portMappingEnabled: Bool?
         public var externalAddress: String?
         public var externalPort: UInt16?
+        public var permanentQueues: [String]?
 
         public init(
             port: UInt16? = nil,
@@ -40,7 +41,8 @@ public struct BoxConfiguration: Sendable {
             adminChannelEnabled: Bool? = nil,
             portMappingEnabled: Bool? = nil,
             externalAddress: String? = nil,
-            externalPort: UInt16? = nil
+            externalPort: UInt16? = nil,
+            permanentQueues: [String]? = nil
         ) {
             self.port = port
             self.logLevel = logLevel
@@ -55,6 +57,7 @@ public struct BoxConfiguration: Sendable {
             self.portMappingEnabled = portMappingEnabled
             self.externalAddress = externalAddress
             self.externalPort = externalPort
+            self.permanentQueues = permanentQueues
         }
     }
 
@@ -165,6 +168,11 @@ public extension BoxConfiguration {
             mutated = true
         }
 
+        if plist.server?.permanentQueues == nil {
+            plist.server?.permanentQueues = []
+            mutated = true
+        }
+
         if mutated {
             try persist(plist: plist, to: url)
         }
@@ -211,7 +219,8 @@ private extension BoxConfiguration {
             adminChannelEnabled: serverSection.adminChannelEnabled,
             portMappingEnabled: serverSection.portMapping,
             externalAddress: serverSection.externalAddress,
-            externalPort: serverSection.externalPort
+            externalPort: serverSection.externalPort,
+            permanentQueues: serverSection.permanentQueues
         )
 
         let clientSection = plist.client ?? ConfigurationPlist.Client.default(baseDirectory: defaultBaseDirectory)
@@ -242,7 +251,8 @@ private extension BoxConfiguration {
                 adminChannelEnabled: server.adminChannelEnabled,
                 portMapping: server.portMappingEnabled,
                 externalAddress: server.externalAddress,
-                externalPort: server.externalPort
+                externalPort: server.externalPort,
+                permanentQueues: server.permanentQueues
             ),
             client: ConfigurationPlist.Client(
                 logLevel: client.logLevel?.rawValue,
@@ -279,6 +289,7 @@ private struct ConfigurationPlist: Codable {
         var portMapping: Bool?
         var externalAddress: String?
         var externalPort: UInt16?
+        var permanentQueues: [String]?
 
         enum CodingKeys: String, CodingKey {
             case port
@@ -294,6 +305,7 @@ private struct ConfigurationPlist: Codable {
             case portMapping = "port_mapping"
             case externalAddress = "external_address"
             case externalPort = "external_port"
+            case permanentQueues = "permanent_queues"
         }
 
         static func `default`(baseDirectory: URL? = nil) -> Server {
@@ -311,7 +323,8 @@ private struct ConfigurationPlist: Codable {
                 adminChannelEnabled: true,
                 portMapping: false,
                 externalAddress: nil,
-                externalPort: nil
+                externalPort: nil,
+                permanentQueues: []
             )
         }
     }

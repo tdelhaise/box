@@ -211,6 +211,20 @@ public actor BoxServerStore {
 				throw error
 		}
 	}
+
+	public func peekOldest(from queue: String) async throws -> BoxStoredObject? {
+		do {
+			let qurl = root.appendingPathComponent(try sanitizeQueueName(queue), isDirectory: true)
+			guard fm.fileExists(atPath: qurl.path) else { throw BoxStoreError.queueNotFound(queue) }
+			let files = try fm.contentsOfDirectory(at: qurl, includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }
+			guard let first = files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }).first else { return nil }
+			logger.debug("peek oldest", metadata: ["queue": .string(queue), "file": .string(first.lastPathComponent)])
+			return try readObject(from: first)
+		} catch {
+			logger.error("peek failed", metadata: ["queue": .string(queue), "error": .string("\(error)")])
+			throw error
+		}
+	}
 	
 	public func remove(queue: String, id: UUID) async throws {
 		do {
@@ -319,17 +333,28 @@ public actor BoxServerStore {
 	}
 	
 	private func sanitizeQueueName(_ name: String) throws -> String {
-		// Tolère un slash de tête: "/inbox" -> "inbox", mais interdit les slashes internes.
+		do {
+			return try Self.normalizeQueueName(name)
+		} catch {
+			if case BoxStoreError.invalidQueueName = error {
+				logger.warning("invalid queue name", metadata: ["name": .string(name)])
+			}
+			throw error
+		}
+	}
+	
+    public static func normalizeQueueName(_ name: String) throws -> String {
 		var n = name.trimmingCharacters(in: .whitespacesAndNewlines)
-		if n.hasPrefix("/") { while n.hasPrefix("/") { n.removeFirst() } }
+		if n.hasPrefix("/") {
+			while n.hasPrefix("/") { n.removeFirst() }
+		}
 		let invalid = CharacterSet(charactersIn: "/:\\\\?%*|\\\"<>")
 		guard !n.isEmpty, n.rangeOfCharacter(from: invalid) == nil else {
-			logger.warning("invalid queue name", metadata: ["name": .string(name)])
 			throw BoxStoreError.invalidQueueName(name)
 		}
 		return n
 	}
-	
+
 	private func makeFilename(for object: BoxStoredObject, queue: String) -> String {
 		if queue.caseInsensitiveCompare("uuid") == .orderedSame {
 			return "\(object.id.uuidString).json"

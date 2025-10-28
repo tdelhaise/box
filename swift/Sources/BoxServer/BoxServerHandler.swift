@@ -14,6 +14,7 @@ final class BoxServerHandler: ChannelInboundHandler {
     private let authorizer: @Sendable (UUID, UUID) async -> Bool
     private let locationResolver: @Sendable (UUID) async -> LocationServiceNodeRecord?
     private let jsonEncoder: JSONEncoder
+    private let isPermanentQueue: @Sendable (String) -> Bool
 
     init(
         logger: Logger,
@@ -21,7 +22,8 @@ final class BoxServerHandler: ChannelInboundHandler {
         store: BoxServerStore,
         identityProvider: @escaping @Sendable () -> (UUID, UUID),
         authorizer: @escaping @Sendable (UUID, UUID) async -> Bool,
-        locationResolver: @escaping @Sendable (UUID) async -> LocationServiceNodeRecord?
+        locationResolver: @escaping @Sendable (UUID) async -> LocationServiceNodeRecord?,
+        isPermanentQueue: @escaping @Sendable (String) -> Bool
     ) {
         self.logger = logger
         self.allocator = allocator
@@ -29,6 +31,7 @@ final class BoxServerHandler: ChannelInboundHandler {
         self.identityProvider = identityProvider
         self.authorizer = authorizer
         self.locationResolver = locationResolver
+        self.isPermanentQueue = isPermanentQueue
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         self.jsonEncoder = encoder
@@ -151,10 +154,17 @@ final class BoxServerHandler: ChannelInboundHandler {
         let eventLoop = context.eventLoop
         let contextBox = UncheckedSendableBox(context)
         let remoteAddress = remote
+        let permanent = self.isPermanentQueue(queuePath)
 
         Task {
             do {
-                if let object = try await store.popOldest(from: queuePath) {
+                let object: BoxStoredObject?
+                if permanent {
+                    object = try await store.peekOldest(from: queuePath)
+                } else {
+                    object = try await store.popOldest(from: queuePath)
+                }
+                if let object {
                     eventLoop.execute {
                         let responsePayload = BoxCodec.encodePutPayload(
                             BoxCodec.PutPayload(queuePath: queuePath, contentType: object.contentType, data: object.data),

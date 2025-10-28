@@ -4,7 +4,7 @@ Status (high level)
 - [x] SwiftPM bootstrap: `Package.swift`, modules (`BoxCommandParser`, `BoxServer`, `BoxClient`, `BoxCore`) et tests initiaux.
 - [x] CLI Swift: `BoxCommandParser` bascule entre client et serveur (`--server`/`-s`), journalisation configurée.
 - [x] Swift UDP parity: porter HELLO/STATUS/PUT/GET en clair avec SwiftNIO et un stockage mémoire temporaire (tests d’intégration à ajouter).
-- [x] Swift configuration/admin: lecture PLIST (client), canal d’administration multiplateforme (`status|ping|log-target|reload-config|stats`). Reste à livrer les tests d’intégration CLI↔️serveur.
+- [x] Swift configuration/admin: lecture PLIST (client), canal d’administration multiplateforme (`status|ping|log-target|reload-config|stats`) et tests d’intégration CLI↔️serveur (`BoxCLIIntegrationTests`) couvrant `box admin status|ping|locate|nat-probe` et `box --locate` avec un garde-fou de 30 s par scénario (les requêtes `nat-probe` retournent `disabled/skipped` tant que le port mapping reste désactivé durant les tests).
 - [ ] Swift crypto: réintégrer Noise/XChaCha via libsodium une fois le chemin clair stabilisé.
 - [x] Spec v0.1, dépendances et CI historique restent disponibles; l’implémentation C est gelée comme référence.
 
@@ -34,7 +34,7 @@ Immediate TODOs (Swift track)
      - [x] Vérifier/renforcer les permissions (ACL) côté Windows.
    - [ ] Tests et observabilité :
      - [x] Ajouter des tests unitaires pour les commandes admin (mock de transport) couvrant `ping`, `log-target`, `reload-config`, `stats`.
-   - [x] Stabiliser les tests d’intégration `BoxAdminIntegrationTests` (transport Swift) et les exécuter en CI; un futur travail couvrira l’orchestration complète via la CLI.
+   - [x] Stabiliser les tests d’intégration `BoxAdminIntegrationTests` (transport Swift) et les exécuter en CI; l’orchestration CLI de `box admin`/`box --locate` est couverte par `BoxCLIIntegrationTests` (timeout 30 s).
      - [ ] Couvrir la génération automatique des PLIST de configuration côté CLI (vérifier la présence du `node_uuid`).
    - [x] Adapter la Location Service à l’instantané de connectivité (`addresses[]`, `connectivity.has_global_ipv6`, `port_mapping.*`) et livrer un prototype Swift + documentation consommable par les clients mobiles.
    - [x] Ajout de tests end-to-end UDP (`BoxClientServerIntegrationTests`) couvrant PUT/GET et LOCATE (succès + client non autorisé).

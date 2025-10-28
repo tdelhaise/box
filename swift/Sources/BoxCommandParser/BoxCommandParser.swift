@@ -189,6 +189,18 @@ public struct BoxCommandParser: AsyncParsableCommand {
             return (false, .default)
         }()
 
+        var permanentQueues = Set<String>()
+        if resolvedMode == .server, let configuredQueues = serverConfiguration?.permanentQueues {
+            for queue in configuredQueues {
+                do {
+                    let normalized = try BoxServerStore.normalizeQueueName(queue)
+                    permanentQueues.insert(normalized)
+                } catch {
+                    throw ValidationError("Invalid permanent queue name: \(queue)")
+                }
+            }
+        }
+
         let runtimeOptions = BoxRuntimeOptions(
             mode: resolvedMode,
             address: effectiveAddress,
@@ -207,7 +219,8 @@ public struct BoxCommandParser: AsyncParsableCommand {
             portMappingOrigin: portMappingOrigin,
             externalAddressOverride: manualExternalAddress,
             externalPortOverride: manualExternalPort,
-            externalAddressOrigin: manualExternalOrigin
+            externalAddressOrigin: manualExternalOrigin,
+            permanentQueues: permanentQueues
         )
 
         switch resolvedMode {

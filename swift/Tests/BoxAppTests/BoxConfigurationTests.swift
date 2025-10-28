@@ -26,7 +26,8 @@ final class BoxConfigurationTests: XCTestCase {
             "admin_channel": false,
             "port_mapping": true,
             "external_address": "198.51.100.4",
-            "external_port": 16000
+            "external_port": 16000,
+            "permanent_queues": ["INBOX", "alerts"]
         ],
             "client": [
                 "log_level": "error",
@@ -54,6 +55,7 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.server.portMappingEnabled, true)
         XCTAssertEqual(configuration.server.externalAddress, "198.51.100.4")
         XCTAssertEqual(configuration.server.externalPort, 16000)
+        XCTAssertEqual(configuration.server.permanentQueues ?? [], ["INBOX", "alerts"])
 
         XCTAssertEqual(configuration.client.logLevel, Logger.Level.error)
         XCTAssertEqual(configuration.client.logTarget, "file:/tmp/box.log")
@@ -93,6 +95,8 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.server.portMappingEnabled ?? false, false)
         XCTAssertNil(configuration.server.externalAddress)
         XCTAssertNil(configuration.server.externalPort)
+        XCTAssertEqual(configuration.server.permanentQueues ?? [], [])
+        XCTAssertEqual(configuration.server.permanentQueues ?? [], [])
 
         XCTAssertEqual(configuration.client.logLevel, .info)
         let expectedClientTarget: String = {
@@ -146,6 +150,7 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.server.portMappingEnabled ?? false, false)
         XCTAssertNil(configuration.server.externalAddress)
         XCTAssertNil(configuration.server.externalPort)
+        XCTAssertEqual(configuration.server.permanentQueues ?? [], [])
 
         let persisted = try Data(contentsOf: plistURL)
         let updatedPlist = try PropertyListSerialization.propertyList(from: persisted, options: [], format: nil) as? [String: Any]
@@ -153,5 +158,7 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertNotNil(common?["node_uuid"] as? String)
         XCTAssertNotNil(common?["user_uuid"] as? String)
         XCTAssertNotNil(updatedPlist?["client"] as? [String: Any])
+        let serverSection = updatedPlist?["server"] as? [String: Any]
+        XCTAssertNotNil(serverSection?["permanent_queues"] as? [Any])
     }
 }

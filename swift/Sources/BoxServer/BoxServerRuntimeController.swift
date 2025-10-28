@@ -64,7 +64,8 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             manualExternalPort: options.externalPortOverride,
             manualExternalOrigin: options.externalAddressOrigin,
             onlineSince: Date(),
-            lastPresenceUpdate: nil
+            lastPresenceUpdate: nil,
+            permanentQueues: options.permanentQueues
         )
         self.state = NIOLockedValueBox(initialState)
     }
@@ -106,6 +107,11 @@ final class BoxServerRuntimeController: @unchecked Sendable {
                     locationResolver: { [weak self] nodeId in
                         guard let self, let coordinator = self.locationCoordinator else { return nil }
                         return await coordinator.resolve(nodeUUID: nodeId)
+                    },
+                    isPermanentQueue: { [weak self] rawQueue in
+                        guard let self else { return false }
+                        guard let normalized = try? BoxServerStore.normalizeQueueName(rawQueue) else { return false }
+                        return self.state.withLockedValue { $0.permanentQueues.contains(normalized) }
                     }
                 )
                 return channel.pipeline.addHandler(handler)
@@ -370,6 +376,7 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             "queueCount": metrics.count,
             "objects": metrics.objectCount,
             "queueFreeBytes": metrics.freeBytes ?? NSNull(),
+            "permanentQueues": Array(snapshot.permanentQueues).sorted(),
             "reloadCount": snapshot.reloadCount,
             "lastReload": snapshot.lastReloadTimestamp.map { iso8601String($0) } ?? NSNull(),
             "lastReloadStatus": snapshot.lastReloadStatus,
@@ -400,6 +407,11 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             $0.manualExternalPort = config.effectiveExternalPort(options: options)
             $0.manualExternalOrigin = config.externalAddressOrigin(options: options)
             $0.transport = config.server.transportGeneral
+            let sanitizedQueues = Set((config.server.permanentQueues ?? []).compactMap { queue -> String? in
+                try? BoxServerStore.normalizeQueueName(queue)
+            })
+            $0.permanentQueues = sanitizedQueues
+            options.permanentQueues = sanitizedQueues
 
             if !initial {
                 $0.reloadCount += 1
@@ -429,6 +441,7 @@ final class BoxServerRuntimeController: @unchecked Sendable {
         metadata["manualExternalAddress"] = "\(snapshot.manualExternalAddress ?? "none")"
         metadata["manualExternalPort"] = "\(snapshot.manualExternalPort.map { String($0) } ?? "none")"
         metadata["manualExternalOrigin"] = "\(snapshot.manualExternalOrigin)"
+        metadata["permanentQueues"] = "\(Array(snapshot.permanentQueues).sorted())"
 
         let connectivity = ConnectivitySnapshot(
             globalIPv6Addresses: snapshot.globalIPv6Addresses,

@@ -126,6 +126,73 @@ final class BoxClientServerIntegrationTests: XCTestCase {
         XCTAssertTrue(remaining.isEmpty, "GET should consume the stored message")
     }
 
+    func testGetDoesNotConsumeOnPermanentQueue() async throws {
+        let port = try allocateEphemeralUDPPort()
+        let serverConfiguration = try makeServerConfiguration(port: port, adminEnabled: false, permanentQueues: ["INBOX"])
+        let context = try await startServer(
+            configurationData: serverConfiguration.data,
+            forcedPort: port,
+            adminChannelEnabled: false
+        )
+        defer { context.tearDown() }
+
+        try await context.waitForQueueInfrastructure()
+
+        let payload = Array("Persistent payload".utf8)
+        let putOptions = BoxRuntimeOptions(
+            mode: .client,
+            address: "127.0.0.1",
+            port: port,
+            portOrigin: .cliFlag,
+            configurationPath: context.configurationURL.path,
+            adminChannelEnabled: false,
+            logLevel: .info,
+            logTarget: .stderr,
+            logLevelOrigin: .default,
+            logTargetOrigin: .default,
+            nodeId: serverConfiguration.nodeId,
+            userId: serverConfiguration.userId,
+            portMappingRequested: false,
+            clientAction: .put(queuePath: "INBOX", contentType: "text/plain", data: payload),
+            portMappingOrigin: .default
+        )
+
+        try await BoxClient.run(with: putOptions)
+
+        let queuesRoot = context.homeDirectory.appendingPathComponent(".box/queues", isDirectory: true)
+        let store = try await BoxServerStore(root: queuesRoot, logger: Logger(label: "box.tests.store.permanent"))
+        let storedMessages = try await store.list(queue: "INBOX")
+        XCTAssertEqual(storedMessages.count, 1)
+
+        let getOptions = BoxRuntimeOptions(
+            mode: .client,
+            address: "127.0.0.1",
+            port: port,
+            portOrigin: .cliFlag,
+            configurationPath: context.configurationURL.path,
+            adminChannelEnabled: false,
+            logLevel: .info,
+            logTarget: .stderr,
+            logLevelOrigin: .default,
+            logTargetOrigin: .default,
+            nodeId: serverConfiguration.nodeId,
+            userId: serverConfiguration.userId,
+            portMappingRequested: false,
+            clientAction: .get(queuePath: "INBOX"),
+            portMappingOrigin: .default
+        )
+
+        try await BoxClient.run(with: getOptions)
+
+        let afterFirstRead = try await store.list(queue: "INBOX")
+        XCTAssertEqual(afterFirstRead.count, 1, "Permanent queue should retain messages after GET")
+
+        try await BoxClient.run(with: getOptions)
+
+        let afterSecondRead = try await store.list(queue: "INBOX")
+        XCTAssertEqual(afterSecondRead.count, 1, "Permanent queue should continue to retain messages after repeated GET operations")
+    }
+
     func testLocateRequestSucceedsForKnownClient() async throws {
         let port = try allocateEphemeralUDPPort()
         let serverConfiguration = try makeServerConfiguration(port: port, adminEnabled: false)
@@ -237,7 +304,7 @@ private struct TestServerConfiguration {
     let userId: UUID
 }
 
-private func makeServerConfiguration(port: UInt16, adminEnabled: Bool) throws -> TestServerConfiguration {
+private func makeServerConfiguration(port: UInt16, adminEnabled: Bool, permanentQueues: [String] = []) throws -> TestServerConfiguration {
     let node = UUID()
     let user = UUID()
     let plist: [String: Any] = [
@@ -250,7 +317,8 @@ private func makeServerConfiguration(port: UInt16, adminEnabled: Bool) throws ->
             "log_level": "info",
             "log_target": "stderr",
             "admin_channel": adminEnabled,
-            "port_mapping": false
+            "port_mapping": false,
+            "permanent_queues": permanentQueues
         ],
         "client": [
             "address": "127.0.0.1",
@@ -261,55 +329,4 @@ private func makeServerConfiguration(port: UInt16, adminEnabled: Bool) throws ->
     ]
     let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
     return TestServerConfiguration(data: data, nodeId: node, userId: user)
-}
-
-private func allocateEphemeralUDPPort() throws -> UInt16 {
-    let fd: Int32
-    #if canImport(Darwin)
-    fd = Darwin.socket(AF_INET, SOCK_DGRAM, 0)
-    #else
-    fd = Glibc.socket(AF_INET, Int32(SOCK_DGRAM.rawValue), 0)
-    #endif
-    guard fd >= 0 else {
-        throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "unable to allocate socket"])
-    }
-    defer {
-        #if canImport(Darwin)
-        Darwin.close(fd)
-        #else
-        Glibc.close(fd)
-        #endif
-    }
-
-    var address = sockaddr_in()
-    address.sin_family = sa_family_t(AF_INET)
-    address.sin_port = 0
-    address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
-    let bindResult: Int32 = withUnsafePointer(to: &address) {
-        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
-            #if canImport(Darwin)
-            return Darwin.bind(fd, pointer, socklen_t(MemoryLayout<sockaddr_in>.size))
-            #else
-            return Glibc.bind(fd, pointer, socklen_t(MemoryLayout<sockaddr_in>.size))
-            #endif
-        }
-    }
-    guard bindResult == 0 else {
-        throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "unable to bind test socket"])
-    }
-
-    var length = socklen_t(MemoryLayout<sockaddr_in>.size)
-    let nameResult: Int32 = withUnsafeMutablePointer(to: &address) {
-        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
-            #if canImport(Darwin)
-            return Darwin.getsockname(fd, pointer, &length)
-            #else
-            return Glibc.getsockname(fd, pointer, &length)
-            #endif
-        }
-    }
-    guard nameResult == 0 else {
-        throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "unable to determine socket name"])
-    }
-    return UInt16(bigEndian: address.sin_port)
 }

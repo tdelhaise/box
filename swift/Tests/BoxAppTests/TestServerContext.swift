@@ -1,11 +1,16 @@
 import Foundation
 import Dispatch
 import Logging
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 @testable import BoxCore
 @testable import BoxServer
 
 /// Holds runtime information for a server instance spawned during tests.
-struct ServerContext {
+struct ServerContext: Sendable {
     /// Temporary home directory assigned to the server process.
     let homeDirectory: URL
     /// Path to the admin transport socket (or named pipe).
@@ -152,4 +157,59 @@ func waitForTaskCancellation(_ task: Task<Void, Error>, timeout: TimeInterval = 
         _ = try? await task.value
     }
     _ = group.wait(timeout: .now() + timeout)
+}
+
+/// Allocates an ephemeral UDP port bound to the loopback interface.
+/// - Returns: The port number reserved for the caller.
+/// - Throws: An `NSError` when socket operations fail.
+func allocateEphemeralUDPPort() throws -> UInt16 {
+    let fd: Int32
+#if canImport(Darwin)
+    fd = Darwin.socket(AF_INET, SOCK_DGRAM, 0)
+#else
+    fd = Glibc.socket(AF_INET, Int32(SOCK_DGRAM.rawValue), 0)
+#endif
+    guard fd >= 0 else {
+        throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "unable to allocate socket"])
+    }
+    defer {
+#if canImport(Darwin)
+        Darwin.close(fd)
+#else
+        Glibc.close(fd)
+#endif
+    }
+
+    var address = sockaddr_in()
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_port = 0
+    address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+    let bindResult: Int32 = withUnsafePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
+#if canImport(Darwin)
+            return Darwin.bind(fd, pointer, socklen_t(MemoryLayout<sockaddr_in>.size))
+#else
+            return Glibc.bind(fd, pointer, socklen_t(MemoryLayout<sockaddr_in>.size))
+#endif
+        }
+    }
+    guard bindResult == 0 else {
+        throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "unable to bind test socket"])
+    }
+
+    var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+    let nameResult: Int32 = withUnsafeMutablePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
+#if canImport(Darwin)
+            return Darwin.getsockname(fd, pointer, &length)
+#else
+            return Glibc.getsockname(fd, pointer, &length)
+#endif
+        }
+    }
+    guard nameResult == 0 else {
+        throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "unable to determine socket name"])
+    }
+
+    return UInt16(bigEndian: address.sin_port)
 }

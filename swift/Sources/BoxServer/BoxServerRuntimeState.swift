@@ -48,4 +48,5 @@ struct BoxServerRuntimeState: Sendable {
     var manualExternalOrigin: BoxRuntimeOptions.ExternalAddressOrigin
     var onlineSince: Date
     var lastPresenceUpdate: Date?
+    var permanentQueues: Set<String>
 }
