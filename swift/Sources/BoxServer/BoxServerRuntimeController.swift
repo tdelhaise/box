@@ -29,6 +29,7 @@ final class BoxServerRuntimeController: @unchecked Sendable {
     private var locationCoordinator: LocationServiceCoordinator?
     private var portMappingCoordinator: PortMappingCoordinator?
     private var store: BoxServerStore?
+    private var noiseKeyStore: BoxNoiseKeyStore?
     private var presenceTask: Task<Void, Never>?
     private static let locationSummaryGraceInterval: TimeInterval = 120
 
@@ -66,7 +67,8 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             manualExternalOrigin: options.externalAddressOrigin,
             onlineSince: Date(),
             lastPresenceUpdate: nil,
-            permanentQueues: options.permanentQueues
+            permanentQueues: options.permanentQueues,
+            nodeIdentityPublicKey: nil
         )
         self.state = NIOLockedValueBox(initialState)
     }
@@ -87,6 +89,8 @@ final class BoxServerRuntimeController: @unchecked Sendable {
         let locationCoordinator = LocationServiceCoordinator(store: store, logger: self.logger)
         try await locationCoordinator.bootstrap()
         self.locationCoordinator = locationCoordinator
+
+        await initializeNodeIdentity()
 
         try await reloadConfiguration(path: options.configurationPath, initial: true)
 
@@ -220,6 +224,20 @@ final class BoxServerRuntimeController: @unchecked Sendable {
                     break
                 }
             }
+        }
+    }
+
+    private func initializeNodeIdentity() async {
+        do {
+            let keyStore = try BoxNoiseKeyStore()
+            noiseKeyStore = keyStore
+            let identity = try await keyStore.ensureIdentity(for: .node)
+            let publicKeyHex = hexString(from: identity.publicKey)
+            state.withLockedValue { runtime in
+                runtime.nodeIdentityPublicKey = "hex:\(publicKeyHex)"
+            }
+        } catch {
+            logger.warning("failed to initialize node identity", metadata: ["error": .string("\(error)")])
         }
     }
 
@@ -358,6 +376,7 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             "hasGlobalIPv6": snapshot.hasGlobalIPv6,
             "globalIPv6Addresses": snapshot.globalIPv6Addresses,
             "ipv6ProbeError": snapshot.ipv6DetectionError ?? NSNull(),
+            "nodePublicKey": snapshot.nodeIdentityPublicKey ?? NSNull(),
             "portMappingEnabled": snapshot.portMappingRequested,
             "portMappingOrigin": "\(snapshot.portMappingOrigin)",
             "portMappingBackend": snapshot.portMappingBackend ?? NSNull(),
@@ -544,7 +563,7 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             online: true,
             since: UInt64(snapshot.onlineSince.timeIntervalSince1970 * 1000),
             lastSeen: snapshot.lastPresenceUpdate.map { UInt64($0.timeIntervalSince1970 * 1000) },
-            nodePublicKey: nil,
+            nodePublicKey: snapshot.nodeIdentityPublicKey,
             tags: nil
         )
     }
@@ -718,6 +737,10 @@ final class BoxServerRuntimeController: @unchecked Sendable {
         }
 
         return adminLocationSummaryPayload(from: summary)
+    }
+
+    private func hexString(from bytes: [UInt8]) -> String {
+        bytes.map { String(format: "%02x", $0) }.joined()
     }
 
     private func adminConnectivityPayload(from record: LocationServiceNodeRecord) -> [String: Any] {

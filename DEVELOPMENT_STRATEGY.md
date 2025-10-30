@@ -51,7 +51,7 @@ Development Strategy
 Voir `NEXT_STEPS.md` pour la liste détaillée. Priorités actuelles :
 1. Exploiter les métriques `locationService` (alerting, supervision racines, intégration observabilité).
 2. Préparer le passage Noise/libsodium (structures de clés, tests unitaires).
-3. Approfondir la couverture CLI/integration (PUT/GET permanents, nat-probe succès, export LS).
+3. Approfondir la couverture CLI/integration (reste nat-probe succès + export LS; PUT/GET permanents déjà couverts).
 
 ### Structure de documentation
 - `README.md` — aperçu, build, topologie racines, commandes essentielles.

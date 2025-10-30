@@ -78,6 +78,7 @@ final class BoxCLIIntegrationTests: XCTestCase {
             let record = try XCTUnwrap(coerceDictionary(locateNodeJSON["record"]))
             XCTAssertEqual(record["node_uuid"] as? String ?? record["nodeUUID"] as? String, nodeUUID)
             XCTAssertEqual(record["user_uuid"] as? String ?? record["userUUID"] as? String, userUUID)
+            XCTAssertNotNil(record["node_public_key"] ?? record["nodePublicKey"], "Expected node public key in record")
             XCTAssertNotNil(coerceArrayOfDictionaries(record["addresses"]))
             XCTAssertNotNil(coerceDictionary(record["connectivity"]))
 
@@ -135,6 +136,126 @@ final class BoxCLIIntegrationTests: XCTestCase {
             )
             let reports = coerceArrayOfDictionaries(json["reports"])
             XCTAssertNotNil(reports)
+        }
+    }
+
+    func testClientPutAndGetRoundTripViaCLI() async throws {
+        try await runWithinTimeout {
+            let chosenPort = try allocateEphemeralUDPPort()
+            let configurationData = try makeCLIConfigurationData(port: chosenPort)
+            let context = try await startServer(configurationData: configurationData, forcedPort: chosenPort)
+            defer { context.tearDown() }
+
+            try await context.waitForAdminSocket()
+            try await context.waitForQueueInfrastructure()
+
+            let logsDirectory = context.homeDirectory.appendingPathComponent(".box/logs", isDirectory: true)
+            try FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+            let clientLogURL = logsDirectory.appendingPathComponent("cli-put-get.log", isDirectory: false)
+            var configurationResult = try BoxConfiguration.load(from: context.configurationURL)
+            configurationResult.configuration.client.logTarget = "file:\(clientLogURL.path)"
+            try configurationResult.configuration.save(to: configurationResult.url)
+            let configuration = configurationResult.configuration
+
+            let payloadString = "CLI integration payload"
+            let (putStdout, putStderr, putStatus) = try await Self.runBoxCLIAsync(
+                args: [
+                    "--address", "127.0.0.1",
+                    "--port", "\(chosenPort)",
+                    "--put", "/INBOX:text/plain",
+                    "--data", payloadString
+                ],
+                configurationPath: context.configurationURL.path
+            )
+            XCTAssertEqual(putStatus, 0)
+            XCTAssertTrue(putStdout.isEmpty)
+            XCTAssertTrue(putStderr.isEmpty)
+
+            let queuesRoot = context.homeDirectory.appendingPathComponent(".box/queues", isDirectory: true)
+            let store = try await BoxServerStore(root: queuesRoot, logger: Logger(label: "box.tests.cli.putget"))
+            let references = try await store.list(queue: "INBOX")
+            XCTAssertEqual(references.count, 1, "Expected exactly one stored message after CLI PUT")
+            let storedObject = try await store.read(reference: try XCTUnwrap(references.first))
+            XCTAssertEqual(String(bytes: storedObject.data, encoding: .utf8), payloadString)
+            XCTAssertEqual(storedObject.contentType, "text/plain")
+            XCTAssertEqual(storedObject.nodeId, configuration.common.nodeUUID)
+            XCTAssertEqual(storedObject.userId, configuration.common.userUUID)
+
+            let (getStdout, getStderr, getStatus) = try await Self.runBoxCLIAsync(
+                args: [
+                    "--address", "127.0.0.1",
+                    "--port", "\(chosenPort)",
+                    "--get", "/INBOX"
+                ],
+                configurationPath: context.configurationURL.path
+            )
+            XCTAssertEqual(getStatus, 0)
+            XCTAssertTrue(getStdout.isEmpty)
+            XCTAssertTrue(getStderr.isEmpty)
+
+            let remaining = try await store.list(queue: "INBOX")
+            XCTAssertTrue(remaining.isEmpty, "GET via CLI should consume messages on non-permanent queues")
+        }
+    }
+
+    func testClientGetPreservesPermanentQueueViaCLI() async throws {
+        try await runWithinTimeout {
+            let chosenPort = try allocateEphemeralUDPPort()
+            let configurationData = try makeCLIConfigurationData(port: chosenPort, permanentQueues: ["INBOX"])
+            let context = try await startServer(configurationData: configurationData, forcedPort: chosenPort)
+            defer { context.tearDown() }
+
+            try await context.waitForAdminSocket()
+            try await context.waitForQueueInfrastructure()
+
+            let logsDirectory = context.homeDirectory.appendingPathComponent(".box/logs", isDirectory: true)
+            try FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+            let clientLogURL = logsDirectory.appendingPathComponent("cli-permanent.log", isDirectory: false)
+            var configurationResult = try BoxConfiguration.load(from: context.configurationURL)
+            configurationResult.configuration.client.logTarget = "file:\(clientLogURL.path)"
+            try configurationResult.configuration.save(to: configurationResult.url)
+
+            let payloadString = "Persistent CLI payload"
+            let (putStdout, putStderr, putStatus) = try await Self.runBoxCLIAsync(
+                args: [
+                    "--address", "127.0.0.1",
+                    "--port", "\(chosenPort)",
+                    "--put", "/INBOX:text/plain",
+                    "--data", payloadString
+                ],
+                configurationPath: context.configurationURL.path
+            )
+            XCTAssertEqual(putStatus, 0)
+            XCTAssertTrue(putStdout.isEmpty)
+            XCTAssertTrue(putStderr.isEmpty)
+
+            let queuesRoot = context.homeDirectory.appendingPathComponent(".box/queues", isDirectory: true)
+            let store = try await BoxServerStore(root: queuesRoot, logger: Logger(label: "box.tests.cli.permanent"))
+            let references = try await store.list(queue: "INBOX")
+            XCTAssertEqual(references.count, 1, "Expected stored message after CLI PUT on permanent queue")
+
+            let storedReference = try XCTUnwrap(references.first)
+            let storedObject = try await store.read(reference: storedReference)
+            XCTAssertEqual(String(bytes: storedObject.data, encoding: .utf8), payloadString)
+
+            for attempt in 1...2 {
+                let (getStdout, getStderr, getStatus) = try await Self.runBoxCLIAsync(
+                    args: [
+                        "--address", "127.0.0.1",
+                        "--port", "\(chosenPort)",
+                        "--get", "/INBOX"
+                    ],
+                    configurationPath: context.configurationURL.path
+                )
+                XCTAssertEqual(getStatus, 0, "GET attempt \(attempt) should succeed")
+                XCTAssertTrue(getStdout.isEmpty)
+                XCTAssertTrue(getStderr.isEmpty)
+
+                let remaining = try await store.list(queue: "INBOX")
+                XCTAssertEqual(remaining.count, 1, "Permanent queue should retain message after GET attempt \(attempt)")
+                let object = try await store.read(reference: storedReference)
+                XCTAssertEqual(String(bytes: object.data, encoding: .utf8), payloadString)
+            }
         }
     }
 
@@ -399,6 +520,36 @@ final class BoxCLIIntegrationTests: XCTestCase {
         return Bundle.main.bundleURL
       #endif
     }
+}
+
+private func makeCLIConfigurationData(port: UInt16, permanentQueues: [String] = []) throws -> Data {
+    let nodeUUID = UUID().uuidString
+    let userUUID = UUID().uuidString
+    var serverSection: [String: Any] = [
+        "port": port,
+        "log_level": "info",
+        "log_target": "stderr",
+        "admin_channel": true,
+        "port_mapping": false,
+        "permanent_queues": permanentQueues
+    ]
+    if permanentQueues.isEmpty {
+        serverSection["permanent_queues"] = []
+    }
+    let plist: [String: Any] = [
+        "common": [
+            "node_uuid": nodeUUID,
+            "user_uuid": userUUID
+        ],
+        "server": serverSection,
+        "client": [
+            "address": "127.0.0.1",
+            "port": port,
+            "log_level": "info",
+            "log_target": "stderr"
+        ]
+    ]
+    return try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
 }
 
 private func decodeJSON(_ response: String) throws -> [String: Any] {

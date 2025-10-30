@@ -9,6 +9,7 @@ Next Steps
 - ✅ Port mapping optionnel (UPnP → PCP MAP/PEER → NAT-PMP) + reachability probe.
 - ✅ Tests Swift (`swift test --parallel`) couvrant CLI et flux UDP (timeouts 30 s).
 - ✅ Commande `box init-config` pour créer/réparer `Box.plist` et préparer `~/.box/{queues,logs,run}`.
+- ✅ CLI `box --put/--get` (queues éphémères & permanentes) couvert par `BoxCLIIntegrationTests`.
 - 🚧 Noise/libsodium non activé (transport clair uniquement).
 
 ### Priorités courtes (S3+)
@@ -20,8 +21,9 @@ Next Steps
 
 ### Moyenne échéance
 3. **CLI intégration E2E supplémentaire**
-   - Étendre `BoxCLIIntegrationTests` pour couvrir un cycle PUT/GET complet en mode permanent vs éphémère.
+   - ✅ Cycle PUT/GET (queues permanentes et éphémères) validé via `BoxCLIIntegrationTests`.
    - Ajouter un test `nat-probe` « succès » dès qu’un routeur compatible UPnP/PCP est disponible.
+   - Préparer une commande d’export `whoswho` (`box admin export-presence`) pour les clients mobiles.
 4. **Admission control**
    - Implémenter la vérification que (user_uuid, node_uuid) est connu avant de répondre aux requêtes non-admin.
    - Ajouter des tests négatifs (`unauthorized`).

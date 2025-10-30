@@ -49,4 +49,5 @@ struct BoxServerRuntimeState: Sendable {
     var onlineSince: Date
     var lastPresenceUpdate: Date?
     var permanentQueues: Set<String>
+    var nodeIdentityPublicKey: String?
 }

@@ -55,7 +55,7 @@ L’admin s’appuie sur `~/.box/run/boxd.socket` (Unix) ou `\\.\pipe\boxd-admin
 - Pas de dépendance STUN/ICE ; si la passerelle ne supporte pas ces protocoles, configurer un forwarding manuel et renseigner `external_address/external_port`.
 
 ### Tests end-to-end
-- `BoxCLIIntegrationTests` couvre `box admin status|ping|locate|nat-probe|location-summary` et `box --locate`. Chaque test se termine en < 30 s par design (`XCTExpectFailure` si timeout).
+- `BoxCLIIntegrationTests` couvre `box admin status|ping|locate|nat-probe|location-summary` et les flux client `box --locate`, `box --put`, `box --get` (queues éphémères et permanentes). Chaque test se termine en < 30 s par design (`XCTExpectFailure` si timeout).
 - `BoxClientServerIntegrationTests` vérifie PUT/GET/LOCATE via UDP, y compris le comportement « permanent queue ».
 - Pour lancer manuellement une session de test : `swift test --filter BoxCLIIntegrationTests.testNatProbeDisabled`.
 
