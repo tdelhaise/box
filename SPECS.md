@@ -131,6 +131,10 @@ Future work:
 - The LS is self‑hosted by the user and embedded in each `boxd` instance belonging to that user. There is no dependency on any external computer or service.
 - Peers must know at least one bootstrap IP:port for the target user (shared out‑of‑band) to query LS and initiate secure communication.
 - The LS persists and consumes state through standard queues (see Standard Queues) to remain operable without external databases.
+- Global resilience relies on a small federation of Box “root resolvers”. Each deployment MUST provision at least three root servers with static IPv6 addresses known a priori (configured locally on every node/client). No DNS lookup is required or assumed.
+- Root resolvers accept per-minute refreshes from every online BoxServer, validate the signed payload, and update the `whoswho` queue atomically by overwriting `<uuid>.json`. If a node misses two consecutive refresh intervals (>120 s), resolvers mark it stale so clients can fall back to other nodes.
+- Client resolution first targets the closest root resolver; on timeout or stale data it MUST iterate through the remaining addresses in order. Implementations should randomise the starting resolver to spread load.
+- Server-to-server refreshes MUST be mutually authenticated (Noise/libsodium handshake) so that a malicious intermediary cannot pose as a trusted node; resolvers reject unsigned or mismatched identity updates and SHOULD log the attempt for operators.
 
 6.4 Bootstrap Guide (Out‑of‑Band Exchange)
 
@@ -197,7 +201,7 @@ Future work:
 
 - Transport: Payloads are carried over the Box protocol (UDP) and protected by session encryption after HELLO. JSON here illustrates field semantics; CBOR/JSON encodings are acceptable.
 - Authentication: Requests are authenticated at the transport layer; sensitive fields may be signed by the node identity key where indicated.
-- Implementation note (Swift prototype): records are serialised as JSON and persisted in the `/uuid` queue via the `LocationServiceCoordinator`, reusing the same builder that powers `box admin status|stats` so `addresses[]` and `connectivity` remain consistent across surfaces.
+- Implementation note (Swift prototype): records are serialised as JSON and persisted in the `/uuid` queue via the `LocationServiceCoordinator`, reusing the same builder that powers `box admin status|stats` so `addresses[]` and `connectivity` remain consistent across surfaces. Root resolvers replicate those entries into the permanent `whoswho` queue (future work will converge on a single on-disk layout).
 
 Register/Update Node
 - Request
@@ -468,35 +472,14 @@ brevity once a refreshed sample is committed.
 
 7.2 Standard Queues
 
-- `/uuid` (content_type: `application/cbor` or `application/json`):
-  - Purpose: Publish presence and status per User UUID and Node UUID. Used internally by the embedded Location Service.
-  - Object schema (logical):
-    - user_uuid (UUID), node_uuid (UUID)
-    - status (enum: "online" | "offline")
-    - since (timestamp), last_seen (timestamp)
-    - node_public_key (bytes), protocol_versions ([uint16])
-  - ACL: readable by authorized peers; writable by the owning user’s nodes; delete restricted to owner/admin.
-  - JSON example:
-    {
-      "user_uuid": "507FA643-A2A6-47AF-A09E-E235E9727332",
-      "node_uuid": "776BA464-BA07-4B6D-B102-11D5D9917C6F",
-      "status": "online",
-      "since": 1736712345123,
-      "last_seen": 1736712389456,
-      "node_public_key": "ed25519:8c1f...ab42",
-      "protocol_versions": [1]
-    }
-  - CBOR CDDL sketch (informative):
-    uuid = b16 .size 16 ; 16‑byte UUID
-    presence = {
-      "user_uuid": uuid,
-      "node_uuid": uuid,
-      "status": "online" / "offline",
-      "since": uint,
-      "last_seen": uint,
-      "node_public_key": tstr,   ; "ed25519:" + hex
-      "protocol_versions": [* uint]
-    }
+- `whoswho` (content_type: `application/json`, permanent queue):
+  - Purpose: Authoritative presence ledger for all online Box nodes and users. Each record lives in a single JSON file named `<uuid>.json` (no timestamp prefix) so a subsequent refresh replaces the same file in place.
+  - Population rules:
+    - Each online BoxServer pushes an update every 60 seconds containing its `node_uuid`, `user_uuid`, reachable IPv6 endpoints, advertised ports, last refresh timestamp, and owner UUID. The payload matches the `LocationServiceNodeRecord` schema used on the admin channel.
+    - For every `user_uuid`, the root resolver stores a companion JSON file listing the active `node_uuid`s owned by that user (+ optional metadata as the protocol evolves).
+    - Records are signed at the transport layer (Noise/libsodium milestone) so that resolvers can reject forged presence updates.
+  - ACL: readable by authorized peers (including clients resolving remote nodes); writable by the owner’s nodes and by root resolvers that mirror the data; deletion restricted to owner/admin.
+  - Relationship with `/uuid`: current Swift prototypes still serialise presence under the `/uuid` queue in each node’s local store; root resolvers mirror that content into the global `whoswho` queue until the on-disk layout is unified in a future milestone.
 
 - `/location` (content_type: `application/cbor` or `application/json`):
   - Purpose: Publish optional geographic location per UUID.

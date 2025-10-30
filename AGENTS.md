@@ -1,54 +1,41 @@
-ok go Agents Guide for This Repository
+Agents Guide
+============
 
-Scope
-- This file guides coding agents working on the Box project. Follow these conventions for all changes within this repo.
+### Docs à lire en priorité
+- **SPECS.md** — protocole (framing, queues, Location Service, NAT).
+- **DEVELOPMENT_STRATEGY.md** — roadmap Swift (S0–S4), hébergement racines.
+- **CODE_CONVENTIONS.md** — style Swift, restrictions sur les identifiants.
+- **DEPENDENCIES.md** — toolchain Swift, libsodium (optionnel), commandes utiles.
+- **NEXT_STEPS.md** — tâches courtes à traiter en priorité.
 
-Authoritative Docs
-- Protocol/architecture: SPECS.md
-- Development plan: DEVELOPMENT_STRATEGY.md (updated: DTLS removed; Noise/libsodium path)
-- Coding standards: CODE_CONVENTIONS.md (naming, non‑root policy, admin channel notes)
-- Dependencies and setup: DEPENDENCIES.md (libsodium via pkg‑config; no OpenSSL/DTLS)
-- Android notes: ANDROID.md
+### Build & tests
+- `swift build --product box`
+- `swift test --parallel`
+- CLI durant le dev : `swift run box …`
+- Les tests d’intégration disposent tous d’un timeout ≤ 30 s. Ne pas modifier ces garde-fous.
 
-Build and Test
-- Configure: `make configure BUILD_TYPE=Debug`
-- Build: `make build`
-- Tests: `make test`
-- Format check: `make format-check`
-- Naming + abbreviation checks (warn-only): `make check`
-- Strict abbreviation check: `make check-strict`
+### Points d’attention
+- **Swift only** : aucun retour de C, CMake ou scripts bash historiques.
+- **Binaire unique** : `box` fait office de client et serveur (`--server`).
+- **Admin channel** : `swift run box admin <cmd>` via socket Unix `~/.box/run/boxd.socket`.
+- **Configuration** : fichier unique `~/.box/Box.plist` (sections `common`, `server`, `client`). Génération auto des UUID si absent.
+- **Location Service** : enregistrements JSON (`whoswho/<node_uuid>.json`, `whoswho/<user_uuid>.json`), rafraîchissement toutes les 60 s, même builder que les réponses admin.
+- **Réseau** : privilégier IPv6 global; `--enable-port-mapping` déclenche UPnP → PCP (MAP+PEER) → NAT-PMP + reachability HELLO. Les champs `portMapping*`, `manualExternal*`, `hasGlobalIPv6`, etc., doivent rester cohérents entre runtime, admin et LS.
+- **Stockage** : `~/.box/queues/<queue>/`. `INBOX` est obligatoire. Les queues listées dans `server.permanent_queues` ne détruisent pas les messages lors d’un `GET`.
+- **Journalisation** : swift-log (via Puppy). Par défaut logs en `~/.box/logs/box(.d).log`, format ISO 8601 + niveau + composant + métadonnées (fichier, fonction, thread).
+- **Non-root** : le binaire refuse de démarrer avec des privilèges élevés.
 
-Docker Dev Shell
-- `make docker-shell` (builds `Dockerfile.dev` if needed, mounts repo, runs as host uid/gid)
+### Où coder ?
+- `swift/Sources/BoxCommandParser` — parsing CLI + injection runtime.
+- `swift/Sources/BoxServer` — runtime serveur, admin handlers, NAT/LS.
+- `swift/Sources/BoxClient` — logique client (PUT/GET/LOCATE).
+- `swift/Sources/BoxCore` — types partagés (config, codecs, helpers).
+- `swift/Tests/…` — tests unitaires (BoxAppTests) & intégrations (BoxCLIIntegrationTests, BoxClientServerIntegrationTests).
 
-CI Summary (GitHub Actions)
-- Native build: configure/build, format check, naming+abbrev check, tests
-- Dockerized build: container build + strict abbreviation check + tests
-- Android: cross-build minimal core and JNI wrapper
-
-Coding Conventions (highlights)
-- C11 with Clang toolchain preferred. Keep changes minimal and focused.
-- Public APIs live under `include/box/`; library sources under `sources/lib/`.
-- Executables: `sources/box/` (client), `sources/boxd/` (daemon). Do not run `boxd` as root/admin.
-- Naming: `BF` prefix for library symbols; explicit variable/parameter names (avoid abbreviations like `buffer`, `address`, `pointer`, `index`, etc. are required; abbreviations like `buf`, `addr`, `ptr`, `idx` are forbidden). See CODE_CONVENTIONS.md.
-- Security posture: default‑deny ACLs, adhere to Noise + XChaCha crypto roadmap, and follow non‑root policy.
-- Admin channel (Unix/Windows): socket `~/.box/run/boxd.socket` ou named pipe `\\.\pipe\boxd-admin`, commandes `status|ping|log-target|reload-config|stats|nat-probe|locate` via `box admin …`.
-- Config PLIST defaults: un fichier unique `~/.box/Box.plist` est généré avec les sections `common` (UUID de nœud et d’utilisateur partagés), `server` et `client`. Ne supprimez jamais ce fichier côté agent.
-- Logging: par défaut les journaux sont écrits dans `~/.box/logs/` (`box.log` pour le client, `boxd.log` pour le serveur). Utilisez `--log-target` ou `Box.plist` pour modifier la destination ; les entrées suivent désormais un format enrichi (horodatage ISO 8601, niveau, composant, contexte et métadonnées).
-- Location Service: `boxd` publie l’enregistrement `LocationServiceNodeRecord` courant dans la file `/uuid` via l’acteur `LocationServiceCoordinator`. Cette file contient **toujours** deux entrées par serveur: `<node_uuid>.json` (présence du nœud) et `<user_uuid>.json` (index utilisateur listant les nœuds connus). Toute modification du schéma doit rester synchronisée avec les réponses `box admin` (même builder) et les helpers de résolution. La commande `box admin locate <uuid>` accepte désormais aussi bien un nœud qu’un utilisateur (dans ce cas, la réponse agrège les nœuds actifs). Le client `--locate` côté UDP continue pour l’instant de résoudre un nœud unique. Les deux commandes exigent que le couple (node_id, user_id) du demandeur soit connu, faute de quoi la réponse est `unauthorized`. La file `/location` pour la géolocalisation reste à implémenter.
-- Réseau: privilégiez l’IPv6 global. Vérifiez que la machine hôte obtient une adresse IPv6 routable ; sinon, indiquez dans `Box.plist` les adresses publiques ou guides de port forwarding pour l’IPv4. L’option `--enable-port-mapping` (ou `port_mapping = true` dans `Box.plist`) tente successivement l’UPnP (`M-SEARCH` + `AddPortMapping` + `GetExternalIPAddress`), le PCP (`MAP` avec nonce + `PEER` pour l’ouverture entrante) puis le NAT-PMP (`MAP`/`UNMAP` + `PublicAddress`). Chaque essai est journalisé, fournit un code d’erreur structuré et, en cas de succès, entraîne une sonde reachability (HELLO UDP via l’adresse publiée) afin de vérifier que l’endpoint externe est réellement joignable. Les champs `hasGlobalIPv6`, `globalIPv6Addresses`, `ipv6ProbeError`, `portMappingEnabled`, `portMappingBackend`, `portMappingStatus`, `portMappingError`, `portMappingErrorCode`, `portMappingExternalPort`, `portMappingExternalIPv4`, `portMappingLeaseSeconds`, `portMappingRefreshedAt`, `portMappingPeerStatus`, `portMappingPeerLifetime`, `portMappingPeerLastUpdated`, `portMappingPeerError`, `portMappingReachabilityStatus`, `portMappingReachabilityRoundTripMillis`, `portMappingReachabilityCheckedAt`, `portMappingReachabilityError` et `portMappingOrigin` doivent rester cohérents entre les réponses `box admin`, la structure Location Service (`addresses[]`, `connectivity`) et la documentation. Les surcharges manuelles (`--external-address`/`--external-port` ou `external_address`/`external_port` dans `Box.plist`) doivent aussi être reflétées (`manualExternalAddress|Port|Origin` côté admin et `addresses[].source = manual|config`).
-- Stockage: les files résident dans `~/.box/queues/`; assurez-vous que `INBOX/` reste présent (les tests/implémentations doivent échouer si la création échoue). Les fichiers sont nommés `timestamp-<uuid>.json`, à l’exception de `/uuid` qui écrit directement `<uuid>.json` pour mettre à jour en place les présences nœud/utilisateur. Les queues déclarées dans `server.permanent_queues` doivent conserver leurs messages après un `GET`; les implémentations côté serveur ne doivent pas supprimer le fichier dans ce cas.
-
-Platform Notes
-- Linux/macOS/Windows are primary; Android and AOSP supported via NDK; STM32 targeted later (reason to keep core lean C).
-- For Android builds, use `-DBOX_BUILD_MINIMAL=ON` initially; see ANDROID.md.
-
-Where to Put Things
-- New protocol code: extend BFBoxProtocol and adjacent modules under `sources/lib/` with tests in `test/`.
-- Storage interfaces and ACL engine: new files under `sources/lib/` with headers in `include/box/`.
-- CLI subcommands: extend `sources/box/client.c` (temporary) or add small command dispatcher module.
-- Server behavior: extend `sources/boxd/server.c` incrementally toward the design in DEVELOPMENT_STRATEGY.md.
-
-Do/Don’t
-- Do: write small, testable patches; update docs when behavior changes.
-- Don’t: reformat unrelated code; introduce new heavy dependencies without alignment; run `boxd` with elevated privileges.
+### Do / Don’t
+- ✅ Petits patchs, tests + docs à chaque changement.
+- ✅ Conserver la cohérence admin ↔ Location Service ↔ documentation.
+- ✅ Vérifier `swift test --parallel` avant de pousser.
+- ❌ Réintroduire des traces de l’implémentation C (sources, scripts, doc).
+- ❌ Modifier les timeouts d’intégration (30 s max).
+- ❌ Laisser des `print` en production (utiliser `Logger`).

@@ -1,62 +1,39 @@
-Contributing to Box
+Contributing Guidelines
+=======================
 
-Thanks for your interest in contributing! This project uses a few simple conventions to keep the codebase consistent and easy to navigate.
+Thank you for helping improve Box. The project is now purely Swift (Swift 6.2, SwiftPM). The legacy C toolchain has been removed; new contributions should target the Swift modules under `swift/Sources/` and tests under `swift/Tests/`.
 
-**Naming Conventions**
-- Components use the `BF` prefix with component-based names.
-  - Examples: `BFCommon`, `BFSocket`, `BFUdp`, `BFUdpClient`, `BFUdpServer`, `BFBoxProtocol`.
-  - Header ↔ source mapping:
-    - `include/box/BFCommon.h` ↔ `src/lib/BFCommon.c`
-    - `include/box/BFSocket.h` ↔ `src/lib/BFSocket.c`
-    - `include/box/BFUdp.h` ↔ `src/lib/BFUdp.c`
-    - `include/box/BFUdpClient.h` ↔ `src/lib/BFUdpClient.c`
-    - `include/box/BFUdpServer.h` ↔ `src/lib/BFUdpServer.c`
-    - `include/box/BFBoxProtocol.h` ↔ `src/lib/BFBoxProtocol.c`
-- Tests use the `test_` prefix followed by the component name.
-  - Example: `test/test_BFBoxProtocol.c` with CMake target `test_BFBoxProtocol`.
-- CMake options/macros use the `BOX_` prefix.
-  - Example: `BOX_USE_PRESHAREKEY` (legacy `BOX_USE_PSK` is honored but deprecated).
-- Public headers live under `include/box/` and are included via `#include "box/<Header>.h"`.
+## Development Environment
+- Install Swift 6.2 (recommended: `swiftly install 6.2.0`).
+- Clone the repository, then run:
+  ```bash
+  swift build --product box
+  swift test --parallel
+  ```
+- Prefer running the CLI through SwiftPM during development (`swift run box …`). When packaging, use `swift build -c release`.
 
-**Style & Safety**
-- C code targets C23 and enables strict warnings; avoid introducing warnings.
-- Keep changes focused and consistent with surrounding code.
-- Prefer small, self-contained commits with clear messages.
+## Coding Style
+- Follow the conventions in `CODE_CONVENTIONS.md`.
+- Document public types, properties and functions with `///` comments.
+- Avoid abbreviated identifiers (e.g., `addr`, `buf`, `idx`). Use descriptive names (`address`, `buffer`, `index`).
+- Keep patches focused: one logical change per pull request, with accompanying tests and doc updates.
 
-**Running Checks**
-- Build: `cmake -S . -B build && cmake --build build -j`
-- Tests: `ctest --test-dir build --output-on-failure`
-- Naming check: `bash scripts/check_naming.sh`
+## Commit Expectations
+- Add or update tests whenever behaviour changes; prefer integration tests in `BoxCLIIntegrationTests` for CLI/admin flows and unit tests in `BoxAppTests` for pure logic.
+- Run `swift test --parallel` before submitting.
+- If your change touches runtime behaviour or operational guidance, update `README.md`, `SPECS.md`, or `DEVELOPMENT_STRATEGY.md` as appropriate.
 
-**Opening PRs**
-- Describe the motivation, scope, and any behavior impact.
-- If renaming/moving files, mention how it aligns with the conventions above.
+## Submitting Changes
+1. Create a feature branch off `main`.
+2. Commit your work using clear, imperative messages (e.g., “Add permanent queue support to BoxServerStore”).
+3. Push your branch and open a pull request summarising:
+   - Motivation and scope.
+   - Tests performed (include the `swift test` output or relevant subset).
+   - Documentation updates.
+4. Be available for review feedback; small, iterative fixes are encouraged.
 
-**Optional pre-commit hook**
-Run checks automatically before each commit:
+## Not in Scope
+- Reintroducing CMake, Make, or the retired C sources.
+- Changes that break existing Swift tests without replacement coverage.
 
-1) Create `.git/hooks/pre-commit` with:
-
-```
-#!/usr/bin/env bash
-set -euo pipefail
-
-echo "pre-commit: running naming check..."
-bash scripts/check_naming.sh
-
-echo "pre-commit: formatting sources (if clang-format available)..."
-bash scripts/format.sh
-echo "pre-commit: verifying formatting..."
-bash scripts/check_format.sh
-
-echo "pre-commit: running fast build (if build/ exists)..."
-bash scripts/fast_build.sh
-```
-
-2) Make it executable:
-
-```
-chmod +x .git/hooks/pre-commit
-```
-
-This prevents committing files that violate the BF naming conventions.
+By contributing, you agree to keep the documentation and tests in sync with your changes and to maintain the Swift-only toolchain moving forward.
