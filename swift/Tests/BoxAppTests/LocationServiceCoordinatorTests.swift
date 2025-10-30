@@ -32,7 +32,7 @@ final class LocationServiceCoordinatorTests: XCTestCase {
 
         await coordinator.publish(record: initialRecord)
 
-        var files = try await store.list(queue: "/uuid")
+        var files = try await store.list(queue: "/whoswho")
         XCTAssertEqual(files.count, 2, "Expected node and user entries after first publish")
         let fileNames = Set(files.map { $0.url.lastPathComponent })
         XCTAssertTrue(fileNames.contains("\(nodeUUID.uuidString).json"))
@@ -59,7 +59,7 @@ final class LocationServiceCoordinatorTests: XCTestCase {
 
         await coordinator.publish(record: updatedRecord)
 
-        files = try await store.list(queue: "/uuid")
+        files = try await store.list(queue: "/whoswho")
         XCTAssertEqual(files.count, 2, "Publishing should keep node and user entries in sync")
         let userRef = try XCTUnwrap(files.first { $0.id == userUUID })
         let userObject = try await store.read(reference: userRef)
@@ -81,5 +81,62 @@ final class LocationServiceCoordinatorTests: XCTestCase {
         let resolvedForNode = await coordinator.resolve(nodeUUID: nodeUUID)
         XCTAssertNotNil(resolvedForNode)
         XCTAssertEqual(resolvedForNode?.connectivity.globalIPv6, ["2001:db8::20"])
+    }
+
+    func testSummaryIdentifiesStaleNodesAndUsers() async throws {
+        let fileManager = FileManager.default
+        let temporaryDirectory = fileManager.temporaryDirectory.appendingPathComponent("box-ls-summary-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: temporaryDirectory) }
+
+        let store = try await BoxServerStore(root: temporaryDirectory)
+        let coordinator = LocationServiceCoordinator(store: store, logger: Logger(label: "test.location.summary"))
+        try await coordinator.bootstrap()
+
+        let now = Date()
+        let staleUser = UUID()
+        let staleNode = UUID()
+        let activeUser = UUID()
+        let activeNode = UUID()
+
+        let staleLastSeen = UInt64(now.addingTimeInterval(-300).timeIntervalSince1970 * 1000)
+        let activeLastSeen = UInt64(now.timeIntervalSince1970 * 1000)
+
+        let staleRecord = LocationServiceNodeRecord.make(
+            userUUID: staleUser,
+            nodeUUID: staleNode,
+            port: 12567,
+            probedGlobalIPv6: [],
+            ipv6Error: nil,
+            portMappingEnabled: false,
+            portMappingOrigin: .default,
+            online: true,
+            since: staleLastSeen,
+            lastSeen: staleLastSeen
+        )
+
+        let activeRecord = LocationServiceNodeRecord.make(
+            userUUID: activeUser,
+            nodeUUID: activeNode,
+            port: 12568,
+            probedGlobalIPv6: [],
+            ipv6Error: nil,
+            portMappingEnabled: false,
+            portMappingOrigin: .default,
+            online: true,
+            since: activeLastSeen,
+            lastSeen: activeLastSeen
+        )
+
+        await coordinator.publish(record: staleRecord)
+        await coordinator.publish(record: activeRecord)
+
+        let summary = await coordinator.summary(staleAfter: 120)
+        XCTAssertEqual(summary.totalNodes, 2)
+        XCTAssertEqual(summary.totalUsers, 2)
+        XCTAssertEqual(summary.activeNodes, 1)
+        XCTAssertEqual(summary.staleNodes, [staleNode])
+        XCTAssertEqual(summary.staleUsers, [staleUser])
+        XCTAssertEqual(summary.staleThresholdSeconds, 120)
     }
 }

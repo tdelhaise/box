@@ -30,6 +30,7 @@ final class BoxServerRuntimeController: @unchecked Sendable {
     private var portMappingCoordinator: PortMappingCoordinator?
     private var store: BoxServerStore?
     private var presenceTask: Task<Void, Never>?
+    private static let locationSummaryGraceInterval: TimeInterval = 120
 
     init(options: BoxRuntimeOptions) {
         self.options = options
@@ -177,7 +178,7 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             logger: logger,
             statusProvider: { [weak self] in
                 guard let self else { return "{\"status\":\"error\",\"message\":\"shutting-down\"}" }
-                return self.renderStatus()
+                return await self.renderStatus()
             },
             logTargetUpdater: { [weak self] targetDescription in
                 await self?.updateLogTarget(from: targetDescription) ?? "{\"status\":\"error\",\"message\":\"shutting-down\"}"
@@ -187,7 +188,7 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             },
             statsProvider: { [weak self] in
                 guard let self else { return "{\"status\":\"error\",\"message\":\"shutting-down\"}" }
-                return self.renderStats()
+                return await self.renderStats()
             },
             locateNode: { [weak self] uuid in
                 guard let self, let coordinator = self.locationCoordinator else {
@@ -314,6 +315,9 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             if let record = buildLocationServiceRecord() {
                 result["addresses"] = adminAddressesPayload(from: record)
                 result["connectivity"] = adminConnectivityPayload(from: record)
+            }
+            if let summary = await locationServiceSummaryPayload() {
+                result["locationService"] = summary
             }
             return adminResponse(result)
         } catch {
@@ -452,7 +456,7 @@ final class BoxServerRuntimeController: @unchecked Sendable {
         logger.info("server starting", metadata: metadata)
     }
 
-    private func renderStatus() -> String {
+    private func renderStatus() async -> String {
         let snapshot = state.withLockedValue { $0 }
         let metrics = store.map { Self.queueMetrics(at: $0.root) } ?? QueueMetrics.zero
         var payload = statusDictionary(from: snapshot, metrics: metrics)
@@ -461,13 +465,16 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             payload["addresses"] = adminAddressesPayload(from: record)
             payload["connectivity"] = adminConnectivityPayload(from: record)
         }
+        if let summary = await locationServiceSummaryPayload() {
+            payload["locationService"] = summary
+        }
         return adminResponse(payload)
     }
 
-    private func renderStats() -> String {
+    private func renderStats() async -> String {
         let snapshot = state.withLockedValue { $0 }
         let metrics = store.map { Self.queueMetrics(at: $0.root) } ?? QueueMetrics.zero
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "logLevel": "\(snapshot.logLevel)",
             "logLevelOrigin": "\(snapshot.logLevelOrigin)",
             "logTarget": logTargetDescription(snapshot.logTarget),
@@ -476,10 +483,18 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             "objects": metrics.objectCount,
             "queueFreeBytes": metrics.freeBytes ?? NSNull(),
             "hasGlobalIPv6": snapshot.hasGlobalIPv6,
-            "portMappingEnabled": snapshot.portMappingRequested,
-            "addresses": adminAddressesPayload(from: buildLocationServiceRecord()!),
-            "connectivity": adminConnectivityPayload(from: buildLocationServiceRecord()!)
+            "portMappingEnabled": snapshot.portMappingRequested
         ]
+        if let record = buildLocationServiceRecord() {
+            payload["addresses"] = adminAddressesPayload(from: record)
+            payload["connectivity"] = adminConnectivityPayload(from: record)
+        } else {
+            payload["addresses"] = []
+            payload["connectivity"] = NSNull()
+        }
+        if let summary = await locationServiceSummaryPayload() {
+            payload["locationService"] = summary
+        }
         return adminResponse(payload)
     }
 
@@ -678,6 +693,31 @@ final class BoxServerRuntimeController: @unchecked Sendable {
                 "source": address.source.rawValue
             ]
         }
+    }
+
+    private func locationServiceSummaryPayload() async -> [String: Any]? {
+        guard let coordinator = locationCoordinator else { return nil }
+        let summary = await coordinator.summary(staleAfter: Self.locationSummaryGraceInterval)
+        var metadata: [String: Logger.MetadataValue] = [
+            "totalNodes": .stringConvertible(summary.totalNodes),
+            "activeNodes": .stringConvertible(summary.activeNodes),
+            "totalUsers": .stringConvertible(summary.totalUsers),
+            "threshold": .stringConvertible(summary.staleThresholdSeconds)
+        ]
+        if !summary.staleNodes.isEmpty {
+            metadata["staleNodes"] = .array(summary.staleNodes.map { .string($0.uuidString) })
+        }
+        if !summary.staleUsers.isEmpty {
+            metadata["staleUsers"] = .array(summary.staleUsers.map { .string($0.uuidString) })
+        }
+
+        if summary.staleNodes.isEmpty && summary.staleUsers.isEmpty {
+            logger.debug("location service summary", metadata: metadata)
+        } else {
+            logger.warning("location service reports stale entries", metadata: metadata)
+        }
+
+        return adminLocationSummaryPayload(from: summary)
     }
 
     private func adminConnectivityPayload(from record: LocationServiceNodeRecord) -> [String: Any] {

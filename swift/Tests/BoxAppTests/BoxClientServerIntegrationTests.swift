@@ -207,7 +207,7 @@ final class BoxClientServerIntegrationTests: XCTestCase {
 
         let queuesRoot = context.homeDirectory.appendingPathComponent(".box/queues", isDirectory: true)
         let store = try await BoxServerStore(root: queuesRoot, logger: Logger(label: "box.tests.store.locate"))
-        _ = try await store.ensureQueue("/uuid")
+        _ = try await store.ensureQueue("/whoswho")
 
         let clientNodeID = UUID()
         let clientUserID = UUID()
@@ -231,8 +231,8 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             userId: clientRecord.userUUID,
             userMetadata: ["schema": "box.location-service.v1"]
         )
-        try? await store.remove(queue: "/uuid", id: clientRecord.nodeUUID)
-        try await store.put(storedObject, into: "/uuid")
+        try? await store.remove(queue: "/whoswho", id: clientRecord.nodeUUID)
+        try await store.put(storedObject, into: "/whoswho")
 
         let clientOptions = BoxRuntimeOptions(
             mode: .client,

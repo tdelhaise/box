@@ -5,10 +5,20 @@ import Logging
 /// Coordinates publication of Location Service records into the local queue store.
 actor LocationServiceCoordinator {
     private enum Constants {
-        static let queueName = "/uuid"
+        static let queueName = "/whoswho"
         static let contentType = "application/json; charset=utf-8"
         static let nodeSchema = "box.location-service.v1"
         static let userSchema = "box.location-service.user.v1"
+    }
+
+    struct Summary: Sendable {
+        let generatedAt: Date
+        let totalNodes: Int
+        let totalUsers: Int
+        let activeNodes: Int
+        let staleNodes: [UUID]
+        let staleUsers: [UUID]
+        let staleThresholdSeconds: Int
     }
 
     private let store: BoxServerStore
@@ -72,7 +82,7 @@ actor LocationServiceCoordinator {
             logger.error("failed to publish location service record", metadata: ["error": .string("\(error)")])
         }
     }
-    
+
     private func publishUserIndex(for userUUID: UUID) async {
         do {
             let nodes = await resolve(userUUID: userUUID)
@@ -180,5 +190,41 @@ actor LocationServiceCoordinator {
             )
             return nil
         }
+    }
+
+    func summary(staleAfter seconds: TimeInterval = 120) async -> Summary {
+        let records = await snapshot()
+        let generatedAt = Date()
+        var staleNodes: [UUID] = []
+        var userActivity: [UUID: Bool] = [:]
+
+        for record in records {
+            let lastSeenDate = Date(timeIntervalSince1970: Double(record.lastSeen) / 1000.0)
+            let isStale = generatedAt.timeIntervalSince(lastSeenDate) > seconds
+            if isStale {
+                staleNodes.append(record.nodeUUID)
+            }
+            if let current = userActivity[record.userUUID] {
+                userActivity[record.userUUID] = current || !isStale
+            } else {
+                userActivity[record.userUUID] = !isStale
+            }
+        }
+
+        let sortedStaleNodes = staleNodes.sorted { $0.uuidString < $1.uuidString }
+        let staleUsers = userActivity
+            .filter { !$0.value }
+            .map(\.key)
+            .sorted { $0.uuidString < $1.uuidString }
+
+        return Summary(
+            generatedAt: generatedAt,
+            totalNodes: records.count,
+            totalUsers: userActivity.keys.count,
+            activeNodes: records.count - sortedStaleNodes.count,
+            staleNodes: sortedStaleNodes,
+            staleUsers: staleUsers,
+            staleThresholdSeconds: Int(seconds)
+        )
     }
 }

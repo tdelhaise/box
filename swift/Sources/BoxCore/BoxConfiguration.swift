@@ -414,6 +414,11 @@ public extension BoxConfiguration {
     func save(to url: URL) throws {
         try persist(plist: makePlist(), to: url)
     }
+
+    /// Regenerates the node and user identifiers with fresh UUIDs.
+    mutating func rotateIdentities() {
+        common = Common(nodeUUID: UUID(), userUUID: UUID())
+    }
 }
 
 private func ensureConfigurationParentDirectoryExists(for url: URL) throws {

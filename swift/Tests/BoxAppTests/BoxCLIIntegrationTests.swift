@@ -44,6 +44,9 @@ final class BoxCLIIntegrationTests: XCTestCase {
             XCTAssertEqual(json["status"] as? String, "ok")
             XCTAssertNotNil(json["nodeUUID"])
             XCTAssertNotNil(json["userUUID"])
+            let summary = try XCTUnwrap(coerceDictionary(json["locationService"]))
+            XCTAssertNotNil(summary["totalNodes"])
+            XCTAssertNotNil(summary["staleThresholdSeconds"])
         }
     }
 
@@ -135,6 +138,131 @@ final class BoxCLIIntegrationTests: XCTestCase {
         }
     }
 
+    func testAdminLocationSummaryCLI() async throws {
+        try await runWithinTimeout {
+            let context = try await startServer()
+            defer { context.tearDown() }
+
+            try await context.waitForAdminSocket()
+
+            let (stdout, stderr, status) = try await Self.runBoxCLIAsync(
+                args: ["admin", "location-summary", "--socket", context.socketPath],
+                configurationPath: context.configurationURL.path
+            )
+            XCTAssertEqual(status, 0)
+            XCTAssertTrue(stderr.isEmpty)
+            XCTAssertTrue(stdout.contains("Location Service Summary"))
+            XCTAssertTrue(stdout.contains("totalNodes"))
+
+            let (jsonStdout, jsonStderr, jsonStatus) = try await Self.runBoxCLIAsync(
+                args: ["admin", "location-summary", "--socket", context.socketPath, "--json"],
+                configurationPath: context.configurationURL.path
+            )
+            XCTAssertEqual(jsonStatus, 0)
+            XCTAssertTrue(jsonStderr.isEmpty)
+            let summaryJSON = try decodeJSON(jsonStdout)
+            XCTAssertNotNil(summaryJSON["totalNodes"])
+        }
+    }
+
+    func testAdminLocationSummaryFailOnStale() async throws {
+        try await runWithinTimeout {
+            let context = try await startServer()
+            defer { context.tearDown() }
+
+            try await context.waitForAdminSocket()
+            try await context.waitForQueueInfrastructure()
+
+            let queuesRoot = context.homeDirectory.appendingPathComponent(".box/queues", isDirectory: true)
+            let store = try await BoxServerStore(root: queuesRoot, logger: Logger(label: "box.tests.cli.summary"))
+            _ = try await store.ensureQueue("/whoswho")
+
+            let staleUser = UUID()
+            let staleNode = UUID()
+            let staleRecord = LocationServiceNodeRecord.make(
+                userUUID: staleUser,
+                nodeUUID: staleNode,
+                port: 12567,
+                probedGlobalIPv6: [],
+                ipv6Error: nil,
+                portMappingEnabled: false,
+                portMappingOrigin: .default,
+                online: true,
+                since: 0,
+                lastSeen: 0
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let recordData = try encoder.encode(staleRecord)
+            let storedObject = BoxStoredObject(
+                id: staleRecord.nodeUUID,
+                contentType: "application/json; charset=utf-8",
+                data: [UInt8](recordData),
+                nodeId: staleRecord.nodeUUID,
+                userId: staleRecord.userUUID,
+                userMetadata: ["schema": "box.location-service.v1"]
+            )
+            try? await store.remove(queue: "/whoswho", id: staleRecord.nodeUUID)
+            _ = try await store.put(storedObject, into: "/whoswho")
+
+            let (stdout, stderr, status) = try await Self.runBoxCLIAsync(
+                args: ["admin", "location-summary", "--socket", context.socketPath, "--fail-on-stale"],
+                configurationPath: context.configurationURL.path
+            )
+            XCTAssertEqual(status, 2)
+            XCTAssertTrue(stderr.isEmpty)
+            XCTAssertTrue(stdout.contains(staleNode.uuidString))
+        }
+    }
+
+    func testInitConfigCLI() async throws {
+        try await runWithinTimeout {
+            let fileManager = FileManager.default
+            let tempHome = fileManager.temporaryDirectory.appendingPathComponent("box-init-\(UUID().uuidString)", isDirectory: true)
+            try fileManager.createDirectory(at: tempHome, withIntermediateDirectories: true)
+            defer { try? fileManager.removeItem(at: tempHome) }
+
+            let overrides = ["HOME": tempHome.path]
+
+            let (stdout, stderr, status) = try await Self.runBoxCLIAsync(
+                args: ["init-config", "--json"],
+                environment: overrides
+            )
+            XCTAssertEqual(status, 0)
+            XCTAssertTrue(stderr.isEmpty)
+            let summary = try decodeJSON(stdout)
+            let path = try XCTUnwrap(summary["path"] as? String)
+            XCTAssertEqual(summary["created"] as? Bool, true)
+            XCTAssertEqual(summary["rotated"] as? Bool, false)
+            let firstNode = try XCTUnwrap(summary["nodeUUID"] as? String)
+            let firstUser = try XCTUnwrap(summary["userUUID"] as? String)
+            XCTAssertTrue(fileManager.fileExists(atPath: path))
+
+            let (secondStdout, secondStderr, secondStatus) = try await Self.runBoxCLIAsync(
+                args: ["init-config", "--json"],
+                environment: overrides
+            )
+            XCTAssertEqual(secondStatus, 0)
+            XCTAssertTrue(secondStderr.isEmpty)
+            let secondSummary = try decodeJSON(secondStdout)
+            XCTAssertEqual(secondSummary["created"] as? Bool, false)
+            XCTAssertEqual(secondSummary["rotated"] as? Bool, false)
+            XCTAssertEqual(secondSummary["nodeUUID"] as? String, firstNode)
+            XCTAssertEqual(secondSummary["userUUID"] as? String, firstUser)
+
+            let (thirdStdout, thirdStderr, thirdStatus) = try await Self.runBoxCLIAsync(
+                args: ["init-config", "--json", "--rotate-identities"],
+                environment: overrides
+            )
+            XCTAssertEqual(thirdStatus, 0)
+            XCTAssertTrue(thirdStderr.isEmpty)
+            let thirdSummary = try decodeJSON(thirdStdout)
+            XCTAssertEqual(thirdSummary["rotated"] as? Bool, true)
+            XCTAssertNotEqual(thirdSummary["nodeUUID"] as? String, firstNode)
+            XCTAssertNotEqual(thirdSummary["userUUID"] as? String, firstUser)
+        }
+    }
+
     func testClientLocateCLI() async throws {
         try await runWithinTimeout {
             let chosenPort = try allocateEphemeralUDPPort()
@@ -160,7 +288,7 @@ final class BoxCLIIntegrationTests: XCTestCase {
 
             let queuesRoot = context.homeDirectory.appendingPathComponent(".box/queues", isDirectory: true)
             let store = try await BoxServerStore(root: queuesRoot, logger: Logger(label: "box.tests.cli.locate"))
-            _ = try await store.ensureQueue("/uuid")
+            _ = try await store.ensureQueue("/whoswho")
 
             let record = LocationServiceNodeRecord.make(
                 userUUID: clientUserUUID,
@@ -185,8 +313,8 @@ final class BoxCLIIntegrationTests: XCTestCase {
                 userId: record.userUUID,
                 userMetadata: ["schema": "box.location-service.v1"]
             )
-            try? await store.remove(queue: "/uuid", id: record.nodeUUID)
-            try await store.put(storedObject, into: "/uuid")
+            try? await store.remove(queue: "/whoswho", id: record.nodeUUID)
+            try await store.put(storedObject, into: "/whoswho")
 
             var configurationResult = try BoxConfiguration.load(from: context.configurationURL)
             configurationResult.configuration.common = .init(nodeUUID: clientNodeUUID, userUUID: clientUserUUID)
@@ -215,7 +343,7 @@ final class BoxCLIIntegrationTests: XCTestCase {
     }
 
     // Helper to run the box CLI tool
-    private static func runBoxCLIAsync(args: [String], configurationPath: String? = nil) async throws -> (String, String, Int32) {
+    private static func runBoxCLIAsync(args: [String], configurationPath: String? = nil, environment: [String: String]? = nil) async throws -> (String, String, Int32) {
         let boxBinary = productsDirectory.appendingPathComponent("box")
 
         let process = Process()
@@ -230,6 +358,14 @@ final class BoxCLIIntegrationTests: XCTestCase {
         process.standardOutput = outputPipe
         let errorPipe = Pipe()
         process.standardError = errorPipe
+
+        var environmentVariables = ProcessInfo.processInfo.environment
+        if let environment {
+            for (key, value) in environment {
+                environmentVariables[key] = value
+            }
+        }
+        process.environment = environmentVariables
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in

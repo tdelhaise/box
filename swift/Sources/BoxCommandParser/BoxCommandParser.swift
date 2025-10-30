@@ -19,7 +19,7 @@ public struct BoxCommandParser: AsyncParsableCommand {
         CommandConfiguration(
             commandName: "box",
             abstract: "Box messaging toolkit (Swift rewrite).",
-            subcommands: [Admin.self]
+            subcommands: [Admin.self, InitConfig.self]
         )
     }
 
@@ -293,13 +293,123 @@ public struct BoxCommandParser: AsyncParsableCommand {
 // MARK: - Admin Subcommands
 
 extension BoxCommandParser {
+    /// `box init-config` — bootstrap or repair the configuration PLIST.
+    public struct InitConfig: AsyncParsableCommand {
+        public static var configuration: CommandConfiguration {
+            CommandConfiguration(
+                commandName: "init-config",
+                abstract: "Create or repair ~/.box/Box.plist (ensures UUIDs and default sections)."
+            )
+        }
+
+        @Option(name: .shortAndLong, help: "Configuration PLIST path (defaults to ~/.box/Box.plist).")
+        public var path: String?
+
+        @Flag(name: .long, help: "Regenerate node and user UUIDs even if they already exist.")
+        public var rotateIdentities: Bool = false
+
+        @Flag(name: .long, help: "Emit the summary as JSON.")
+        public var json: Bool = false
+
+        public init() {}
+
+        public mutating func run() throws {
+            let resolvedURL: URL
+            if let path, !path.isEmpty {
+                resolvedURL = URL(fileURLWithPath: NSString(string: path).expandingTildeInPath)
+            } else if let defaultURL = BoxPaths.configurationURL(explicitPath: nil) {
+                resolvedURL = defaultURL
+            } else {
+                throw ValidationError("Unable to determine configuration path. Specify one with --path.")
+            }
+
+            let usesDefaultLocation = path == nil
+            try Self.ensureBaseDirectories(for: resolvedURL, usesDefaultLocation: usesDefaultLocation)
+
+            var loadResult = try BoxConfiguration.load(from: resolvedURL)
+            var configuration = loadResult.configuration
+            var rotated = false
+
+            if rotateIdentities {
+                rotated = true
+                configuration.rotateIdentities()
+                try configuration.save(to: loadResult.url)
+                loadResult.configuration = configuration
+            }
+
+            let summary: [String: Any] = [
+                "path": loadResult.url.path,
+                "created": loadResult.wasCreated,
+                "rotated": rotated,
+                "nodeUUID": configuration.common.nodeUUID.uuidString,
+                "userUUID": configuration.common.userUUID.uuidString
+            ]
+
+            if json {
+                let data = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys])
+                FileHandle.standardOutput.write(data)
+                FileHandle.standardOutput.write("\n".data(using: .utf8)!)
+            } else {
+                let createdText = loadResult.wasCreated ? "yes" : "no"
+                let rotatedText = rotated ? "yes" : "no"
+                let lines = [
+                    "Configuration path: \(loadResult.url.path)",
+                    "Created: \(createdText)",
+                    "Rotated identities: \(rotatedText)",
+                    "Node UUID: \(configuration.common.nodeUUID.uuidString)",
+                    "User UUID: \(configuration.common.userUUID.uuidString)"
+                ]
+                FileHandle.standardOutput.write(lines.joined(separator: "\n").data(using: .utf8) ?? Data())
+                FileHandle.standardOutput.write("\n".data(using: .utf8)!)
+            }
+        }
+
+        private static func ensureBaseDirectories(for configurationURL: URL, usesDefaultLocation: Bool) throws {
+            if usesDefaultLocation {
+                guard let boxDirectory = BoxPaths.boxDirectory() else {
+                    throw ValidationError("Unable to resolve ~/.box directory. Set HOME or specify --path.")
+                }
+                try ensureDirectory(boxDirectory)
+                if let runDirectory = BoxPaths.runDirectory() {
+                    try ensureDirectory(runDirectory)
+                }
+                if let logsDirectory = BoxPaths.logsDirectory() {
+                    try ensureDirectory(logsDirectory)
+                }
+                if let queuesDirectory = BoxPaths.queuesDirectory() {
+                    try ensureDirectory(queuesDirectory)
+                    try ensureDirectory(queuesDirectory.appendingPathComponent("INBOX", isDirectory: true))
+                    try ensureDirectory(queuesDirectory.appendingPathComponent("whoswho", isDirectory: true))
+                }
+            } else {
+                try ensureDirectory(configurationURL.deletingLastPathComponent())
+            }
+        }
+
+        private static func ensureDirectory(_ url: URL) throws {
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) {
+                if !isDirectory.boolValue {
+                    throw ValidationError("Expected directory at \(url.path).")
+                }
+                return
+            }
+#if !os(Windows)
+            let attributes: [FileAttributeKey: Any]? = [.posixPermissions: NSNumber(value: Int16(0o700))]
+#else
+            let attributes: [FileAttributeKey: Any]? = nil
+#endif
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: attributes)
+        }
+    }
+
     /// `box admin` namespace handling administrative commands.
     public struct Admin: AsyncParsableCommand {
         public static var configuration: CommandConfiguration {
             CommandConfiguration(
                 commandName: "admin",
                 abstract: "Interact with the local admin channel.",
-                subcommands: [Status.self, Ping.self, LogTarget.self, ReloadConfig.self, Stats.self, NatProbe.self, Locate.self]
+                subcommands: [Status.self, Ping.self, LogTarget.self, ReloadConfig.self, Stats.self, NatProbe.self, Locate.self, LocationSummary.self]
             )
         }
 
@@ -430,6 +540,48 @@ extension BoxCommandParser {
             }
         }
 
+        /// `box admin location-summary` — renders the Location Service supervision snapshot.
+        public struct LocationSummary: AsyncParsableCommand {
+            @Option(name: .shortAndLong, help: "Admin socket path (defaults to ~/.box/run/boxd.socket).")
+            public var socket: String?
+
+            @Flag(name: .long, help: "Emit the summary as JSON instead of human-readable text.")
+            public var json: Bool = false
+
+            @Flag(name: .long, help: "Exit with code 2 when stale nodes or users are detected.")
+            public var failOnStale: Bool = false
+
+            @Flag(name: .long, help: "Exit with code 3 when no nodes are registered.")
+            public var failIfEmpty: Bool = false
+
+            public init() {}
+
+            public mutating func run() throws {
+                let response = try Admin.sendCommand("status", socketOverride: socket)
+                let summary = try Admin.extractLocationSummary(fromStatus: response)
+
+                if json {
+                    let data = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys])
+                    FileHandle.standardOutput.write(data)
+                    FileHandle.standardOutput.write("\n".data(using: .utf8)!)
+                } else {
+                    let rendered = Admin.formatLocationSummary(summary)
+                    FileHandle.standardOutput.write(rendered.data(using: .utf8) ?? Data())
+                }
+
+                let totalNodes = summary["totalNodes"] as? Int ?? 0
+                let staleNodes = summary["staleNodes"] as? [Any] ?? []
+                let staleUsers = summary["staleUsers"] as? [Any] ?? []
+
+                if failOnStale && (!staleNodes.isEmpty || !staleUsers.isEmpty) {
+                    throw ExitCode(2)
+                }
+                if failIfEmpty && totalNodes == 0 {
+                    throw ExitCode(3)
+                }
+            }
+        }
+
         private static func sendCommand(_ command: String, socketOverride: String?) throws -> String {
             let socketPath = try resolveSocketPath(socketOverride)
             let transport = BoxAdminTransportFactory.makeTransport(socketPath: socketPath)
@@ -470,6 +622,47 @@ extension BoxCommandParser {
                 throw ValidationError("Unable to encode admin command payload.")
             }
             return json
+        }
+
+        private static func extractLocationSummary(fromStatus response: String) throws -> [String: Any] {
+            guard let data = response.data(using: .utf8) else {
+                throw ValidationError("Unable to decode status response.")
+            }
+            let object = try JSONSerialization.jsonObject(with: data, options: [])
+            guard let root = object as? [String: Any] else {
+                throw ValidationError("Status response is not a JSON object.")
+            }
+            guard let summary = root["locationService"] as? [String: Any] else {
+                throw ValidationError("Status response does not include locationService summary.")
+            }
+            return summary
+        }
+
+        private static func formatLocationSummary(_ summary: [String: Any]) -> String {
+            let generatedAt = summary["generatedAt"] as? String ?? "unknown"
+            let totalNodes = summary["totalNodes"] as? Int ?? 0
+            let activeNodes = summary["activeNodes"] as? Int ?? 0
+            let totalUsers = summary["totalUsers"] as? Int ?? 0
+            let staleThreshold = summary["staleThresholdSeconds"] as? Int ?? 120
+            let staleNodes = (summary["staleNodes"] as? [String]) ?? []
+            let staleUsers = (summary["staleUsers"] as? [String]) ?? []
+
+            let lines = [
+                "Location Service Summary",
+                "  generatedAt: \(generatedAt)",
+                "  totalNodes: \(totalNodes)",
+                "  activeNodes: \(activeNodes)",
+                "  totalUsers: \(totalUsers)",
+                "  staleThresholdSeconds: \(staleThreshold)",
+                "  staleNodes: \(formatList(staleNodes))",
+                "  staleUsers: \(formatList(staleUsers))"
+            ]
+            return lines.joined(separator: "\n") + "\n"
+        }
+
+        private static func formatList(_ values: [String]) -> String {
+            guard !values.isEmpty else { return "none" }
+            return values.joined(separator: ", ")
         }
     }
 }

@@ -201,7 +201,7 @@ Future work:
 
 - Transport: Payloads are carried over the Box protocol (UDP) and protected by session encryption after HELLO. JSON here illustrates field semantics; CBOR/JSON encodings are acceptable.
 - Authentication: Requests are authenticated at the transport layer; sensitive fields may be signed by the node identity key where indicated.
-- Implementation note (Swift prototype): records are serialised as JSON and persisted in the `/uuid` queue via the `LocationServiceCoordinator`, reusing the same builder that powers `box admin status|stats` so `addresses[]` and `connectivity` remain consistent across surfaces. Root resolvers replicate those entries into the permanent `whoswho` queue (future work will converge on a single on-disk layout).
+- Implementation note (Swift runtime): records are serialised as JSON and persisted in la file permanente `whoswho/` via le `LocationServiceCoordinator`, en réutilisant le même builder que les réponses `box admin status|stats` afin de garder `addresses[]` et `connectivity` cohérents sur toutes les surfaces.
 
 Register/Update Node
 - Request
@@ -479,7 +479,6 @@ brevity once a refreshed sample is committed.
     - For every `user_uuid`, the root resolver stores a companion JSON file listing the active `node_uuid`s owned by that user (+ optional metadata as the protocol evolves).
     - Records are signed at the transport layer (Noise/libsodium milestone) so that resolvers can reject forged presence updates.
   - ACL: readable by authorized peers (including clients resolving remote nodes); writable by the owner’s nodes and by root resolvers that mirror the data; deletion restricted to owner/admin.
-  - Relationship with `/uuid`: current Swift prototypes still serialise presence under the `/uuid` queue in each node’s local store; root resolvers mirror that content into the global `whoswho` queue until the on-disk layout is unified in a future milestone.
 
 - `/location` (content_type: `application/cbor` or `application/json`):
   - Purpose: Publish optional geographic location per UUID.
@@ -660,9 +659,9 @@ PUT example
 10. Server (`boxd`) Behavior
 
 - Listen on configurable UDP port; prefer IPv6.
-- Register/update presence in embedded LS on start and periodically (keep‑alive with last_seen). Presence is also published into `/uuid`.
+- Register/update presence in embedded LS on start and periodically (keep‑alive with last_seen). Presence is persisted dans la file permanente `whoswho/`.
 - Enforce ACLs per queue and per user/node.
-- Persist objects sous `~/.box/queues/<queue>/timestamp-UUID.json` (payload base64 + métadonnées incluant `content_type`, `node_id`, `user_id`, `created_at`). **Exception :** la file `/uuid` écrit directement `<uuid>.json` afin que les identifiants de nœud ou d’utilisateur soient mis à jour en place sans proliférer de doublons. Le daemon DOIT provisionner cette hiérarchie au premier démarrage, créer la file `INBOX/` et refuser de démarrer si la création échoue. Les informations LS (`/uuid`, `/location`) sont également stockées via ces files (`/uuid` hébergeant à la fois les enregistrements de nœud et un index utilisateur).
+- Persist objects sous `~/.box/queues/<queue>/timestamp-UUID.json` (payload base64 + métadonnées incluant `content_type`, `node_id`, `user_id`, `created_at`). **Exception :** la file `whoswho` écrit directement `<uuid>.json` afin que les identifiants de nœud ou d’utilisateur soient mis à jour en place sans proliférer de doublons. Le daemon DOIT provisionner cette hiérarchie au premier démarrage, créer la file `INBOX/` et refuser de démarrer si la création échoue. Les informations LS (`whoswho`, `/location`) sont également stockées via ces files (`whoswho` hébergeant à la fois les enregistrements de nœud et un index utilisateur).
 - Chaque queue peut être marquée « permanente » via la configuration (`server.permanent_queues`). Dans ce cas, les opérations `GET` doivent retourner le message sans le supprimer du stockage; les clients sont responsables de la purge explicite (via `DELETE`/`PURGE` à venir) si nécessaire.
 - When `port_mapping = true` (ou `--enable-port-mapping`), tenter automatiquement une ouverture : UPnP (`M-SEARCH` IGD → `AddPortMapping` UDP + `GetExternalIPAddress`), PCP (`MAP` UDP/5351 avec nonce, refresh à mi-vie) *et* une requête `PEER` pour percer le pare-feu entrant, puis NAT-PMP (`MAP`/`UNMAP` + `PublicAddress` vers la passerelle par défaut). Chaque étape doit être journalisée, retirée proprement (`DeletePortMapping` / lifetime 0) à l’arrêt, et expose un code d’erreur structuré. En cas de succès, la coordination lance une sonde reachability légère (HELLO UDP à l’adresse externe découverte) afin de vérifier que l’endpoint annoncé fonctionne réellement. Les réponses admin exposent `port_mapping_status`, `port_mapping_error`, `port_mapping_error_code`, `port_mapping_backend`, `port_mapping_external_port`, `port_mapping_external_ipv4`, `port_mapping_lease_seconds`, `port_mapping_refreshed_at`, `port_mapping_peer_status`, `port_mapping_peer_lifetime`, `port_mapping_peer_last_updated`, `port_mapping_peer_error`, `port_mapping_reachability_status`, `port_mapping_reachability_round_trip_millis`, `port_mapping_reachability_checked_at` et `port_mapping_reachability_error` pour suivre l’état courant. Les opérateurs peuvent fournir un fallback manuel (`external_address`, `external_port` dans `Box.plist` ou `--external-address/--external-port`) : l’admin channel restitue alors `manualExternalAddress|Port|Origin` et les enregistrements Location Service ajoutent des entrées `addresses[]` avec `source = manual` (CLI) ou `source = config` (PLIST).
 - Optional at‑rest encryption with a server‑managed key.
@@ -680,11 +679,11 @@ PUT example
 - Unix/macOS:
   - Config: `~/.box/Box.plist`
   - Queues root: `~/.box/queues/` (permissions `700`)
-  - Keys: `~/.box/keys/identity.ed25519` (serveur), `~/.box/keys/client.ed25519` (optionnel)
+- Keys: `~/.box/keys/node.identity.json` (serveur), `~/.box/keys/client.identity.json` (optionnel) — format JSON (hex) généré par `BoxNoiseKeyStore` en attendant l’intégration libsodium.
 - Windows:
   - Config: `%USERPROFILE%\.box\Box.plist`
   - Queues root: `%USERPROFILE%\.box\queues`
-  - Keys: `%USERPROFILE%\.box\keys\identity.ed25519`
+- Keys: `%USERPROFILE%\\.box\keys\node.identity.json`
 
 11.3 Formats
 
@@ -754,22 +753,22 @@ Example defaults emphasizing privacy with explicit grants for standard queues:
   [[acl.global.allow]]
   principal = { type = "any" }
   capabilities = ["get", "list"]
-  queues = ["/uuid", "/location"]
+  queues = ["/whoswho", "/location"]
 
   # Example: deny delete for everyone on public queues at global level
   [[acl.global.deny]]
   principal = { type = "any" }
   capabilities = ["delete"]
-  queues = ["/uuid", "/location"]
+  queues = ["/whoswho", "/location"]
 
-  # Queue-level: /uuid — owner publishes presence; anyone may read
-  [acl.queue."/uuid"]
+  # Queue-level: /whoswho — owner publishes presence; anyone may read
+  [acl.queue."/whoswho"]
 
-  [[acl.queue."/uuid".allow]]
+  [[acl.queue."/whoswho".allow]]
   principal = { type = "owner" }
   capabilities = ["put", "delete"]
 
-  [[acl.queue."/uuid".allow]]
+  [[acl.queue."/whoswho".allow]]
   principal = { type = "any" }
   capabilities = ["get", "list"]
 
@@ -803,10 +802,10 @@ Notes:
 
 11.6 ACL Evaluation Examples
 
-Example 1 — Read presence from /uuid (allowed):
-- Global: `any` allowed `get`, `list` on `/uuid`.
-- Queue `/uuid`: `any` allowed `get`, `list`.
-- Result: `any` principal may `get`/`list` objects from `/uuid`.
+Example 1 — Read presence from whoswho (allowed):
+- Global: `any` allowed `get`, `list` on `/whoswho`.
+- Queue `/whoswho`: `any` allowed `get`, `list`.
+- Result: `any` principal may `get`/`list` objects from `/whoswho`.
 
 Example 2 — Untrusted user sending to /message (denied):
 - Global: default deny.
@@ -981,7 +980,7 @@ Safety
 - Authentication/Authorization
   - Access is restricted by OS-level file/pipe permissions to the same non-privileged user that owns `boxd`.
   - `boxd` refuses admin-channel requests if the caller is not the same user.
-  - Swift rewrite (MVP 2025): admin commands are invoked as plain text lines (`status`, `ping`, `log-target <target|json>`, `reload-config [json]`, `stats`, `locate <uuid>`) retournant un JSON terminé par un saut de ligne. `locate` accepte un UUID de nœud (réponse `{"record": …}`) ou un UUID d’utilisateur (réponse `{"user": {"nodeUUIDs": [...], "records": [...]}}`). Dans tous les cas, la commande refuse de divulguer des informations si le couple `(node_id, user_id)` du demandeur n’a jamais été enregistré.
+  - Swift rewrite (MVP 2025): admin commands are invoked as plain text lines (`status`, `ping`, `log-target <target|json>`, `reload-config [json]`, `stats`, `nat-probe [json]`, `locate <uuid>`, `location-summary [flags]`) retournant un JSON terminé par un saut de ligne. `locate` accepte un UUID de nœud (réponse `{"record": …}`) ou un UUID d’utilisateur (réponse `{"user": {"nodeUUIDs": [...], "records": [...]}}`). `location-summary` renvoie un instantané supervisant les entrées `whoswho/` (totaux, seuil, identifiants stale) et peut être consommé via le CLI pour enclencher des alertes. Dans tous les cas, la commande refuse de divulguer des informations si le couple `(node_id, user_id)` du demandeur n’a jamais été enregistré.
   - Implementation status (2025-10): socket Unix et named pipe Windows disponibles avec ACL restreintes; `log-target` pilote Puppy (`stderr|stdout|file:`) et `reload-config` relit les PLIST. Restent à intégrer: tests d’intégration CLI↔️serveur et les commandes NAT/LS décrites ci-dessous.
 
 - Message Format
@@ -1006,7 +1005,7 @@ Safety
 Assets
 - Data in transit between nodes (messages/files, metadata).
 - Identity keys (Ed25519), session keys, ACL configurations.
-- Presence/location data in `/uuid` and `/location`.
+- Presence/location data in `whoswho` and `/location`.
 
 Adversaries and Capabilities
 - Passive network observer: can capture packets but cannot break modern crypto.

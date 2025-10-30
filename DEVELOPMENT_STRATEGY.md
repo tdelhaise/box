@@ -49,10 +49,9 @@ Development Strategy
 
 ### Backlog court terme (extraits)
 Voir `NEXT_STEPS.md` pour la liste détaillée. Priorités actuelles :
-1. Unifier la persistance `whoswho` (écriture directe depuis `BoxServer` plutôt que miroir `/uuid`).
-2. Superviser les rafraîchissements racines (tests d’intégration + instrumentation).
-3. Préparer le passage Noise/libsodium (structures de clés, tests unitaires).
-4. Finaliser les outils CLI pour la génération initiale du PLIST et la vérification des identités.
+1. Exploiter les métriques `locationService` (alerting, supervision racines, intégration observabilité).
+2. Préparer le passage Noise/libsodium (structures de clés, tests unitaires).
+3. Approfondir la couverture CLI/integration (PUT/GET permanents, nat-probe succès, export LS).
 
 ### Structure de documentation
 - `README.md` — aperçu, build, topologie racines, commandes essentielles.

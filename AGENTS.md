@@ -17,8 +17,10 @@ Agents Guide
 ### Points d’attention
 - **Swift only** : aucun retour de C, CMake ou scripts bash historiques.
 - **Binaire unique** : `box` fait office de client et serveur (`--server`).
-- **Admin channel** : `swift run box admin <cmd>` via socket Unix `~/.box/run/boxd.socket`.
+- **Admin channel** : `swift run box admin <cmd>` via socket Unix `~/.box/run/boxd.socket` (commandes `status|ping|log-target|reload-config|stats|nat-probe|locate|location-summary`).
 - **Configuration** : fichier unique `~/.box/Box.plist` (sections `common`, `server`, `client`). Génération auto des UUID si absent.
+- **Init config** : `swift run box init-config [--rotate-identities] [--json]` crée/répare le PLIST et prépare `~/.box/{queues,logs,run}`.
+- **Identités Noise** : `BoxNoiseKeyStore` écrit les clefs placeholder dans `~/.box/keys/node.identity.json` et `client.identity.json` (hex JSON en attendant libsodium).
 - **Location Service** : enregistrements JSON (`whoswho/<node_uuid>.json`, `whoswho/<user_uuid>.json`), rafraîchissement toutes les 60 s, même builder que les réponses admin.
 - **Réseau** : privilégier IPv6 global; `--enable-port-mapping` déclenche UPnP → PCP (MAP+PEER) → NAT-PMP + reachability HELLO. Les champs `portMapping*`, `manualExternal*`, `hasGlobalIPv6`, etc., doivent rester cohérents entre runtime, admin et LS.
 - **Stockage** : `~/.box/queues/<queue>/`. `INBOX` est obligatoire. Les queues listées dans `server.permanent_queues` ne détruisent pas les messages lors d’un `GET`.

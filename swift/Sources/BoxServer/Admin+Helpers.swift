@@ -31,6 +31,18 @@ internal func adminLocationUserPayload(userUUID: UUID, records: [LocationService
     return payload
 }
 
+internal func adminLocationSummaryPayload(from summary: LocationServiceCoordinator.Summary) -> [String: Any] {
+    [
+        "generatedAt": iso8601String(summary.generatedAt),
+        "totalNodes": summary.totalNodes,
+        "activeNodes": summary.activeNodes,
+        "totalUsers": summary.totalUsers,
+        "staleNodes": summary.staleNodes.map { $0.uuidString },
+        "staleUsers": summary.staleUsers.map { $0.uuidString },
+        "staleThresholdSeconds": summary.staleThresholdSeconds
+    ]
+}
+
 extension LocationServiceNodeRecord {
     func toDictionary() -> [String: Any] {
         var dict: [String: Any] = [

@@ -356,9 +356,10 @@ public actor BoxServerStore {
 	}
 
 	private func makeFilename(for object: BoxStoredObject, queue: String) -> String {
-		if queue.caseInsensitiveCompare("uuid") == .orderedSame {
-			return "\(object.id.uuidString).json"
-		}
+        let queuesWithoutTimestamp = ["uuid", "whoswho"]
+        if queuesWithoutTimestamp.contains(where: { queue.caseInsensitiveCompare($0) == .orderedSame }) {
+            return "\(object.id.uuidString).json"
+        }
 		let ts = iso8601BasicUTC(object.createdAt)
 		return "\(ts)-\(object.id.uuidString).json"
 	}

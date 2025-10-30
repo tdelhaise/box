@@ -30,6 +30,8 @@ L’admin s’appuie sur `~/.box/run/boxd.socket` (Unix) ou `\\.\pipe\boxd-admin
 - Section `client` : `address`, `port`, `log_target`, préférences d’auto‑locate.
 - Les paramètres CLI prennent le pas, puis les variables d’environnement, puis le fichier PLIST.
 - Lors de la première exécution, une queue `INBOX` et la file permanente `whoswho/` sont créées sous `~/.box/queues/`.
+- `swift run box init-config [--rotate-identities] [--json]` crée ou répare `Box.plist` (UUID garantis, sections par défaut) et prépare `~/.box/{queues,logs,run}`.
+- Les identités Noise sont gérées par `BoxNoiseKeyStore` (`~/.box/keys/node.identity.json` et `client.identity.json` en hex JSON, prêtes pour l’intégration libsodium).
 
 ### Topologie « root resolvers »
 - Une installation de développement peut se contenter d’un VPS OVH VPS‑2/3 (Ubuntu 24.04/25.04) avec IPv6 statique : cloner le dépôt, installer Swift 6.2, lancer `swift run box --server`.
@@ -49,10 +51,11 @@ L’admin s’appuie sur `~/.box/run/boxd.socket` (Unix) ou `\\.\pipe\boxd-admin
 - Sonde IPv6 automatique au démarrage (`hasGlobalIPv6`, `globalIPv6Addresses`, `ipv6ProbeError`).
 - Option `--enable-port-mapping` / `port_mapping = true` : séquence UPnP → PCP (`MAP` + `PEER`) → NAT‑PMP, puis sonde `HELLO` sur l’endpoint externe. Télemetrie renvoyée via admin : `portMappingStatus`, `portMappingBackend`, `portMappingPeer*`, `portMappingReachability*`, etc.
 - `swift run box admin nat-probe [--gateway <ip>]` exécute la séquence côté CLI (tests en CI attendent `disabled|skipped` lorsque le mapping est désactivé).
+- `swift run box admin location-summary [--json] [--fail-on-stale] [--fail-if-empty]` inspecte `whoswho/` (affiche les nœuds actifs/stale et retourne un code ≠ 0 selon les options, utile pour la supervision des racines).
 - Pas de dépendance STUN/ICE ; si la passerelle ne supporte pas ces protocoles, configurer un forwarding manuel et renseigner `external_address/external_port`.
 
 ### Tests end-to-end
-- `BoxCLIIntegrationTests` couvre `box admin status|ping|locate|nat-probe` et `box --locate`. Chaque test se termine en < 30 s par design (`XCTExpectFailure` si timeout).
+- `BoxCLIIntegrationTests` couvre `box admin status|ping|locate|nat-probe|location-summary` et `box --locate`. Chaque test se termine en < 30 s par design (`XCTExpectFailure` si timeout).
 - `BoxClientServerIntegrationTests` vérifie PUT/GET/LOCATE via UDP, y compris le comportement « permanent queue ».
 - Pour lancer manuellement une session de test : `swift test --filter BoxCLIIntegrationTests.testNatProbeDisabled`.
 
@@ -67,7 +70,7 @@ L’admin s’appuie sur `~/.box/run/boxd.socket` (Unix) ou `\\.\pipe\boxd-admin
 ### Documentation complémentaire
 - **SPECS.md** — protocole, format des queues, enregistrements Location Service (`whoswho`).
 - **DEVELOPMENT_STRATEGY.md** — jalons Swift (S0–S4), opérations/hosting, intégration libsodium à venir.
-- **NEXT_STEPS.md** — backlog court terme (ex. unification `/uuid` → `whoswho`, supervision racines).
+- **NEXT_STEPS.md** — backlog court terme (alerting racines, init-config, préparation Noise/libsodium).
 - **AGENTS.md** — aide-mémoire pour les contributeurs.
 
 ### Contribution
