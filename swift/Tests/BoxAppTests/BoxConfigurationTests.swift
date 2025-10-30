@@ -15,7 +15,11 @@ final class BoxConfigurationTests: XCTestCase {
         let propertyList: [String: Any] = [
             "common": [
                 "node_uuid": nodeIdentifier.uuidString,
-                "user_uuid": userIdentifier.uuidString
+                "user_uuid": userIdentifier.uuidString,
+                "root_servers": [
+                    ["address": "2001:db8::5", "port": 17500],
+                    ["address": "198.51.100.42"]
+                ]
             ],
             "server": [
             "port": 15000,
@@ -45,6 +49,11 @@ final class BoxConfigurationTests: XCTestCase {
         let configuration = result.configuration
         XCTAssertEqual(configuration.common.nodeUUID, nodeIdentifier)
         XCTAssertEqual(configuration.common.userUUID, userIdentifier)
+        XCTAssertEqual(configuration.common.rootServers.count, 2)
+        XCTAssertEqual(configuration.common.rootServers[0].address, "2001:db8::5")
+        XCTAssertEqual(configuration.common.rootServers[0].port, 17500)
+        XCTAssertEqual(configuration.common.rootServers[1].address, "198.51.100.42")
+        XCTAssertEqual(configuration.common.rootServers[1].port, BoxRuntimeOptions.defaultPort)
 
         XCTAssertEqual(configuration.server.port, 15000)
         XCTAssertEqual(configuration.server.logLevel, Logger.Level.debug)
@@ -77,6 +86,7 @@ final class BoxConfigurationTests: XCTestCase {
         let configuration = result.configuration
         XCTAssertNotNil(configuration.common.nodeUUID)
         XCTAssertNotNil(configuration.common.userUUID)
+        XCTAssertEqual(configuration.common.rootServers, [])
 
         XCTAssertEqual(configuration.server.logLevel, .info)
         let expectedServerTarget: String = {
@@ -96,6 +106,7 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertNil(configuration.server.externalAddress)
         XCTAssertNil(configuration.server.externalPort)
         XCTAssertEqual(configuration.server.permanentQueues ?? [], [])
+        XCTAssertEqual(configuration.common.rootServers, [])
         XCTAssertEqual(configuration.server.permanentQueues ?? [], [])
 
         XCTAssertEqual(configuration.client.logLevel, .info)
@@ -121,6 +132,7 @@ final class BoxConfigurationTests: XCTestCase {
         let common = contents?["common"] as? [String: Any]
         XCTAssertNotNil(common?["node_uuid"] as? String)
         XCTAssertNotNil(common?["user_uuid"] as? String)
+        XCTAssertNotNil(common?["root_servers"] as? [Any])
         XCTAssertNotNil(contents?["server"] as? [String: Any])
         XCTAssertNotNil(contents?["client"] as? [String: Any])
     }
@@ -151,14 +163,54 @@ final class BoxConfigurationTests: XCTestCase {
         XCTAssertNil(configuration.server.externalAddress)
         XCTAssertNil(configuration.server.externalPort)
         XCTAssertEqual(configuration.server.permanentQueues ?? [], [])
+        XCTAssertEqual(configuration.common.rootServers, [])
 
         let persisted = try Data(contentsOf: plistURL)
         let updatedPlist = try PropertyListSerialization.propertyList(from: persisted, options: [], format: nil) as? [String: Any]
         let common = updatedPlist?["common"] as? [String: Any]
         XCTAssertNotNil(common?["node_uuid"] as? String)
         XCTAssertNotNil(common?["user_uuid"] as? String)
+        XCTAssertNotNil(common?["root_servers"] as? [Any])
         XCTAssertNotNil(updatedPlist?["client"] as? [String: Any])
         let serverSection = updatedPlist?["server"] as? [String: Any]
         XCTAssertNotNil(serverSection?["permanent_queues"] as? [Any])
+    }
+
+    func testSanitisesRootServerEntries() throws {
+        let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+        let plistURL = temporaryDirectory.appendingPathComponent("Box.plist")
+        let propertyList: [String: Any] = [
+            "common": [
+                "node_uuid": UUID().uuidString,
+                "user_uuid": UUID().uuidString,
+                "root_servers": [
+                    ["address": "  resolver.box.local  ", "port": 18000],
+                    ["address": ""],
+                    [:]
+                ]
+            ]
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: propertyList, format: .xml, options: 0)
+        try data.write(to: plistURL)
+
+        let result = try BoxConfiguration.load(from: plistURL)
+        let rootServers = result.configuration.common.rootServers
+        XCTAssertEqual(rootServers.count, 1)
+        XCTAssertEqual(rootServers.first?.address, "resolver.box.local")
+        XCTAssertEqual(rootServers.first?.port, 18000)
+
+        let persisted = try PropertyListSerialization.propertyList(
+            from: Data(contentsOf: plistURL),
+            options: [],
+            format: nil
+        ) as? [String: Any]
+        let common = persisted?["common"] as? [String: Any]
+        let storedRoots = common?["root_servers"] as? [[String: Any]]
+        XCTAssertEqual(storedRoots?.count, 1)
+        XCTAssertEqual(storedRoots?.first?["address"] as? String, "resolver.box.local")
+        XCTAssertEqual(storedRoots?.first?["port"] as? Int, 18000)
     }
 }

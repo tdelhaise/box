@@ -1,5 +1,5 @@
 // swift-tools-version: 6.2
-// BOX_VERSION: 0.2.0
+// BOX_VERSION: 0.3.0
 
 import PackageDescription
 

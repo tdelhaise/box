@@ -150,16 +150,17 @@ public struct BoxCommandParser: AsyncParsableCommand {
 
         BoxLogging.bootstrap(level: effectiveLogLevel, target: effectiveLogTarget)
 
-        let effectiveAddress: String = {
+        let (effectiveAddress, addressOrigin): (String, BoxRuntimeOptions.AddressOrigin) = {
             if let cliAddress = address {
-                return cliAddress
+                return (cliAddress, .cliFlag)
             }
             if resolvedMode == .client,
                let configAddress = clientConfiguration?.address,
                !configAddress.isEmpty {
-                return configAddress
+                return (configAddress, .configuration)
             }
-            return resolvedMode == .server ? BoxRuntimeOptions.defaultServerBindAddress : BoxRuntimeOptions.defaultClientAddress
+            let fallback = resolvedMode == .server ? BoxRuntimeOptions.defaultServerBindAddress : BoxRuntimeOptions.defaultClientAddress
+            return (fallback, .default)
         }()
 
         let (effectivePort, portOrigin): (UInt16, BoxRuntimeOptions.PortOrigin) = {
@@ -218,6 +219,7 @@ public struct BoxCommandParser: AsyncParsableCommand {
             address: effectiveAddress,
             port: effectivePort,
             portOrigin: portOrigin,
+            addressOrigin: addressOrigin,
             configurationPath: configurationPath,
             adminChannelEnabled: adminChannel,
             logLevel: effectiveLogLevel,
@@ -232,7 +234,8 @@ public struct BoxCommandParser: AsyncParsableCommand {
             externalAddressOverride: manualExternalAddress,
             externalPortOverride: manualExternalPort,
             externalAddressOrigin: manualExternalOrigin,
-            permanentQueues: permanentQueues
+            permanentQueues: permanentQueues,
+            rootServers: commonConfiguration?.rootServers ?? []
         )
 
         switch resolvedMode {

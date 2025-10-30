@@ -9,6 +9,14 @@ public struct BoxConfiguration: Sendable {
         public var nodeUUID: UUID
         /// Stable identifier of the user on whose behalf the machine operates.
         public var userUUID: UUID
+        /// Preferred root server endpoints leveraged for Location Service lookups.
+        public var rootServers: [BoxRuntimeOptions.RootServer]
+
+        public init(nodeUUID: UUID, userUUID: UUID, rootServers: [BoxRuntimeOptions.RootServer] = []) {
+            self.nodeUUID = nodeUUID
+            self.userUUID = userUUID
+            self.rootServers = rootServers
+        }
     }
 
     /// Nested configuration specific to the server runtime.
@@ -138,7 +146,8 @@ public extension BoxConfiguration {
         if plist.common == nil {
             plist.common = ConfigurationPlist.Common(
                 nodeUUID: UUID().uuidString,
-                userUUID: UUID().uuidString
+                userUUID: UUID().uuidString,
+                rootServers: []
             )
             mutated = true
         } else {
@@ -152,6 +161,31 @@ public extension BoxConfiguration {
                 plist.common?.userUUID = user
             } else {
                 plist.common?.userUUID = UUID().uuidString
+                mutated = true
+            }
+            if plist.common?.rootServers == nil {
+                plist.common?.rootServers = []
+                mutated = true
+            }
+        }
+
+        if let entries = plist.common?.rootServers {
+            var cleaned: [ConfigurationPlist.Common.RootServer] = []
+            var mutatedLocally = false
+            for entry in entries {
+                let trimmedAddress = entry.address?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard !trimmedAddress.isEmpty else {
+                    mutatedLocally = true
+                    continue
+                }
+                let normalizedPort = entry.port ?? BoxRuntimeOptions.defaultPort
+                if trimmedAddress != entry.address || normalizedPort != entry.port {
+                    mutatedLocally = true
+                }
+                cleaned.append(ConfigurationPlist.Common.RootServer(address: trimmedAddress, port: normalizedPort))
+            }
+            if mutatedLocally || cleaned.count != entries.count {
+                plist.common?.rootServers = cleaned
                 mutated = true
             }
         }
@@ -200,10 +234,17 @@ public extension BoxConfiguration {
 private extension BoxConfiguration {
     init(plist: ConfigurationPlist) {
         let defaultBaseDirectory = BoxPaths.boxDirectory()
-        let commonSection = plist.common ?? ConfigurationPlist.Common(nodeUUID: UUID().uuidString, userUUID: UUID().uuidString)
+        let commonSection = plist.common ?? ConfigurationPlist.Common(nodeUUID: UUID().uuidString, userUUID: UUID().uuidString, rootServers: [])
         let nodeUUID = commonSection.nodeUUID.flatMap(UUID.init(uuidString:)) ?? UUID()
         let userUUID = commonSection.userUUID.flatMap(UUID.init(uuidString:)) ?? UUID()
-        self.common = Common(nodeUUID: nodeUUID, userUUID: userUUID)
+        let configuredRootServers: [BoxRuntimeOptions.RootServer] = (commonSection.rootServers ?? []).compactMap { entry in
+            guard let rawAddress = entry.address?.trimmingCharacters(in: .whitespacesAndNewlines), !rawAddress.isEmpty else {
+                return nil
+            }
+            let finalPort = entry.port ?? BoxRuntimeOptions.defaultPort
+            return BoxRuntimeOptions.RootServer(address: rawAddress, port: finalPort)
+        }
+        self.common = Common(nodeUUID: nodeUUID, userUUID: userUUID, rootServers: configuredRootServers)
 
         let serverSection = plist.server ?? ConfigurationPlist.Server.default(baseDirectory: defaultBaseDirectory)
         self.server = Server(
@@ -236,7 +277,8 @@ private extension BoxConfiguration {
         ConfigurationPlist(
             common: ConfigurationPlist.Common(
                 nodeUUID: common.nodeUUID.uuidString.uppercased(),
-                userUUID: common.userUUID.uuidString.uppercased()
+                userUUID: common.userUUID.uuidString.uppercased(),
+                rootServers: common.rootServers.map { ConfigurationPlist.Common.RootServer(address: $0.address, port: $0.port) }
             ),
             server: ConfigurationPlist.Server(
                 port: server.port,
@@ -266,12 +308,35 @@ private extension BoxConfiguration {
 
 private struct ConfigurationPlist: Codable {
     struct Common: Codable {
+        struct RootServer: Codable {
+            var address: String?
+            var port: UInt16?
+
+            enum CodingKeys: String, CodingKey {
+                case address
+                case port
+            }
+
+            init(address: String? = nil, port: UInt16? = nil) {
+                self.address = address
+                self.port = port
+            }
+        }
+
         var nodeUUID: String?
         var userUUID: String?
+        var rootServers: [RootServer]?
 
         enum CodingKeys: String, CodingKey {
             case nodeUUID = "node_uuid"
             case userUUID = "user_uuid"
+            case rootServers = "root_servers"
+        }
+
+        init(nodeUUID: String? = nil, userUUID: String? = nil, rootServers: [RootServer]? = nil) {
+            self.nodeUUID = nodeUUID
+            self.userUUID = userUUID
+            self.rootServers = rootServers
         }
     }
 
@@ -362,7 +427,8 @@ private struct ConfigurationPlist: Codable {
         return ConfigurationPlist(
             common: Common(
                 nodeUUID: UUID().uuidString,
-                userUUID: UUID().uuidString
+                userUUID: UUID().uuidString,
+                rootServers: []
             ),
             server: Server.default(baseDirectory: baseDirectory),
             client: Client.default(baseDirectory: baseDirectory)

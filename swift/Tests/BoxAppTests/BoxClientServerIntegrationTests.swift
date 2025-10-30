@@ -33,6 +33,7 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             address: "127.0.0.1",
             port: port,
             portOrigin: .cliFlag,
+            addressOrigin: .cliFlag,
             configurationPath: context.configurationURL.path,
             adminChannelEnabled: false,
             logLevel: .info,
@@ -43,7 +44,8 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             userId: serverConfiguration.userId,
             portMappingRequested: false,
             clientAction: .handshake,
-            portMappingOrigin: .default
+            portMappingOrigin: .default,
+            rootServers: []
         )
 
         try await BoxClient.run(with: clientOptions)
@@ -72,6 +74,7 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             address: "127.0.0.1",
             port: port,
             portOrigin: .cliFlag,
+            addressOrigin: .cliFlag,
             configurationPath: context.configurationURL.path,
             adminChannelEnabled: false,
             logLevel: .info,
@@ -82,7 +85,8 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             userId: serverConfiguration.userId,
             portMappingRequested: false,
             clientAction: .put(queuePath: "INBOX", contentType: "text/plain", data: payload),
-            portMappingOrigin: .default
+            portMappingOrigin: .default,
+            rootServers: []
         )
 
         try await BoxClient.run(with: putOptions)
@@ -107,6 +111,7 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             address: "127.0.0.1",
             port: port,
             portOrigin: .cliFlag,
+            addressOrigin: .cliFlag,
             configurationPath: context.configurationURL.path,
             adminChannelEnabled: false,
             logLevel: .info,
@@ -117,7 +122,8 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             userId: serverConfiguration.userId,
             portMappingRequested: false,
             clientAction: .get(queuePath: "INBOX"),
-            portMappingOrigin: .default
+            portMappingOrigin: .default,
+            rootServers: []
         )
 
         try await BoxClient.run(with: getOptions)
@@ -144,6 +150,7 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             address: "127.0.0.1",
             port: port,
             portOrigin: .cliFlag,
+            addressOrigin: .cliFlag,
             configurationPath: context.configurationURL.path,
             adminChannelEnabled: false,
             logLevel: .info,
@@ -154,7 +161,8 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             userId: serverConfiguration.userId,
             portMappingRequested: false,
             clientAction: .put(queuePath: "INBOX", contentType: "text/plain", data: payload),
-            portMappingOrigin: .default
+            portMappingOrigin: .default,
+            rootServers: []
         )
 
         try await BoxClient.run(with: putOptions)
@@ -169,6 +177,7 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             address: "127.0.0.1",
             port: port,
             portOrigin: .cliFlag,
+            addressOrigin: .cliFlag,
             configurationPath: context.configurationURL.path,
             adminChannelEnabled: false,
             logLevel: .info,
@@ -179,7 +188,8 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             userId: serverConfiguration.userId,
             portMappingRequested: false,
             clientAction: .get(queuePath: "INBOX"),
-            portMappingOrigin: .default
+            portMappingOrigin: .default,
+            rootServers: []
         )
 
         try await BoxClient.run(with: getOptions)
@@ -239,6 +249,7 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             address: "127.0.0.1",
             port: port,
             portOrigin: .cliFlag,
+            addressOrigin: .cliFlag,
             configurationPath: context.configurationURL.path,
             adminChannelEnabled: false,
             logLevel: .info,
@@ -249,7 +260,8 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             userId: clientUserID,
             portMappingRequested: false,
             clientAction: .locate(node: serverConfiguration.nodeId),
-            portMappingOrigin: .default
+            portMappingOrigin: .default,
+            rootServers: []
         )
 
         try await BoxClient.run(with: clientOptions)
@@ -272,6 +284,7 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             address: "127.0.0.1",
             port: port,
             portOrigin: .cliFlag,
+            addressOrigin: .cliFlag,
             configurationPath: context.configurationURL.path,
             adminChannelEnabled: false,
             logLevel: .info,
@@ -282,7 +295,8 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             userId: UUID(),
             portMappingRequested: false,
             clientAction: .locate(node: serverConfiguration.nodeId),
-            portMappingOrigin: .default
+            portMappingOrigin: .default,
+            rootServers: []
         )
 
         do {

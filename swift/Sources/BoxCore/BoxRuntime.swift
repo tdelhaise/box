@@ -23,60 +23,63 @@ public enum BoxClientAction: Sendable {
 
 /// Aggregates runtime options shared between the client and the server entry points.
 public struct BoxRuntimeOptions: Sendable {
+    /// Describes a remote root server endpoint that can handle locate requests.
+    public struct RootServer: Sendable, Equatable {
+        public var address: String
+        public var port: UInt16
+
+        public init(address: String, port: UInt16) {
+            self.address = address
+            self.port = port
+        }
+    }
+
+    /// Identifies how the effective address was determined.
+    public enum AddressOrigin: Sendable {
+        case `default`
+        case cliFlag
+        case configuration
+    }
+
     /// Indicates how the effective port value was obtained.
     public enum PortOrigin: Sendable {
-        /// Default port (no override provided).
         case `default`
-        /// CLI `--port` flag.
         case cliFlag
-        /// Environment variable (e.g. `BOXD_PORT`).
         case environment
-        /// Configuration file override.
         case configuration
-        /// Positional argument (client legacy).
         case positional
     }
 
     /// Indicates how the effective log level was determined.
     public enum LogLevelOrigin: Sendable {
-        /// Default `.info` level.
         case `default`
-        /// CLI `--log-level` flag.
         case cliFlag
-        /// Configuration file override.
         case configuration
-        /// Runtime override applied dynamically (admin channel).
         case runtime
     }
+
     /// Indicates how the effective log target was determined.
     public enum LogTargetOrigin: Sendable {
-        /// Default target (stderr).
         case `default`
-        /// CLI `--log-target` flag.
         case cliFlag
-        /// Configuration file override.
         case configuration
-        /// Runtime override applied dynamically (admin channel).
         case runtime
     }
+
     /// Origin of the port mapping preference.
     public enum PortMappingOrigin: Sendable {
-        /// Default (feature disabled).
         case `default`
-        /// CLI `--enable-port-mapping` flag.
         case cliFlag
-        /// Configuration file override.
         case configuration
     }
+
     /// Identifies how a manual external address override was provided.
     public enum ExternalAddressOrigin: Sendable {
-        /// No manual override was supplied.
         case `default`
-        /// Override provided via CLI flag.
         case cliFlag
-        /// Override sourced from the configuration file.
         case configuration
     }
+
     /// Default client address when none is provided.
     public static let defaultClientAddress = "127.0.0.1"
     /// Default server bind address when none is provided.
@@ -85,6 +88,7 @@ public struct BoxRuntimeOptions: Sendable {
     public static let defaultAddress = BoxRuntimeOptions.defaultClientAddress
     /// Default UDP port when none is provided.
     public static let defaultPort: UInt16 = 12567
+
     /// Returns the default log target for the provided runtime mode.
     /// - Parameter mode: Client or server mode.
     /// - Returns: File-based log target when the logs directory is resolvable, otherwise stderr.
@@ -104,6 +108,8 @@ public struct BoxRuntimeOptions: Sendable {
     public var port: UInt16
     /// Metadata explaining how the port was resolved.
     public var portOrigin: PortOrigin
+    /// Metadata explaining how the address was resolved.
+    public var addressOrigin: AddressOrigin
     /// Optional path to a configuration PLIST file.
     public var configurationPath: String?
     /// Flag indicating whether the admin channel should be enabled (server mode).
@@ -126,6 +132,8 @@ public struct BoxRuntimeOptions: Sendable {
     public var portMappingRequested: Bool
     /// Indicates how the port mapping preference was obtained.
     public var portMappingOrigin: PortMappingOrigin
+    /// List of configured root servers used by the client when fanning out locate requests.
+    public var rootServers: [RootServer]
     /// Manual external IP (if provided by the operator).
     public var externalAddressOverride: String?
     /// Manual external port (defaults to the runtime port when absent).
@@ -155,6 +163,7 @@ public struct BoxRuntimeOptions: Sendable {
         address: String,
         port: UInt16,
         portOrigin: PortOrigin,
+        addressOrigin: AddressOrigin,
         configurationPath: String?,
         adminChannelEnabled: Bool,
         logLevel: Logger.Level,
@@ -169,12 +178,14 @@ public struct BoxRuntimeOptions: Sendable {
         externalAddressOverride: String? = nil,
         externalPortOverride: UInt16? = nil,
         externalAddressOrigin: ExternalAddressOrigin = .default,
-        permanentQueues: Set<String> = []
+        permanentQueues: Set<String> = [],
+        rootServers: [RootServer] = []
     ) {
         self.mode = mode
         self.address = address
         self.port = port
         self.portOrigin = portOrigin
+        self.addressOrigin = addressOrigin
         self.configurationPath = configurationPath
         self.adminChannelEnabled = adminChannelEnabled
         self.logLevel = logLevel
@@ -190,38 +201,39 @@ public struct BoxRuntimeOptions: Sendable {
         self.externalPortOverride = externalPortOverride
         self.externalAddressOrigin = externalAddressOrigin
         self.permanentQueues = permanentQueues
+        self.rootServers = rootServers
     }
 }
 
 /// Errors thrown while bootstrapping the runtime.
- public enum BoxRuntimeError: Error, CustomStringConvertible {
-     /// Raised when the current platform is unsupported.
-     case unsupportedPlatform(String)
-     /// Raised when a configuration file could not be parsed.
-     case configurationLoadFailed(URL)
-     /// Raised when the admin channel cannot be initialised.
-     case adminChannelUnavailable(String)
-     /// Raised when an operation is not permitted (e.g. running as root).
-     case forbiddenOperation(String)
+public enum BoxRuntimeError: Error, CustomStringConvertible {
+    /// Raised when the current platform is unsupported.
+    case unsupportedPlatform(String)
+    /// Raised when a configuration file could not be parsed.
+    case configurationLoadFailed(URL)
+    /// Raised when the admin channel cannot be initialised.
+    case adminChannelUnavailable(String)
+    /// Raised when an operation is not permitted (e.g. running as root).
+    case forbiddenOperation(String)
     /// Raised when storage prerequisites (queues, directories) are not met.
     case storageUnavailable(String)
 
-     /// Human readable description used for CLI diagnostics.
-     public var description: String {
-         switch self {
-         case .unsupportedPlatform(let reason):
-             return "unsupported platform: \(reason)"
-         case .configurationLoadFailed(let url):
-             return "failed to load configuration at \(url.path)"
-         case .adminChannelUnavailable(let reason):
-             return "admin channel unavailable: \(reason)"
-         case .forbiddenOperation(let reason):
-             return "forbidden operation: \(reason)"
+    /// Human readable description used for CLI diagnostics.
+    public var description: String {
+        switch self {
+        case .unsupportedPlatform(let reason):
+            return "unsupported platform: \(reason)"
+        case .configurationLoadFailed(let url):
+            return "failed to load configuration at \(url.path)"
+        case .adminChannelUnavailable(let reason):
+            return "admin channel unavailable: \(reason)"
+        case .forbiddenOperation(let reason):
+            return "forbidden operation: \(reason)"
         case .storageUnavailable(let reason):
             return "storage unavailable: \(reason)"
-         }
-     }
- }
+        }
+    }
+}
 
 public extension Logger.Level {
     /// Parses a log level string coming from the CLI into a swift-log level.

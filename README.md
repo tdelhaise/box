@@ -85,6 +85,6 @@ Les contributions portant sur l’ancienne base C ne sont plus acceptées.
 - La version exposée par `box -v` provient du marqueur `// BOX_VERSION: …` dans `Package.swift`.
 - Avant de créer une release/tag, mettre à jour cette valeur avec :
   ```bash
-  scripts/bump_version.swift 0.2.0
+  scripts/bump_version.swift 0.3.0
   ```
 - Réexécuter `swift build` ou `swift test` pour régénérer la métadonnée d’exécutable, puis committer avant de publier sur GitHub.

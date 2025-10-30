@@ -12,6 +12,7 @@ final class BoxServerRuntimeControllerTests: XCTestCase {
             address: "127.0.0.1",
             port: 9001,
             portOrigin: .environment,
+            addressOrigin: .cliFlag,
             configurationPath: "/tmp/config.plist",
             adminChannelEnabled: false,
             logLevel: .error,
@@ -24,7 +25,8 @@ final class BoxServerRuntimeControllerTests: XCTestCase {
             portMappingOrigin: .configuration,
             externalAddressOverride: "1.1.1.1",
             externalPortOverride: 10001,
-            externalAddressOrigin: .cliFlag
+            externalAddressOrigin: .cliFlag,
+            rootServers: []
         )
 
         let controller = BoxServerRuntimeController(options: options)

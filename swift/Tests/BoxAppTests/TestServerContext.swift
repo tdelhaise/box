@@ -116,6 +116,7 @@ func startServer(configurationData: Data? = nil, forcedPort: UInt16? = nil, admi
         address: "127.0.0.1",
         port: requestedPort,
         portOrigin: .cliFlag,
+        addressOrigin: .cliFlag,
         configurationPath: configurationURL.path,
         adminChannelEnabled: adminChannelEnabled,
         logLevel: .info,
@@ -126,7 +127,8 @@ func startServer(configurationData: Data? = nil, forcedPort: UInt16? = nil, admi
         userId: configuration.common.userUUID,
         portMappingRequested: false,
         clientAction: .handshake,
-        portMappingOrigin: .default
+        portMappingOrigin: .default,
+        rootServers: []
     )
 
     let task = Task {

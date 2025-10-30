@@ -5,18 +5,95 @@ import NIOConcurrencyHelpers
 import NIOCore
 import NIOPosix
 
+private enum BoxClientError: Error {
+    case invalidAddress(String, UInt16)
+    case timeout(TimeAmount)
+    case noTargets
+}
+
+extension BoxClientError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case let .invalidAddress(host, port):
+            return "unable to resolve remote address \(host):\(port)"
+        case let .timeout(amount):
+            let seconds = Double(amount.nanoseconds) / 1_000_000_000
+            let formatted = String(format: "%.1f", seconds)
+            return "operation timed out after \(formatted)s"
+        case .noTargets:
+            return "no reachable locate targets configured"
+        }
+    }
+}
+
 /// SwiftNIO based UDP client that exercises the cleartext Box protocol.
 public enum BoxClient {
+    private static let locateAttemptTimeout: TimeAmount = .seconds(5)
+
     /// Boots the UDP client, performs the requested action, and exits when finished.
     /// - Parameter options: Runtime options resolved from the CLI.
     public static func run(with options: BoxRuntimeOptions) async throws {
         let logger = Logger(label: "box.client")
-        logger.info("client starting", metadata: ["address": "\(options.address)", "port": "\(options.port)"])
+
+        switch options.clientAction {
+        case .locate:
+            let targets = determineLocateTargets(options: options, logger: logger)
+            guard !targets.isEmpty else {
+                throw BoxClientError.noTargets
+            }
+
+            var lastError: Error?
+            for target in targets {
+                let remoteAddress: SocketAddress
+                do {
+                    remoteAddress = try resolveSocketAddress(address: target.address, port: target.port)
+                } catch {
+                    lastError = BoxClientError.invalidAddress(target.address, target.port)
+                    logger.warning("Skipping locate target", metadata: target.failureMetadata(error: error))
+                    continue
+                }
+
+                do {
+                    try await runSingle(
+                        with: options,
+                        remoteAddress: remoteAddress,
+                        timeout: locateAttemptTimeout,
+                        logger: logger,
+                        attemptMetadata: target.metadata
+                    )
+                    return
+                } catch {
+                    lastError = error
+                    logger.info("Locate attempt failed", metadata: target.failureMetadata(error: error))
+                }
+            }
+
+            throw lastError ?? BoxClientError.noTargets
+
+        default:
+            let remoteAddress = try resolveSocketAddress(address: options.address, port: options.port)
+            try await runSingle(
+                with: options,
+                remoteAddress: remoteAddress,
+                timeout: nil,
+                logger: logger,
+                attemptMetadata: ["target": "single"]
+            )
+        }
+    }
+
+    private static func runSingle(
+        with options: BoxRuntimeOptions,
+        remoteAddress: SocketAddress,
+        timeout: TimeAmount?,
+        logger: Logger,
+        attemptMetadata: Logger.Metadata
+    ) async throws {
+        let mergedMetadata = metadata(for: remoteAddress, base: attemptMetadata)
+        logger.info("client starting", metadata: mergedMetadata)
 
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let completionHolder = NIOLockedValueBox<EventLoopFuture<Void>?>(nil)
-
-        let remoteAddress = try SocketAddress(ipAddress: options.address, port: Int(options.port))
 
         let bootstrap = DatagramBootstrap(group: eventLoopGroup)
             .channelInitializer { channel in
@@ -27,7 +104,8 @@ public enum BoxClient {
                     allocator: channel.allocator,
                     eventLoop: channel.eventLoop,
                     nodeId: options.nodeId,
-                    userId: options.userId
+                    userId: options.userId,
+                    timeout: timeout
                 )
                 completionHolder.withLockedValue { storage in
                     storage = handler.completionFuture
@@ -56,17 +134,122 @@ public enum BoxClient {
             try await withTaskCancellationHandler {
                 try await operationFuture.get()
             } onCancel: {
-                logger.info("client cancellation requested")
+                logger.info("client cancellation requested", metadata: mergedMetadata)
                 channelBox.value.close(promise: nil)
             }
 
-            logger.info("client stopped")
+            logger.info("client stopped", metadata: mergedMetadata)
             try await eventLoopGroup.shutdownGracefully()
         } catch {
-            logger.error("client failed", metadata: ["error": "\(error)"])
+            var failureMetadata = mergedMetadata
+            failureMetadata["error"] = "\(error)"
+            logger.error("client failed", metadata: failureMetadata)
             channelBox.value.close(promise: nil)
             try? await eventLoopGroup.shutdownGracefully()
             throw error
+        }
+    }
+
+    private static func resolveSocketAddress(address: String, port: UInt16) throws -> SocketAddress {
+        do {
+            return try SocketAddress.makeAddressResolvingHost(address, port: Int(port))
+        } catch {
+            throw BoxClientError.invalidAddress(address, port)
+        }
+    }
+
+    private static func metadata(for remoteAddress: SocketAddress, base: Logger.Metadata) -> Logger.Metadata {
+        var result = base
+        if let ip = remoteAddress.ipAddress {
+            result["address"] = "\(ip)"
+        } else {
+            result["address"] = "\(remoteAddress)"
+        }
+        if let port = remoteAddress.port {
+            result["port"] = "\(port)"
+        }
+        return result
+    }
+
+    private struct LocateTarget {
+        enum Kind: String {
+            case explicit
+            case configuration
+            case localConfirmed
+            case localFallback
+            case root
+        }
+
+        var address: String
+        var port: UInt16
+        var kind: Kind
+
+        var metadata: Logger.Metadata {
+            [
+                "target": "\(kind.rawValue)",
+                "address": "\(address)",
+                "port": "\(port)"
+            ]
+        }
+
+        func failureMetadata(error: Error) -> Logger.Metadata {
+            var data = metadata
+            data["error"] = "\(error)"
+            return data
+        }
+    }
+
+    private static func determineLocateTargets(options: BoxRuntimeOptions, logger: Logger) -> [LocateTarget] {
+        switch options.addressOrigin {
+        case .cliFlag:
+            return [LocateTarget(address: options.address, port: options.port, kind: .explicit)]
+        case .configuration:
+            return [LocateTarget(address: options.address, port: options.port, kind: .configuration)]
+        case .default:
+            var targets: [LocateTarget] = []
+            var seen = Set<String>()
+
+            let localAddress = BoxRuntimeOptions.defaultClientAddress
+            let localKey = "\(localAddress):\(options.port)"
+            let localReachable = isLocalServerReachable(logger: logger)
+
+            if localReachable {
+                targets.append(LocateTarget(address: localAddress, port: options.port, kind: .localConfirmed))
+                seen.insert(localKey)
+            }
+
+            if !options.rootServers.isEmpty {
+                var rng = SystemRandomNumberGenerator()
+                for server in options.rootServers.shuffled(using: &rng) {
+                    let key = "\(server.address):\(server.port)"
+                    if seen.contains(key) {
+                        continue
+                    }
+                    targets.append(LocateTarget(address: server.address, port: server.port, kind: .root))
+                    seen.insert(key)
+                }
+            }
+
+            if targets.isEmpty {
+                targets.append(LocateTarget(address: localAddress, port: options.port, kind: .localFallback))
+            }
+
+            return targets
+        }
+    }
+
+    private static func isLocalServerReachable(logger: Logger) -> Bool {
+        guard let socketPath = BoxPaths.adminSocketPath() else {
+            return false
+        }
+        let transport = BoxAdminTransportFactory.makeTransport(socketPath: socketPath)
+        do {
+            _ = try transport.send(command: "ping")
+            logger.debug("local admin channel reachable", metadata: ["socket": "\(socketPath)"])
+            return true
+        } catch {
+            logger.debug("local admin channel probe failed", metadata: ["socket": "\(socketPath)", "error": "\(error)"])
+            return false
         }
     }
 }
@@ -104,6 +287,12 @@ final class BoxClientHandler: ChannelInboundHandler {
     private let allocator: ByteBufferAllocator
     /// Promise completed once the client sequence finishes.
     private let completionPromise: EventLoopPromise<Void>
+    /// Optional timeout applied to the overall locate attempt.
+    private let timeout: TimeAmount?
+    /// Scheduled timeout task (cancelled when the client completes).
+    private var timeoutTask: Scheduled<Void>?
+    /// Weak reference to the last active channel context (used for timeouts).
+    private weak var activeContext: ChannelHandlerContext?
     /// Convenience accessor exposing the future resolved when the client finishes.
     var completionFuture: EventLoopFuture<Void> {
         completionPromise.futureResult
@@ -131,7 +320,8 @@ final class BoxClientHandler: ChannelInboundHandler {
         allocator: ByteBufferAllocator,
         eventLoop: EventLoop,
         nodeId: UUID,
-        userId: UUID
+        userId: UUID,
+        timeout: TimeAmount?
     ) {
         self.remoteAddress = remoteAddress
         self.action = action
@@ -140,11 +330,20 @@ final class BoxClientHandler: ChannelInboundHandler {
         self.completionPromise = eventLoop.makePromise(of: Void.self)
         self.nodeId = nodeId
         self.userId = userId
+        self.timeout = timeout
     }
 
     /// Sends the initial HELLO when the channel becomes active.
     func channelActive(context: ChannelHandlerContext) {
+        activeContext = context
         sendHello(context: context)
+        scheduleTimeoutIfNeeded(context: context)
+    }
+
+    /// Clears retained state when the channel becomes inactive.
+    func channelInactive(context: ChannelHandlerContext) {
+        cancelTimeout()
+        activeContext = nil
     }
 
     /// Processes incoming datagrams and advances the state machine.
@@ -373,6 +572,7 @@ final class BoxClientHandler: ChannelInboundHandler {
             return
         }
         stage = .completed
+        cancelTimeout()
         completionPromise.succeed(())
         context.close(promise: nil)
     }
@@ -383,8 +583,32 @@ final class BoxClientHandler: ChannelInboundHandler {
             return
         }
         stage = .completed
+        cancelTimeout()
         completionPromise.fail(error)
         context.close(promise: nil)
+    }
+
+    /// Cancels the timeout task if it is still pending.
+    private func cancelTimeout() {
+        timeoutTask?.cancel()
+        timeoutTask = nil
+    }
+
+    /// Schedules the timeout guard when a timeout value was supplied.
+    private func scheduleTimeoutIfNeeded(context: ChannelHandlerContext) {
+        guard timeoutTask == nil, let timeout else {
+            return
+        }
+        timeoutTask = context.eventLoop.scheduleTask(in: timeout) { [weak self] in
+            guard let self else {
+                return
+            }
+            self.logger.error("client timeout", metadata: ["timeout": "\(timeout)"])
+            guard let context = self.activeContext else {
+                return
+            }
+            self.failAndClose(error: BoxClientError.timeout(timeout), context: context)
+        }
     }
 }
 
