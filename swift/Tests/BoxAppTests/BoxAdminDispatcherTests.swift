@@ -22,7 +22,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
                 return ""
             },
             locateNode: { _ in "" },
-            natProbe: { _ in "" }
+            natProbe: { _ in "" },
+            locationSummaryProvider: { "" }
         )
 
         let response = await dispatcher.process("status")
@@ -49,7 +50,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             reloadConfiguration: { _ in "" },
             statsProvider: { "" },
             locateNode: { _ in "" },
-            natProbe: { _ in "" }
+            natProbe: { _ in "" },
+            locationSummaryProvider: { "" }
         )
 
         let response = await dispatcher.process("log-target stdout")
@@ -70,7 +72,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             reloadConfiguration: { _ in "" },
             statsProvider: { "" },
             locateNode: { _ in "" },
-            natProbe: { _ in "" }
+            natProbe: { _ in "" },
+            locationSummaryProvider: { "" }
         )
 
         let response = await dispatcher.process("log-target {\"target\":\"stderr\"}")
@@ -91,7 +94,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             },
             statsProvider: { "" },
             locateNode: { _ in "" },
-            natProbe: { _ in "" }
+            natProbe: { _ in "" },
+            locationSummaryProvider: { "" }
         )
 
         let response = await dispatcher.process("reload-config {\"path\":\"~/config.plist\"}")
@@ -129,7 +133,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
                 return "{\"status\":\"ok\"}"
             },
             locateNode: { _ in "" },
-            natProbe: { _ in "" }
+            natProbe: { _ in "" },
+            locationSummaryProvider: { "" }
         )
 
         let response = await dispatcher.process("stats")
@@ -149,10 +154,31 @@ final class BoxAdminDispatcherTests: XCTestCase {
                 expectation.fulfill()
                 XCTAssertEqual(gateway, "192.0.2.1")
                 return "{\"status\":\"ok\"}"
-            }
+            },
+            locationSummaryProvider: { "" }
         )
 
         let response = await dispatcher.process("nat-probe 192.0.2.1")
+        XCTAssertEqual(response, "{\"status\":\"ok\"}")
+        await fulfillment(of: [expectation], timeout: 0.1)
+    }
+
+    func testLocationSummaryInvokesProvider() async throws {
+        let expectation = expectation(description: "location summary provider")
+        let dispatcher = BoxAdminCommandDispatcher(
+            statusProvider: { "" },
+            logTargetUpdater: { _ in "" },
+            reloadConfiguration: { _ in "" },
+            statsProvider: { "" },
+            locateNode: { _ in "" },
+            natProbe: { _ in "" },
+            locationSummaryProvider: {
+                expectation.fulfill()
+                return "{\"status\":\"ok\"}"
+            }
+        )
+
+        let response = await dispatcher.process("location-summary")
         XCTAssertEqual(response, "{\"status\":\"ok\"}")
         await fulfillment(of: [expectation], timeout: 0.1)
     }
@@ -164,7 +190,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             reloadConfiguration: { _ in "reload" },
             statsProvider: { "stats" },
             locateNode: { _ in "locate" },
-            natProbe: { _ in "probe" }
+            natProbe: { _ in "probe" },
+            locationSummaryProvider: { "summary" }
         )
     }
 }

@@ -80,3 +80,11 @@ Le dépôt suit les conventions Swift décrites dans `CODE_CONVENTIONS.md`. Avan
 3. mettre à jour la documentation lorsque le comportement change.
 
 Les contributions portant sur l’ancienne base C ne sont plus acceptées.
+
+### Versioning & Releases
+- La version exposée par `box -v` provient du marqueur `// BOX_VERSION: …` dans `Package.swift`.
+- Avant de créer une release/tag, mettre à jour cette valeur avec :
+  ```bash
+  scripts/bump_version.swift 0.2.0
+  ```
+- Réexécuter `swift build` ou `swift test` pour régénérer la métadonnée d’exécutable, puis committer avant de publier sur GitHub.

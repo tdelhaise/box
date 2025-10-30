@@ -27,6 +27,10 @@ public struct BoxCommandParser: AsyncParsableCommand {
     @Flag(name: [.short, .long], help: "Run the Box daemon.")
     public var server: Bool = false
 
+    /// Flag displaying version/build metadata and exiting.
+    @Flag(name: [.short, .customLong("version")], help: "Show version information and exit.")
+    public var version: Bool = false
+
     /// Optional UDP port overriding the default (12567).
     @Option(name: [.short, .long], help: "UDP port (default \(BoxRuntimeOptions.defaultPort)).")
     public var port: UInt16?
@@ -84,6 +88,14 @@ public struct BoxCommandParser: AsyncParsableCommand {
 
     /// Parses CLI arguments, configures logging, and dispatches to either the server or the client.
     public mutating func run() async throws {
+        if version {
+            let output = BoxBuildInfo.description + "\n"
+            if let data = output.data(using: .utf8) {
+                FileHandle.standardOutput.write(data)
+            }
+            return
+        }
+
         let cliLogLevel = Logger.Level(logLevelString: logLevel)
         let cliLogTarget = try resolveLogTarget()
         let resolvedMode: BoxRuntimeMode = server ? .server : .client
@@ -557,8 +569,17 @@ extension BoxCommandParser {
             public init() {}
 
             public mutating func run() throws {
-                let response = try Admin.sendCommand("status", socketOverride: socket)
-                let summary = try Admin.extractLocationSummary(fromStatus: response)
+                let summary: [String: Any]
+                let primaryResponse = try Admin.sendCommand("location-summary", socketOverride: socket)
+                switch Admin.parseLocationSummaryResponse(primaryResponse) {
+                case .summary(let payload):
+                    summary = payload
+                case .unknownCommand, .unsupported:
+                    let fallback = try Admin.sendCommand("status", socketOverride: socket)
+                    summary = try Admin.extractLocationSummary(fromStatus: fallback)
+                case .error(let message):
+                    throw ValidationError("location-summary failed: \(message)")
+                }
 
                 if json {
                     let data = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys])
@@ -636,6 +657,37 @@ extension BoxCommandParser {
                 throw ValidationError("Status response does not include locationService summary.")
             }
             return summary
+        }
+
+        private static func parseLocationSummaryResponse(_ response: String) -> LocationSummaryResult {
+            guard let data = response.data(using: .utf8) else {
+                return .unsupported
+            }
+            guard
+                let object = try? JSONSerialization.jsonObject(with: data, options: []),
+                let dictionary = object as? [String: Any],
+                let status = dictionary["status"] as? String
+            else {
+                return .unsupported
+            }
+            if status == "ok" {
+                guard let summary = dictionary["summary"] as? [String: Any] else {
+                    return .unsupported
+                }
+                return .summary(summary)
+            }
+            let message = dictionary["message"] as? String ?? "unknown-error"
+            if status == "error", message == "unknown-command" {
+                return .unknownCommand
+            }
+            return .error(message)
+        }
+
+        private enum LocationSummaryResult {
+            case summary([String: Any])
+            case unknownCommand
+            case error(String)
+            case unsupported
         }
 
         private static func formatLocationSummary(_ summary: [String: Any]) -> String {

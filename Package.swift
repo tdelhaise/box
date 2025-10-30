@@ -1,4 +1,6 @@
 // swift-tools-version: 6.2
+// BOX_VERSION: 0.1.0
+
 import PackageDescription
 
 let package = Package(
@@ -30,7 +32,8 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Logging", package: "swift-log")
             ],
-            path: "swift/Sources/BoxCommandParser"
+            path: "swift/Sources/BoxCommandParser",
+            plugins: ["BoxBuildInfoPlugin"]
         ),
         .target(
             name: "BoxServer",
@@ -65,6 +68,15 @@ let package = Package(
             name: "BoxAppTests",
             dependencies: ["BoxCore", "BoxServer", "BoxClient"],
             path: "swift/Tests/BoxAppTests"
+        ),
+        .executableTarget(
+            name: "BoxBuildInfoGenerator",
+            path: "Plugins/BoxBuildInfoGenerator"
+        ),
+        .plugin(
+            name: "BoxBuildInfoPlugin",
+            capability: .buildTool(),
+            dependencies: ["BoxBuildInfoGenerator"]
         )
     ]
 )

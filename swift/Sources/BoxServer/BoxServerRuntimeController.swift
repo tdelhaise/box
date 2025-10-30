@@ -209,6 +209,9 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             },
             natProbe: { [weak self] gateway in
                 await self?.handleNatProbe(gateway: gateway) ?? "{\"status\":\"error\",\"message\":\"shutting-down\"}"
+            },
+            locationSummaryProvider: { [weak self] in
+                await self?.renderLocationSummary() ?? "{\"status\":\"error\",\"message\":\"shutting-down\"}"
             }
         )
         logger.info("admin channel bound", metadata: ["path": .string(socketPath)])
@@ -488,6 +491,16 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             payload["locationService"] = summary
         }
         return adminResponse(payload)
+    }
+
+    private func renderLocationSummary() async -> String {
+        guard let summary = await locationServiceSummaryPayload() else {
+            return adminResponse(["status": "error", "message": "location-service-unavailable"])
+        }
+        return adminResponse([
+            "status": "ok",
+            "summary": summary
+        ])
     }
 
     private func renderStats() async -> String {
@@ -879,7 +892,8 @@ final class BoxServerRuntimeController: @unchecked Sendable {
         reloadConfiguration: @escaping @Sendable (String?) async -> String,
         statsProvider: @escaping @Sendable () async -> String,
         locateNode: @escaping @Sendable (UUID) async -> String,
-        natProbe: @escaping @Sendable (String?) async -> String
+        natProbe: @escaping @Sendable (String?) async -> String,
+        locationSummaryProvider: @escaping @Sendable () async -> String
     ) async throws -> BoxAdminChannelHandle {
         let dispatcher = BoxAdminCommandDispatcher(
             statusProvider: statusProvider,
@@ -887,7 +901,8 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             reloadConfiguration: reloadConfiguration,
             statsProvider: statsProvider,
             locateNode: locateNode,
-            natProbe: natProbe
+            natProbe: natProbe,
+            locationSummaryProvider: locationSummaryProvider
         )
 
         #if os(Windows)

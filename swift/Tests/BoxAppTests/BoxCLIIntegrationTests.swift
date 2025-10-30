@@ -29,6 +29,18 @@ final class BoxCLIIntegrationTests: XCTestCase {
         }
     }
 
+    func testVersionFlagOutputsBuildInfo() async throws {
+        try await runWithinTimeout {
+            let (stdout, stderr, status) = try await Self.runBoxCLIAsync(args: ["-v"])
+            XCTAssertEqual(status, 0)
+            XCTAssertTrue(stderr.isEmpty)
+            let trimmed = stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            XCTAssertFalse(trimmed.isEmpty)
+            let parts = trimmed.split(separator: " ")
+            XCTAssertGreaterThanOrEqual(parts.count, 4, "Expected at least four components in version output")
+        }
+    }
+
     func testAdminStatusCLI() async throws {
         try await runWithinTimeout {
             let context = try await startServer()

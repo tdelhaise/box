@@ -7,6 +7,7 @@ struct BoxAdminCommandDispatcher: Sendable {
     private let statsProvider: @Sendable () async -> String
     private let locateNode: @Sendable (UUID) async -> String
     private let natProbe: @Sendable (String?) async -> String
+    private let locationSummaryProvider: @Sendable () async -> String
 
     init(
         statusProvider: @escaping @Sendable () async -> String,
@@ -14,7 +15,8 @@ struct BoxAdminCommandDispatcher: Sendable {
         reloadConfiguration: @escaping @Sendable (String?) async -> String,
         statsProvider: @escaping @Sendable () async -> String,
         locateNode: @escaping @Sendable (UUID) async -> String,
-        natProbe: @escaping @Sendable (String?) async -> String
+        natProbe: @escaping @Sendable (String?) async -> String,
+        locationSummaryProvider: @escaping @Sendable () async -> String
     ) {
         self.statusProvider = statusProvider
         self.logTargetUpdater = logTargetUpdater
@@ -22,6 +24,7 @@ struct BoxAdminCommandDispatcher: Sendable {
         self.statsProvider = statsProvider
         self.locateNode = locateNode
         self.natProbe = natProbe
+        self.locationSummaryProvider = locationSummaryProvider
     }
 
     func process(_ rawValue: String) async -> String {
@@ -45,6 +48,8 @@ struct BoxAdminCommandDispatcher: Sendable {
             return await locateNode(node)
         case .natProbe(let gateway):
             return await natProbe(gateway)
+        case .locationSummary:
+            return await locationSummaryProvider()
         case .invalid(let message):
             return adminResponse(["status": "error", "message": message])
         case .unknown(let value):
@@ -115,6 +120,9 @@ struct BoxAdminCommandDispatcher: Sendable {
                 return .invalid("invalid-node-uuid")
             }
             return .locate(uuid)
+        }
+        if command == "location-summary" {
+            return .locationSummary
         }
         return .unknown(command)
     }
