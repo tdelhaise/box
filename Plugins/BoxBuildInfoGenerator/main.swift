@@ -125,6 +125,8 @@ func main() throws {
 do {
     try main()
 } catch {
-    fputs("BoxBuildInfoGenerator error: \(error)\n", stderr)
+    if let data = "BoxBuildInfoGenerator error: \(error)\n".data(using: .utf8) {
+        FileHandle.standardError.write(data)
+    }
     exit(1)
 }
