@@ -1551,7 +1551,7 @@ final class PortMappingCoordinator: @unchecked Sendable {
 
     private func defaultGatewayIPv4() -> String? {
 #if os(Linux)
-        guard let contents = try? String(contentsOfFile: "/proc/net/route") else { return nil }
+        guard let contents = try? String(contentsOfFile: "/proc/net/route", encoding: .utf8) else { return nil }
         return PortMappingUtilities.defaultGateway(fromProcNetRoute: contents)
 #elseif canImport(SystemConfiguration)
         guard let store = SCDynamicStoreCreate(nil, "box.portmapping" as CFString, nil, nil),
