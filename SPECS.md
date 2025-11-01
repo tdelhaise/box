@@ -339,7 +339,31 @@ Resolve by Node UUID
 - Response
   { "ok": true, "node": { /* same shape as in nodes[] above */ } }
 
-6.10 Location Service CBOR CDDL (Informative)
+6.10 Commande `box register`
+
+- **Objectif** : publier (ou republier) les enregistrements node/user vers l’ensemble des racines configurées.
+- **Invocation**
+  - `box register [--path <Box.plist>] [--address <ip>] [--port <udp_port>] [--root host[:port]]...`
+  - `--path` sélectionne un fichier de configuration explicite (par défaut `~/.box/Box.plist`).
+  - `--address` / `--port` permettent d’annoncer une adresse publique précise lorsque l’autodétection n’est pas souhaitée.
+  - `--root` surcharge la liste des serveurs racines (`host[:port]`). Sans override, la commande utilise `common.root_servers`.
+- **Pré-requis**
+  - `init-config` doit avoir généré les identités Ed25519 et le lien croisé `identity-links.json`.
+  - `common.root_servers` contient au moins une entrée (init-config insère par défaut `box1` et `box2`).
+  - La machine connaît le port UDP qu’elle souhaite annoncer (priorité à `server.externalPort` puis `server.port`, sinon 12567).
+- **Processus**
+  1. Chargement du PLIST et des paires de clefs (`user.identity.json`, `node.identity.json`).
+  2. Construction du `LocationServiceNodeRecord` : adresses manuelles (`--address`), adresse externe config (`server.external_address`), clé publique format `ed25519:<hex>`, métadonnées port mapping.
+  3. Construction du `LocationServiceUserRecord` à partir de l’enregistrement local (`whoswho/<user_uuid>.json`) en conservant les nœuds existants et en ajoutant le nœud courant.
+  4. Encodage JSON (`sortedKeys`) et envoi, pour chaque racine, de deux requêtes `PUT whoswho` via le client UDP (`BoxClientAction.put`).
+  5. Persistence locale du nouvel enregistrement utilisateur dans `~/.box/queues/whoswho/<user_uuid>.json` pour aider les publications futures hors-ligne.
+- **Comportement en erreur**
+  - Si une racine est injoignable, la commande continue avec les autres mais échoue en sortie (code ≠ 0) en listant les endpoints défaillants.
+  - Les messages d’information du client (`STATUS response`, `PUT acknowledgement`) sont émis sur stderr pour faciliter le débogage.
+- **Évolutions prévues (0.4.x)**
+  - Ajout de champs `revision` / `signature` pour verrouiller la cohérence, synchronisation automatique entre racines, publication atomique user/node.
+
+6.11 Location Service CBOR CDDL (Informative)
 
 - The following CDDL sketches the CBOR encoding for LS messages. Field names mirror the JSON forms above.
 
@@ -439,7 +463,7 @@ Resolve by Node UUID
   4) Optional replay test: in test builds, the client can retransmit the last frame; the server
      rejects it based on the sliding window.
 
-6.11 Location Service CBOR Examples (Hex + Diagnostic)
+6.12 Location Service CBOR Examples (Hex + Diagnostic)
 
 Notes
 - These examples illustrate one possible canonical CBOR encoding. Implementations do not need to match byte-for-byte as long as they produce valid messages conforming to the schema. Byte strings for UUIDs are 16 bytes; values below are sample data.

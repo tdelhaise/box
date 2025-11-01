@@ -530,6 +530,84 @@ final class BoxCLIIntegrationTests: XCTestCase {
         }
     }
 
+    func testRegisterPublishesRecordsToRoot() async throws {
+        try await runWithinTimeout {
+            let port = try allocateEphemeralUDPPort()
+            let context = try await startServer(forcedPort: port)
+            defer { context.tearDown() }
+
+            try await context.waitForQueueInfrastructure()
+
+            let fileManager = FileManager.default
+            let tempHome = fileManager.temporaryDirectory.appendingPathComponent("box-register-\(UUID().uuidString)", isDirectory: true)
+            try fileManager.createDirectory(at: tempHome, withIntermediateDirectories: true)
+            defer { try? fileManager.removeItem(at: tempHome) }
+
+            let env = ["HOME": tempHome.path]
+
+            _ = try await Self.runBoxCLIAsync(args: ["init-config", "--json"], environment: env)
+
+            var configurationResult = try BoxConfiguration.load(from: tempHome.appendingPathComponent(".box/Box.plist"))
+            configurationResult.configuration.common.rootServers = [
+                BoxRuntimeOptions.RootServer(address: "127.0.0.1", port: port)
+            ]
+            configurationResult.configuration.server.externalAddress = "127.0.0.1"
+            configurationResult.configuration.server.externalPort = port
+            configurationResult.configuration.server.port = port
+            try configurationResult.configuration.save(to: configurationResult.url)
+
+            let nodeID = configurationResult.configuration.common.nodeUUID
+            let userID = configurationResult.configuration.common.userUUID
+
+            let (stdout, stderr, status) = try await Self.runBoxCLIAsync(
+                args: [
+                    "register",
+                    "--path", configurationResult.url.path,
+                    "--address", "127.0.0.1",
+                    "--port", "\(port)",
+                    "--root", "127.0.0.1:\(port)"
+                ],
+                environment: env
+            )
+            guard status == 0 else {
+                XCTFail("register failed with status \(status): \(stderr)")
+                return
+            }
+            XCTAssertTrue(stdout.contains("127.0.0.1"))
+
+            let queuesRoot = context.homeDirectory.appendingPathComponent(".box/queues", isDirectory: true)
+            let store = try await BoxServerStore(root: queuesRoot, logger: Logger(label: "box.tests.cli.register"))
+            let entries = try await store.list(queue: "/whoswho")
+
+            var foundNodeRecord = false
+            var foundUserRecord = false
+
+            for reference in entries {
+                let object = try await store.read(reference: reference)
+                let data = Data(object.data)
+                let decoder = JSONDecoder()
+                if let nodeRecord = try? decoder.decode(LocationServiceNodeRecord.self, from: data) {
+                    if nodeRecord.nodeUUID == nodeID && nodeRecord.userUUID == userID {
+                        foundNodeRecord = true
+                    }
+                    continue
+                }
+                if let userRecord = try? decoder.decode(LocationServiceUserRecord.self, from: data) {
+                    if userRecord.userUUID == userID {
+                        XCTAssertTrue(userRecord.nodeUUIDs.contains(nodeID))
+                        foundUserRecord = true
+                    }
+                }
+            }
+
+            XCTAssertTrue(foundNodeRecord, "Node record not found in whoswho queue")
+            XCTAssertTrue(foundUserRecord, "User record not found in whoswho queue")
+
+            let localUserURL = tempHome.appendingPathComponent(".box/queues/whoswho/\(userID.uuidString.uppercased()).json")
+            XCTAssertTrue(fileManager.fileExists(atPath: localUserURL.path))
+        }
+    }
+
     // Helper to run the box CLI tool
     private static func runBoxCLIAsync(args: [String], configurationPath: String? = nil, environment: [String: String]? = nil) async throws -> (String, String, Int32) {
         let boxBinary = productsDirectory.appendingPathComponent("box")

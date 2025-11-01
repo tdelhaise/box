@@ -21,8 +21,265 @@ public struct BoxCommandParser: AsyncParsableCommand {
         CommandConfiguration(
             commandName: "box",
             abstract: "Box messaging toolkit (Swift rewrite).",
-            subcommands: [Admin.self, InitConfig.self]
+            subcommands: [Admin.self, InitConfig.self, Register.self]
         )
+    }
+
+    /// `box register` — publish node and user records to root servers.
+    public struct Register: AsyncParsableCommand {
+        public static var configuration: CommandConfiguration {
+            CommandConfiguration(
+                commandName: "register",
+                abstract: "Publish the local node and user records to configured root servers."
+            )
+        }
+
+        @Option(name: .shortAndLong, help: "Configuration PLIST path (defaults to ~/.box/Box.plist).")
+        public var path: String?
+
+        @Option(name: .customLong("address"), help: "Reachable address to advertise for this node (IPv4/IPv6).")
+        public var advertisedAddress: String?
+
+        @Option(name: .customLong("port"), help: "UDP port to advertise (defaults to the server/client port).")
+        public var advertisedPort: UInt16?
+
+        @Option(name: .customLong("root"), parsing: .unconditionalSingleValue, help: "Root server override (host[:port]). Can be repeated.")
+        public var rootOverrides: [String] = []
+
+        public init() {}
+
+        public mutating func run() async throws {
+            let configurationURL = try resolveConfigurationURL(path: path)
+            let configurationResult = try BoxConfiguration.load(from: configurationURL)
+            let configuration = configurationResult.configuration
+
+            let rootServers = try resolveRootServers(configuration: configuration, overrides: rootOverrides)
+            guard !rootServers.isEmpty else {
+                throw ValidationError("No root servers configured. Use --root or add entries to Box.plist.")
+            }
+
+            let keystore = try BoxNoiseKeyStore()
+            let nodeIdentity = try await keystore.ensureIdentity(for: .node)
+
+            let userNodes = try loadExistingUserNodes(configuration: configuration)
+            let advertisedPortValue = resolveAdvertisedPort(configuration: configuration, override: advertisedPort)
+            let addresses = buildAdvertisedAddresses(configuration: configuration, overrideAddress: advertisedAddress, port: advertisedPortValue)
+
+            let nodeRecord = try buildNodeRecord(
+                configuration: configuration,
+                nodeIdentity: nodeIdentity,
+                advertisedPort: advertisedPortValue,
+                addresses: addresses
+            )
+
+            let userRecord = buildUserRecord(configuration: configuration, existingNodes: userNodes)
+
+            let payloads = [
+                try encodeRegisterPayload(uuid: configuration.common.nodeUUID, content: nodeRecord),
+                try encodeRegisterPayload(uuid: configuration.common.userUUID, content: userRecord)
+            ]
+
+            var successes: [String] = []
+            var failures: [(String, Error)] = []
+
+            for root in rootServers {
+                do {
+                    for payload in payloads {
+                        try await send(payload: payload, to: root, configuration: configuration, configurationPath: configurationResult.url.path)
+                    }
+                    successes.append("\(root.address):\(root.port)")
+                } catch {
+                    failures.append(("\(root.address):\(root.port)", error))
+                }
+            }
+
+            if !successes.isEmpty {
+                FileHandle.standardOutput.write("Published records to: \(successes.joined(separator: ", "))\n".data(using: .utf8) ?? Data())
+            }
+            if !failures.isEmpty {
+                let lines = failures.map { entry in "Failed to publish to \(entry.0): \(entry.1)" }
+                throw ValidationError(lines.joined(separator: "\n"))
+            }
+
+            try persistLocalUserRecord(configuration: configuration, userRecord: userRecord)
+        }
+
+        // MARK: - Helpers
+
+        private func resolveConfigurationURL(path: String?) throws -> URL {
+            if let path, !path.isEmpty {
+                return URL(fileURLWithPath: NSString(string: path).expandingTildeInPath)
+            }
+            guard let defaultURL = BoxPaths.configurationURL(explicitPath: nil) else {
+                throw ValidationError("Unable to determine configuration path. Specify one with --path.")
+            }
+            return defaultURL
+        }
+
+        private func resolveRootServers(configuration: BoxConfiguration, overrides: [String]) throws -> [BoxRuntimeOptions.RootServer] {
+            if overrides.isEmpty {
+                return configuration.common.rootServers
+            }
+            return try overrides.map { try parseRootEndpoint($0) }
+        }
+
+        private func parseRootEndpoint(_ string: String) throws -> BoxRuntimeOptions.RootServer {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                throw ValidationError("Root endpoint cannot be empty.")
+            }
+            let components = trimmed.split(separator: ":", omittingEmptySubsequences: false)
+            if components.count == 1 {
+                return BoxRuntimeOptions.RootServer(address: String(components[0]), port: BoxRuntimeOptions.defaultPort)
+            } else if components.count == 2, let port = UInt16(components[1]) {
+                return BoxRuntimeOptions.RootServer(address: String(components[0]), port: port)
+            }
+            throw ValidationError("Invalid root endpoint format: \(string). Expected host[:port].")
+        }
+
+        private func resolveAdvertisedPort(configuration: BoxConfiguration, override: UInt16?) -> UInt16 {
+            if let override {
+                return override
+            }
+            if let serverPort = configuration.server.port {
+                return serverPort
+            }
+            if let clientPort = configuration.client.port {
+                return clientPort
+            }
+            return BoxRuntimeOptions.defaultPort
+        }
+
+        private func buildAdvertisedAddresses(configuration: BoxConfiguration, overrideAddress: String?, port: UInt16) -> [LocationServiceNodeRecord.Address] {
+            var addresses: [LocationServiceNodeRecord.Address] = []
+            func append(_ address: String?, source: LocationServiceNodeRecord.Address.Source) {
+                guard let address, !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    return
+                }
+                addresses.append(LocationServiceNodeRecord.Address(ip: address.trimmingCharacters(in: .whitespacesAndNewlines), port: port, scope: .global, source: source))
+            }
+
+            append(configuration.server.externalAddress, source: .config)
+            append(overrideAddress, source: .manual)
+            append(configuration.client.address, source: .config)
+
+            if addresses.isEmpty {
+                addresses.append(LocationServiceNodeRecord.Address(ip: "127.0.0.1", port: port, scope: .loopback, source: .manual))
+            }
+
+            var unique = [LocationServiceNodeRecord.Address]()
+            var seen = Set<LocationServiceNodeRecord.Address>()
+            for address in addresses {
+                if !seen.contains(address) {
+                    seen.insert(address)
+                    unique.append(address)
+                }
+            }
+            return unique
+        }
+
+        private func buildNodeRecord(
+            configuration: BoxConfiguration,
+            nodeIdentity: BoxIdentityMaterial,
+            advertisedPort: UInt16,
+            addresses: [LocationServiceNodeRecord.Address]
+        ) throws -> LocationServiceNodeRecord {
+            let portMappingEnabled = configuration.server.portMappingEnabled ?? false
+            let portMappingOrigin: BoxRuntimeOptions.PortMappingOrigin = configuration.server.portMappingEnabled == nil ? .default : .configuration
+            let nodePublicKey = "ed25519:\(hexString(nodeIdentity.publicKey))"
+            return LocationServiceNodeRecord.make(
+                userUUID: configuration.common.userUUID,
+                nodeUUID: configuration.common.nodeUUID,
+                port: advertisedPort,
+                probedGlobalIPv6: [],
+                ipv6Error: nil,
+                portMappingEnabled: portMappingEnabled,
+                portMappingOrigin: portMappingOrigin,
+                additionalAddresses: addresses,
+                portMappingExternalIPv4: configuration.server.externalAddress,
+                portMappingExternalPort: configuration.server.externalPort ?? advertisedPort,
+                nodePublicKey: nodePublicKey
+            )
+        }
+
+        private func buildUserRecord(configuration: BoxConfiguration, existingNodes: Set<UUID>) -> LocationServiceUserRecord {
+            var nodes = existingNodes
+            nodes.insert(configuration.common.nodeUUID)
+            return LocationServiceUserRecord.make(userUUID: configuration.common.userUUID, nodeUUIDs: Array(nodes))
+        }
+
+        private func encodeRegisterPayload<T: Encodable>(uuid: UUID, content: T) throws -> RegisterPayload {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(content)
+            return RegisterPayload(queue: "whoswho", identifier: uuid, contentType: "application/json; charset=utf-8", bytes: Array(data))
+        }
+
+        private func send(payload: RegisterPayload, to root: BoxRuntimeOptions.RootServer, configuration: BoxConfiguration, configurationPath: String) async throws {
+            let options = BoxRuntimeOptions(
+                mode: .client,
+                address: root.address,
+                port: root.port,
+                portOrigin: .configuration,
+                addressOrigin: .configuration,
+                configurationPath: configurationPath,
+                adminChannelEnabled: false,
+                logLevel: .info,
+                logTarget: .stderr,
+                logLevelOrigin: .default,
+                logTargetOrigin: .default,
+                nodeId: configuration.common.nodeUUID,
+                userId: configuration.common.userUUID,
+                portMappingRequested: false,
+                clientAction: .put(queuePath: payload.queue, contentType: payload.contentType, data: payload.bytes),
+                portMappingOrigin: .default
+            )
+            try await BoxClient.run(with: options)
+        }
+
+        private func loadExistingUserNodes(configuration: BoxConfiguration) throws -> Set<UUID> {
+            guard let queuesDirectory = BoxPaths.queuesDirectory() else {
+                return []
+            }
+            let fileURL = queuesDirectory.appendingPathComponent("whoswho", isDirectory: true).appendingPathComponent("\(configuration.common.userUUID.uuidString.uppercased()).json", isDirectory: false)
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                return []
+            }
+            do {
+                let data = try Data(contentsOf: fileURL)
+                let userRecord = try JSONDecoder().decode(LocationServiceUserRecord.self, from: data)
+                return Set(userRecord.nodeUUIDs)
+            } catch {
+                return []
+            }
+        }
+
+        private func persistLocalUserRecord(configuration: BoxConfiguration, userRecord: LocationServiceUserRecord) throws {
+            guard let queuesDirectory = BoxPaths.queuesDirectory() else {
+                return
+            }
+            let directoryURL = queuesDirectory.appendingPathComponent("whoswho", isDirectory: true)
+            let fileURL = directoryURL.appendingPathComponent("\(configuration.common.userUUID.uuidString.uppercased()).json", isDirectory: false)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(userRecord)
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            try data.write(to: fileURL, options: .atomic)
+#if !os(Windows)
+            try FileManager.default.setAttributes([.posixPermissions: NSNumber(value: Int16(0o600))], ofItemAtPath: fileURL.path)
+#endif
+        }
+
+        private func hexString(_ bytes: [UInt8]) -> String {
+            bytes.map { String(format: "%02x", $0) }.joined()
+        }
+
+        private struct RegisterPayload {
+            var queue: String
+            var identifier: UUID
+            var contentType: String
+            var bytes: [UInt8]
+        }
     }
 
     /// Flag selecting server mode (`box --server`).
