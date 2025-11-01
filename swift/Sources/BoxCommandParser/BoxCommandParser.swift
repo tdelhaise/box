@@ -470,7 +470,7 @@ extension BoxCommandParser {
 
             FileHandle.standardOutput.write("Re-use existing user UUID? Leave blank to generate a new one.\\nUser UUID: ".data(using: .utf8) ?? Data())
 #if !os(Windows)
-            fflush(stdout)
+            fflush(nil)
 #endif
             if let input = readLine(), !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
