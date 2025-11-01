@@ -20,7 +20,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.60.0"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.5.3"),
-        .package(url: "https://github.com/sushichop/Puppy.git", branch: "main")
+        .package(url: "https://github.com/sushichop/Puppy.git", branch: "main"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.2.0")
     ],
     targets: [
         .executableTarget(
@@ -60,7 +61,8 @@ let package = Package(
             dependencies: [
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "NIOCore", package: "swift-nio"),
-                "Puppy"
+                "Puppy",
+                .product(name: "Crypto", package: "swift-crypto")
             ],
             path: "swift/Sources/BoxCore"
         ),

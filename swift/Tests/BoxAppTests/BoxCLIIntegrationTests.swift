@@ -369,7 +369,16 @@ final class BoxCLIIntegrationTests: XCTestCase {
             XCTAssertEqual(summary["rotated"] as? Bool, false)
             let firstNode = try XCTUnwrap(summary["nodeUUID"] as? String)
             let firstUser = try XCTUnwrap(summary["userUUID"] as? String)
+            XCTAssertEqual(summary["userIdentityRotated"] as? Bool, true)
+            XCTAssertEqual(summary["nodeIdentityRotated"] as? Bool, true)
             XCTAssertTrue(fileManager.fileExists(atPath: path))
+
+            let linksURL = tempHome.appendingPathComponent(".box/keys/identity-links.json", isDirectory: false)
+            XCTAssertTrue(fileManager.fileExists(atPath: linksURL.path))
+            let linksData = try Data(contentsOf: linksURL)
+            let linksJSON = try decodeJSON(String(data: linksData, encoding: .utf8) ?? "{}")
+            XCTAssertEqual(linksJSON["userUUID"] as? String, firstUser.uppercased())
+            XCTAssertEqual(linksJSON["nodeUUID"] as? String, firstNode.uppercased())
 
             let (secondStdout, secondStderr, secondStatus) = try await Self.runBoxCLIAsync(
                 args: ["init-config", "--json"],
@@ -382,6 +391,8 @@ final class BoxCLIIntegrationTests: XCTestCase {
             XCTAssertEqual(secondSummary["rotated"] as? Bool, false)
             XCTAssertEqual(secondSummary["nodeUUID"] as? String, firstNode)
             XCTAssertEqual(secondSummary["userUUID"] as? String, firstUser)
+            XCTAssertEqual(secondSummary["userIdentityRotated"] as? Bool, false)
+            XCTAssertEqual(secondSummary["nodeIdentityRotated"] as? Bool, false)
 
             let (thirdStdout, thirdStderr, thirdStatus) = try await Self.runBoxCLIAsync(
                 args: ["init-config", "--json", "--rotate-identities"],
@@ -393,6 +404,50 @@ final class BoxCLIIntegrationTests: XCTestCase {
             XCTAssertEqual(thirdSummary["rotated"] as? Bool, true)
             XCTAssertNotEqual(thirdSummary["nodeUUID"] as? String, firstNode)
             XCTAssertNotEqual(thirdSummary["userUUID"] as? String, firstUser)
+            XCTAssertEqual(thirdSummary["userIdentityRotated"] as? Bool, true)
+            XCTAssertEqual(thirdSummary["nodeIdentityRotated"] as? Bool, true)
+        }
+    }
+
+    func testInitConfigRespectsProvidedUserUUID() async throws {
+        try await runWithinTimeout {
+            let fileManager = FileManager.default
+            let tempHome = fileManager.temporaryDirectory.appendingPathComponent("box-init-provided-\(UUID().uuidString)", isDirectory: true)
+            try fileManager.createDirectory(at: tempHome, withIntermediateDirectories: true)
+            defer { try? fileManager.removeItem(at: tempHome) }
+
+            let overrides = ["HOME": tempHome.path]
+            let existingUser = UUID()
+
+            let (stdout, stderr, status) = try await Self.runBoxCLIAsync(
+                args: ["init-config", "--json", "--user-uuid", existingUser.uuidString],
+                environment: overrides
+            )
+            XCTAssertEqual(status, 0)
+            XCTAssertTrue(stderr.isEmpty)
+            let summary = try decodeJSON(stdout)
+            XCTAssertEqual(summary["userUUID"] as? String, existingUser.uuidString)
+            XCTAssertEqual(summary["userIdentityRotated"] as? Bool, true)
+
+            let plistURL = tempHome.appendingPathComponent(".box/Box.plist")
+            let plist = try PropertyListSerialization.propertyList(from: Data(contentsOf: plistURL), options: [], format: nil) as? [String: Any]
+            let common = plist?["common"] as? [String: Any]
+            XCTAssertEqual(common?["user_uuid"] as? String, existingUser.uuidString.uppercased())
+
+            let linksURL = tempHome.appendingPathComponent(".box/keys/identity-links.json", isDirectory: false)
+            let linksData = try Data(contentsOf: linksURL)
+            let linksJSON = try decodeJSON(String(data: linksData, encoding: .utf8) ?? "{}")
+            XCTAssertEqual(linksJSON["userUUID"] as? String, existingUser.uuidString.uppercased())
+
+            let (secondStdout, secondStderr, secondStatus) = try await Self.runBoxCLIAsync(
+                args: ["init-config", "--json"],
+                environment: overrides
+            )
+            XCTAssertEqual(secondStatus, 0)
+            XCTAssertTrue(secondStderr.isEmpty)
+            let secondSummary = try decodeJSON(secondStdout)
+            XCTAssertEqual(secondSummary["userUUID"] as? String, existingUser.uuidString)
+            XCTAssertEqual(secondSummary["userIdentityRotated"] as? Bool, false)
         }
     }
 

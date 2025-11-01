@@ -35,4 +35,35 @@ final class NoiseKeyStoreTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
+
+    func testPersistLinkCreatesSignatures() async throws {
+        let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("box-keystore-links-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let store = try BoxNoiseKeyStore(baseDirectory: tempDirectory)
+        let userMaterial = try await store.regenerateIdentity(for: .client)
+        let nodeMaterial = try await store.regenerateIdentity(for: .node)
+        let userUUID = UUID()
+        let nodeUUID = UUID()
+
+        try await store.persistLink(
+            userUUID: userUUID,
+            nodeUUID: nodeUUID,
+            userMaterial: userMaterial,
+            nodeMaterial: nodeMaterial
+        )
+
+        let linkURL = await store.identityURL(for: .node).deletingLastPathComponent().appendingPathComponent("identity-links.json", isDirectory: false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: linkURL.path))
+
+        let data = try Data(contentsOf: linkURL)
+        let decoded = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        let algorithm = decoded?["algorithm"] as? String
+        XCTAssertEqual(algorithm, "ed25519")
+        XCTAssertEqual(decoded?["userUUID"] as? String, userUUID.uuidString.uppercased())
+        XCTAssertEqual(decoded?["nodeUUID"] as? String, nodeUUID.uuidString.uppercased())
+        XCTAssertNotNil(decoded?["userSignature"] as? String)
+        XCTAssertNotNil(decoded?["nodeSignature"] as? String)
+    }
 }

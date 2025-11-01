@@ -483,7 +483,7 @@ public extension BoxConfiguration {
 
     /// Regenerates the node and user identifiers with fresh UUIDs.
     mutating func rotateIdentities() {
-        common = Common(nodeUUID: UUID(), userUUID: UUID())
+        common = Common(nodeUUID: UUID(), userUUID: UUID(), rootServers: common.rootServers)
     }
 }
 

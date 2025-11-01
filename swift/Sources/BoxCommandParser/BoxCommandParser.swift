@@ -7,6 +7,8 @@ import Logging
 
 #if os(Linux)
 import Glibc
+#elseif os(Windows)
+import CRT
 #else
 import Darwin
 #endif
@@ -326,9 +328,12 @@ extension BoxCommandParser {
         @Flag(name: .long, help: "Emit the summary as JSON.")
         public var json: Bool = false
 
+        @Option(name: .customLong("user-uuid"), help: "Reuse an existing user UUID instead of generating a new one.")
+        public var providedUserUUID: String?
+
         public init() {}
 
-        public mutating func run() throws {
+        public mutating func run() async throws {
             let resolvedURL: URL
             if let path, !path.isEmpty {
                 resolvedURL = URL(fileURLWithPath: NSString(string: path).expandingTildeInPath)
@@ -344,20 +349,52 @@ extension BoxCommandParser {
             var loadResult = try BoxConfiguration.load(from: resolvedURL)
             var configuration = loadResult.configuration
             var rotated = false
+            var userIdentityRotated = false
+            var nodeIdentityRotated = false
+
+            let userUUIDInput = try Self.resolveUserUUID(
+                provided: providedUserUUID,
+                wasCreated: loadResult.wasCreated,
+                current: configuration.common.userUUID
+            )
 
             if rotateIdentities {
                 rotated = true
+                userIdentityRotated = true
+                nodeIdentityRotated = true
                 configuration.rotateIdentities()
+                configuration.common.userUUID = userUUIDInput ?? configuration.common.userUUID
+                try configuration.save(to: loadResult.url)
+                loadResult.configuration = configuration
+            } else if loadResult.wasCreated {
+                if let suppliedUser = userUUIDInput {
+                    configuration.common.userUUID = suppliedUser
+                    userIdentityRotated = true
+                }
+                let newNodeUUID = UUID()
+                configuration.common.nodeUUID = newNodeUUID
+                nodeIdentityRotated = true
                 try configuration.save(to: loadResult.url)
                 loadResult.configuration = configuration
             }
+
+            try await Self.initialiseIdentities(
+                configuration: loadResult.configuration,
+                rotateIdentities: rotateIdentities,
+                configurationJustCreated: loadResult.wasCreated,
+                userUUIDWasForced: userUUIDInput != nil,
+                userIdentityRotated: &userIdentityRotated,
+                nodeIdentityRotated: &nodeIdentityRotated
+            )
 
             let summary: [String: Any] = [
                 "path": loadResult.url.path,
                 "created": loadResult.wasCreated,
                 "rotated": rotated,
                 "nodeUUID": configuration.common.nodeUUID.uuidString,
-                "userUUID": configuration.common.userUUID.uuidString
+                "userUUID": configuration.common.userUUID.uuidString,
+                "userIdentityRotated": userIdentityRotated,
+                "nodeIdentityRotated": nodeIdentityRotated
             ]
 
             if json {
@@ -372,7 +409,9 @@ extension BoxCommandParser {
                     "Created: \(createdText)",
                     "Rotated identities: \(rotatedText)",
                     "Node UUID: \(configuration.common.nodeUUID.uuidString)",
-                    "User UUID: \(configuration.common.userUUID.uuidString)"
+                    "User UUID: \(configuration.common.userUUID.uuidString)",
+                    "User identity rotated: \(userIdentityRotated ? "yes" : "no")",
+                    "Node identity rotated: \(nodeIdentityRotated ? "yes" : "no")"
                 ]
                 FileHandle.standardOutput.write(lines.joined(separator: "\n").data(using: .utf8) ?? Data())
                 FileHandle.standardOutput.write("\n".data(using: .utf8)!)
@@ -415,6 +454,82 @@ extension BoxCommandParser {
             let attributes: [FileAttributeKey: Any]? = nil
 #endif
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: attributes)
+        }
+
+        private static func resolveUserUUID(provided: String?, wasCreated: Bool, current: UUID) throws -> UUID? {
+            if let provided, !provided.isEmpty {
+                guard let parsed = UUID(uuidString: provided) else {
+                    throw ValidationError("--user-uuid expects a valid UUID string.")
+                }
+                return parsed
+            }
+
+            guard wasCreated, stdinIsTTY else {
+                return nil
+            }
+
+            FileHandle.standardOutput.write("Re-use existing user UUID? Leave blank to generate a new one.\\nUser UUID: ".data(using: .utf8) ?? Data())
+#if !os(Windows)
+            fflush(stdout)
+#endif
+            if let input = readLine(), !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let parsed = UUID(uuidString: trimmed) else {
+                    throw ValidationError("Provided user UUID is not valid: \(trimmed)")
+                }
+                return parsed
+            }
+            return nil
+        }
+
+        private static func initialiseIdentities(
+            configuration: BoxConfiguration,
+            rotateIdentities: Bool,
+            configurationJustCreated: Bool,
+            userUUIDWasForced: Bool,
+            userIdentityRotated: inout Bool,
+            nodeIdentityRotated: inout Bool
+        ) async throws {
+            let keyStore = try BoxNoiseKeyStore()
+
+            var userMaterial: BoxIdentityMaterial
+            var nodeMaterial: BoxIdentityMaterial
+
+            if rotateIdentities {
+                userMaterial = try await keyStore.regenerateIdentity(for: .client)
+                nodeMaterial = try await keyStore.regenerateIdentity(for: .node)
+                userIdentityRotated = true
+                nodeIdentityRotated = true
+            } else {
+                if configurationJustCreated {
+                    if await keyStore.identityExists(for: .client) {
+                        userMaterial = try await keyStore.loadIdentity(for: .client)
+                    } else {
+                        userMaterial = try await keyStore.regenerateIdentity(for: .client)
+                        userIdentityRotated = true
+                    }
+                    nodeMaterial = try await keyStore.regenerateIdentity(for: .node)
+                    nodeIdentityRotated = true
+                } else {
+                    userMaterial = try await keyStore.ensureIdentity(for: .client)
+                    nodeMaterial = try await keyStore.ensureIdentity(for: .node)
+                }
+            }
+
+            try await keyStore.persistLink(
+                userUUID: configuration.common.userUUID,
+                nodeUUID: configuration.common.nodeUUID,
+                userMaterial: userMaterial,
+                nodeMaterial: nodeMaterial
+            )
+        }
+
+        private static var stdinIsTTY: Bool {
+#if os(Windows)
+            return _isatty(_fileno(stdin)) != 0
+#else
+            return isatty(STDIN_FILENO) == 1
+#endif
         }
     }
 

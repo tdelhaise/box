@@ -175,7 +175,7 @@ Future work:
 - General form:
   - `box://<user_uuid>@<host>:<port>`
   - `<host>` accepts `IPv4`, `hostname`, or IPv6 in brackets `[IPv6]`.
-  - Optional query parameters for metadata: `?fp=<fingerprint>&node=<node_uuid>&v=<proto_version>`
+- Optional query parameters for metadata: `?fp=<fingerprint>&node=<node_uuid>&v=<proto_version>`
 
 - ABNF (informative):
   box-uri   = "box://" user-uuid [ "@" host ":" port ] [ "?" params ]
@@ -219,7 +219,65 @@ Register/Update Node
       "tags": {"role": "home", "ver": "1"}
     },
     "sig": "ed25519:..."  
-  }
+}
+
+6.7 Locate Storage Semantics
+
+- Every entry exposed by `locate` is persisted as a JSON document under `~/.box/queues/whoswho/<uuid>.json`.
+- File naming mirrors the UUID of the subject: `node_uuid.json` for node records, `user_uuid.json` for user aggregates.
+- The queue `whoswho` is declared **permanent** (`server.permanent_queues`), meaning `GET`/`locate` never delete records.
+- `locate` is implemented internally as a `GET` constrained to the `whoswho` queue. The runtime MUST reject attempts to locate from any other queue.
+- `PUT /whoswho` replaces the full JSON payload atomically. The store keeps the newest record only; previous versions are discarded after successful write.
+- Node records and user records embed a monotonically increasing `revision` (uint64) and `updated_at` (ISO 8601 UTC). Servers MUST refuse to overwrite a record with a lower revision to avoid stale data.
+- When a node updates its user’s membership list, it MUST publish the user record immediately after the node record so readers never observe a dangling node UUID for more than one sync cycle.
+- Clients attempting to `locate` SHOULD randomise the order of configured root servers and bail out after the first successful `PUT` frame is received.
+
+6.8 Root Resolver Synchronisation (Noise)
+
+- Transport
+  - Synchronisation uses the Box clear-text protocol over UDP, upgraded with the Noise IK handshake (client = initiator, server = responder). No TLS/PKI is involved.
+  - Messages are wrapped in the standard AEAD frames after the handshake, reusing the same framing code path as regular client/server traffic.
+- Topology
+  - Each root resolver maintains a list of its peers (`common.root_servers` excluding itself).
+  - A background task wakes every 5–10 s, shuffles the peers, and attempts a sync session with each reachable peer.
+- Message Flow (per peer)
+  1. **HELLO/IK Noise**: Initiator authenticates using its static root identity key; the responder verifies against its allow-list of trusted root keys.
+  2. **INDEX_EXCHANGE**: Initiator sends `{ "type": "index", "revision": globalRevision, "entries": [ {"uuid":…, "rev":…, "digest":…}, … ] }`.
+  3. Responder compares with its local index and replies with the set of UUIDs that are newer or missing on each side (`need_push`, `need_pull`).
+  4. Parties transfer missing records using `RECORD_PUSH { uuid, rev, payload }` frames; the receiver validates the signature and accepts only strictly newer revisions.
+  5. Once both `need_*` sets are empty, the responder emits `SYNC_DONE` and both sides close the channel.
+- Conflict Resolution
+  - Records carry `revision`, `updated_at`, and `signature` (Noise static key of the owner). The highest `revision` wins; ties fall back to `updated_at`, then lexicographic order of the signing key.
+  - If verification fails, the record is discarded and a `sync_warning` is logged.
+  - Roots SHOULD persist an append-only journal of accepted revisions to speed up recovery after downtime.
+- Failure Handling
+  - If a peer is unreachable, the root retries on the next wake cycle and surfaces the issue via `box admin location-summary`.
+  - After a root rejoins (cold start), it performs a full pull by advertising `revision = 0`; peers then stream all records.
+  - Sync sessions are short-lived; if no progress is observed for 3 successive intervals, the connection is aborted and rescheduled.
+
+6.9 Identity & Trust Establishment (Autorité décentralisée)
+
+- **But** : fournir des garanties d’identité sans dépendre d’une PKI centralisée.
+- **Identité primaire**
+  - `box init-config` génère automatiquement une paire de clefs Ed25519 pour l’utilisateur (`user.identity.json`) et une paire pour le nœud (`node.identity.json`), stockées sous `~/.box/keys/` avec permissions 600.
+  - Le CLI signe immédiatement la clef du nœud avec la clef utilisateur et dépose un lien croisé (le node contre-signe l’UUID utilisateur) afin d’établir la relation de confiance locale.
+  - L’option `--rotate-identities` force la régénération des UUID et des clefs (commande interactive, avertissements sur la révocation nécessaire).
+  - Une commande future `box register` publiera ces identités auprès des racines configurées (PUT signé sur `whoswho`).
+  - Lorsqu’aucun `Box.plist` n’existe, `box init-config` demande si l’opérateur possède déjà un `user_uuid`. Si oui, il le saisit (ou l’indique via un futur drapeau `--user-uuid`) et la nouvelle machine ne crée qu’un `node_uuid`; sinon, un nouveau couple utilisateur/nœud est généré.
+- **Attestation multi-canaux**
+  1. **Présentation initiale** : l’utilisateur partage un paquet bootstrap (voir §6.4) comprenant UUIDs, fingerprints des clefs et, si possible, une preuve hors-ligne (QR code, carte papier, clef USB, etc.).
+  2. **Contrôle visuel / social** : les pairs peuvent vérifier physiquement ou par visio que la personne associée à l’UUID possède bien le secret (ex : lecture d’un challenge, signature d’un texte imposé).
+  3. **Web-of-Trust léger** : une identité peut être cosignée par d’autres utilisateurs via des certificats simples `{ signee_uuid, signer_uuid, signed_fingerprint, timestamp, scope }`. Ces attestations sont stockées dans `whoswho` sous `user_uuid-cert-<hash>.json` et synchronisées entre racines.
+  4. **Challenge réseau** : lors du premier contact, le client envoie un défi aléatoire que le serveur signe avec sa clef statique. La signature est vérifiée contre la fingerprint reçue hors-bande ou via l’attestation WoT.
+- **Révocation / rotation**
+  - L’utilisateur publie un enregistrement `revocation` listant les fingerprints devenues invalides et signées par la clef actuellement de confiance.
+  - En cas de compromission supposée, un canal hors-ligne (rencontre physique, appel vocal sécurisé) est fortement recommandé pour confirmer la nouvelle clef.
+- **Ancrage temporel**
+  - Chaque signature inclut `issued_at` et `expires_at`. Les racines refusent un document expiré et alertent le propriétaire.
+  - Les horloges sont synchronisées via NTP ou par observation relative (drift max 5 min) pour éviter les rejets intempestifs.
+- **Interopérabilité**
+  - Aucune autorité externe n’est requise, mais rien n’empêche un groupe de confiance (collectif, entreprise) de publier un lot d’attestations signées pour ses membres.
+  - Les clients peuvent choisir leur politique : exiger N cosignatures, ou bien accepter une seule signature si elle est issue d’un contact physique vérifié récemment.
 - Response
   { "ok": true, "ts": 1736712390000 }
 
@@ -281,7 +339,7 @@ Resolve by Node UUID
 - Response
   { "ok": true, "node": { /* same shape as in nodes[] above */ } }
 
-6.7 Location Service CBOR CDDL (Informative)
+6.10 Location Service CBOR CDDL (Informative)
 
 - The following CDDL sketches the CBOR encoding for LS messages. Field names mirror the JSON forms above.
 
@@ -381,7 +439,7 @@ Resolve by Node UUID
   4) Optional replay test: in test builds, the client can retransmit the last frame; the server
      rejects it based on the sliding window.
 
-6.8 Location Service CBOR Examples (Hex + Diagnostic)
+6.11 Location Service CBOR Examples (Hex + Diagnostic)
 
 Notes
 - These examples illustrate one possible canonical CBOR encoding. Implementations do not need to match byte-for-byte as long as they produce valid messages conforming to the schema. Byte strings for UUIDs are 16 bytes; values below are sample data.
