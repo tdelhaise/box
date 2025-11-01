@@ -1,4 +1,5 @@
 import Foundation
+import BoxCore
 
 struct BoxAdminCommandDispatcher: Sendable {
     private let statusProvider: @Sendable () async -> String
@@ -8,6 +9,7 @@ struct BoxAdminCommandDispatcher: Sendable {
     private let locateNode: @Sendable (UUID) async -> String
     private let natProbe: @Sendable (String?) async -> String
     private let locationSummaryProvider: @Sendable () async -> String
+    private let syncRoots: @Sendable () async -> String
 
     init(
         statusProvider: @escaping @Sendable () async -> String,
@@ -16,7 +18,8 @@ struct BoxAdminCommandDispatcher: Sendable {
         statsProvider: @escaping @Sendable () async -> String,
         locateNode: @escaping @Sendable (UUID) async -> String,
         natProbe: @escaping @Sendable (String?) async -> String,
-        locationSummaryProvider: @escaping @Sendable () async -> String
+        locationSummaryProvider: @escaping @Sendable () async -> String,
+        syncRoots: @escaping @Sendable () async -> String
     ) {
         self.statusProvider = statusProvider
         self.logTargetUpdater = logTargetUpdater
@@ -25,6 +28,7 @@ struct BoxAdminCommandDispatcher: Sendable {
         self.locateNode = locateNode
         self.natProbe = natProbe
         self.locationSummaryProvider = locationSummaryProvider
+        self.syncRoots = syncRoots
     }
 
     func process(_ rawValue: String) async -> String {
@@ -37,7 +41,8 @@ struct BoxAdminCommandDispatcher: Sendable {
         case .status:
             return await statusProvider()
         case .ping:
-            return adminResponse(["status": "ok", "message": "pong"])
+            let message = "pong \(BoxVersionInfo.description)"
+            return adminResponse(["status": "ok", "message": message])
         case .logTarget(let target):
             return await logTargetUpdater(target)
         case .reloadConfig(let path):
@@ -50,6 +55,8 @@ struct BoxAdminCommandDispatcher: Sendable {
             return await natProbe(gateway)
         case .locationSummary:
             return await locationSummaryProvider()
+        case .syncRoots:
+            return await syncRoots()
         case .invalid(let message):
             return adminResponse(["status": "error", "message": message])
         case .unknown(let value):
@@ -92,6 +99,9 @@ struct BoxAdminCommandDispatcher: Sendable {
         }
         if command == "stats" {
             return .stats
+        }
+        if command == "sync-roots" {
+            return .syncRoots
         }
         if command.hasPrefix("nat-probe") {
             let remainder = command.dropFirst("nat-probe".count).trimmingCharacters(in: .whitespaces)

@@ -357,13 +357,41 @@ Resolve by Node UUID
   3. Construction du `LocationServiceUserRecord` à partir de l’enregistrement local (`whoswho/<user_uuid>.json`) en conservant les nœuds existants et en ajoutant le nœud courant.
   4. Encodage JSON (`sortedKeys`) et envoi, pour chaque racine, de deux requêtes `PUT whoswho` via le client UDP (`BoxClientAction.put`).
   5. Persistence locale du nouvel enregistrement utilisateur dans `~/.box/queues/whoswho/<user_uuid>.json` pour aider les publications futures hors-ligne.
+  - Lorsque la racine reçoit un `PUT` sur `whoswho`, le serveur applique l’admission LS : seuls les enregistrements auto‑consistants (UUID du frame = UUIDs présents dans le JSON) sont autorisés à créer ou mettre à jour les fiches node/user. Toute autre tentative est rejetée (`STATUS unauthorized`).
 - **Comportement en erreur**
   - Si une racine est injoignable, la commande continue avec les autres mais échoue en sortie (code ≠ 0) en listant les endpoints défaillants.
   - Les messages d’information du client (`STATUS response`, `PUT acknowledgement`) sont émis sur stderr pour faciliter le débogage.
 - **Évolutions prévues (0.4.x)**
   - Ajout de champs `revision` / `signature` pour verrouiller la cohérence, synchronisation automatique entre racines, publication atomique user/node.
 
-6.11 Location Service CBOR CDDL (Informative)
+6.11 Commande `box admin sync-roots`
+
+- **Objectif** : propager les enregistrements Location Service locaux vers les racines configurées et rapatrier les fiches distantes pour maintenir la cohérence du `whoswho`.
+- **Invocation**
+  - `box admin sync-roots [--socket <path>]`
+  - Utilise `common.root_servers`; les endpoints identifiés comme « self » (même adresse/port que le serveur courant) sont ignorés.
+- **Comportement**
+  - Pour chaque racine atteignable, le serveur pousse l’ensemble des enregistrements node et user locaux (`PUT whoswho`).
+  - Lorsque le push réussit, il initie un `SEARCH whoswho` côté client pour tirer l’instantané distant et l’importe via le `LocationServiceCoordinator` (`publish` / `importUserRecord`).
+  - Les enregistrements existants sont remplacés par la version la plus récente ; la commande fonctionne même si la base locale est vide (seule la phase d’import est alors exécutée).
+- **Réponse (JSON)**
+  - `synced`: liste des racines qui ont accepté la publication locale.
+  - `imports`: tableau `{ target, records, nodes, users }` résumant les données récupérées auprès de chaque racine.
+  - `importedNodes` / `importedUsers`: totaux importés sur ce cycle.
+  - `failures`: erreurs étiquetées avec `stage = push|pull` lorsqu’une phase échoue.
+
+6.12 Commande `box ping-roots`
+
+- **Objectif** : vérifier la disponibilité des serveurs racines configurés et afficher leur bannière (`pong <version>`).
+- **Invocation**
+  - `box ping-roots [--path <Box.plist>] [--root host[:port]]...`
+  - Utilise `common.root_servers` par défaut, `--root` permet un override ponctuel.
+- **Comportement**
+  - Pour chaque racine, effectue un handshake clair (`HELLO` → `STATUS`) et affiche la réponse `pong` enrichie avec le `BoxVersionInfo` renvoyé par le serveur.
+  - Les échecs sont reportés avec l’erreur transport ou la réponse `STATUS` négative (`unknown-client`, etc.).
+  - Sort avec un code ≠ 0 si au moins une racine est injoignable.
+
+6.13 Location Service CBOR CDDL (Informative)
 
 - The following CDDL sketches the CBOR encoding for LS messages. Field names mirror the JSON forms above.
 
@@ -1062,7 +1090,7 @@ Safety
 - Authentication/Authorization
   - Access is restricted by OS-level file/pipe permissions to the same non-privileged user that owns `boxd`.
   - `boxd` refuses admin-channel requests if the caller is not the same user.
-  - Swift rewrite (MVP 2025): admin commands are invoked as plain text lines (`status`, `ping`, `log-target <target|json>`, `reload-config [json]`, `stats`, `nat-probe [json]`, `locate <uuid>`, `location-summary [flags]`) retournant un JSON terminé par un saut de ligne. `locate` accepte un UUID de nœud (réponse `{"record": …}`) ou un UUID d’utilisateur (réponse `{"user": {"nodeUUIDs": [...], "records": [...]}}`). `location-summary` renvoie un instantané supervisant les entrées `whoswho/` (totaux, seuil, identifiants stale) et peut être consommé via le CLI pour enclencher des alertes. Dans tous les cas, la commande refuse de divulguer des informations si le couple `(node_id, user_id)` du demandeur n’a jamais été enregistré.
+  - Swift rewrite (MVP 2025): admin commands are invoked as plain text lines (`status`, `ping`, `log-target <target|json>`, `reload-config [json]`, `stats`, `nat-probe [json]`, `locate <uuid>`, `location-summary [flags]`) retournant un JSON terminé par un saut de ligne. `ping` répond désormais `{"status":"ok","message":"pong <version> <builderHost> <builderUser> <timestamp>"}` afin de vérifier d’un coup d’œil la version du serveur distant. `locate` accepte un UUID de nœud (réponse `{"record": …}`) ou un UUID d’utilisateur (réponse `{"user": {"nodeUUIDs": [...], "records": [...]}}`). `location-summary` renvoie un instantané supervisant les entrées `whoswho/` (totaux, seuil, identifiants stale) et peut être consommé via le CLI pour enclencher des alertes. Dans tous les cas, la commande refuse de divulguer des informations si le couple `(node_id, user_id)` du demandeur n’a jamais été enregistré.
   - Implementation status (2025-10): socket Unix et named pipe Windows disponibles avec ACL restreintes; `log-target` pilote Puppy (`stderr|stdout|file:`) et `reload-config` relit les PLIST. Restent à intégrer: tests d’intégration CLI↔️serveur et les commandes NAT/LS décrites ci-dessous.
 
 - Message Format

@@ -308,6 +308,101 @@ final class BoxClientServerIntegrationTests: XCTestCase {
             XCTAssertEqual(nsError.code, Int(BoxCodec.Status.unauthorized.rawValue))
         }
     }
+
+    func testPutRejectedForUnknownClient() async throws {
+        let port = try allocateEphemeralUDPPort()
+        let serverConfiguration = try makeServerConfiguration(port: port, adminEnabled: false)
+        let context = try await startServer(
+            configurationData: serverConfiguration.data,
+            forcedPort: port,
+            adminChannelEnabled: false
+        )
+        defer { context.tearDown() }
+
+        try await context.waitForQueueInfrastructure()
+
+        let payload = Array("unauthorized payload".utf8)
+        let options = BoxRuntimeOptions(
+            mode: .client,
+            address: "127.0.0.1",
+            port: port,
+            portOrigin: .cliFlag,
+            addressOrigin: .cliFlag,
+            configurationPath: context.configurationURL.path,
+            adminChannelEnabled: false,
+            logLevel: .info,
+            logTarget: .stderr,
+            logLevelOrigin: .default,
+            logTargetOrigin: .default,
+            nodeId: UUID(),
+            userId: UUID(),
+            portMappingRequested: false,
+            clientAction: .put(queuePath: "INBOX", contentType: "text/plain", data: payload),
+            portMappingOrigin: .default,
+            rootServers: []
+        )
+
+        do {
+            try await BoxClient.run(with: options)
+            XCTFail("expected unauthorized PUT to throw")
+        } catch let error as BoxClientError {
+            guard case let .remoteRejected(status, message) = error else {
+                XCTFail("unexpected error type: \(error)")
+                return
+            }
+            XCTAssertEqual(status, .unauthorized)
+            XCTAssertEqual(message, "unknown-client")
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    func testGetRejectedForUnknownClient() async throws {
+        let port = try allocateEphemeralUDPPort()
+        let serverConfiguration = try makeServerConfiguration(port: port, adminEnabled: false)
+        let context = try await startServer(
+            configurationData: serverConfiguration.data,
+            forcedPort: port,
+            adminChannelEnabled: false
+        )
+        defer { context.tearDown() }
+
+        try await context.waitForQueueInfrastructure()
+
+        let options = BoxRuntimeOptions(
+            mode: .client,
+            address: "127.0.0.1",
+            port: port,
+            portOrigin: .cliFlag,
+            addressOrigin: .cliFlag,
+            configurationPath: context.configurationURL.path,
+            adminChannelEnabled: false,
+            logLevel: .info,
+            logTarget: .stderr,
+            logLevelOrigin: .default,
+            logTargetOrigin: .default,
+            nodeId: UUID(),
+            userId: UUID(),
+            portMappingRequested: false,
+            clientAction: .get(queuePath: "INBOX"),
+            portMappingOrigin: .default,
+            rootServers: []
+        )
+
+        do {
+            try await BoxClient.run(with: options)
+            XCTFail("expected unauthorized GET to throw")
+        } catch let error as BoxClientError {
+            guard case let .remoteRejected(status, message) = error else {
+                XCTFail("unexpected error type: \(error)")
+                return
+            }
+            XCTAssertEqual(status, .unauthorized)
+            XCTAssertEqual(message, "unknown-client")
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
 }
 
 // MARK: - Helpers

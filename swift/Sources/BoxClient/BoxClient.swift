@@ -5,14 +5,17 @@ import NIOConcurrencyHelpers
 import NIOCore
 import NIOPosix
 
-private enum BoxClientError: Error {
+public enum BoxClientError: Error {
     case invalidAddress(String, UInt16)
     case timeout(TimeAmount)
     case noTargets
+    case remoteRejected(status: BoxCodec.Status, message: String)
+    case missingPingResponse
+    case invalidAction
 }
 
 extension BoxClientError: LocalizedError {
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case let .invalidAddress(host, port):
             return "unable to resolve remote address \(host):\(port)"
@@ -22,6 +25,12 @@ extension BoxClientError: LocalizedError {
             return "operation timed out after \(formatted)s"
         case .noTargets:
             return "no reachable locate targets configured"
+        case let .remoteRejected(status, message):
+            return "remote rejected request (\(status.rawValue)): \(message)"
+        case .missingPingResponse:
+            return "missing ping response from server"
+        case .invalidAction:
+            return "client action does not match requested helper"
         }
     }
 }
@@ -30,10 +39,63 @@ extension BoxClientError: LocalizedError {
 public enum BoxClient {
     private static let locateAttemptTimeout: TimeAmount = .seconds(5)
 
+    /// Captures a record returned during a synchronisation stream.
+    public struct SyncRecord: Sendable {
+        public var queuePath: String
+        public var contentType: String
+        public var data: [UInt8]
+
+        public init(queuePath: String, contentType: String, data: [UInt8]) {
+            self.queuePath = queuePath
+            self.contentType = contentType
+            self.data = data
+        }
+    }
+
     /// Boots the UDP client, performs the requested action, and exits when finished.
     /// - Parameter options: Runtime options resolved from the CLI.
     public static func run(with options: BoxRuntimeOptions) async throws {
-        let logger = Logger(label: "box.client")
+        _ = try await runInternal(with: options)
+    }
+
+    /// Performs a ping action and returns the STATUS message advertised by the server.
+    /// - Parameter options: Runtime options configured with `clientAction: .ping`.
+    /// - Returns: Server-provided message (includes build metadata).
+    public static func ping(with options: BoxRuntimeOptions) async throws -> String {
+        guard case .ping = options.clientAction else {
+            throw BoxClientError.invalidAction
+        }
+        let outcome = try await runInternal(with: options)
+        guard let message = outcome.pingMessage else {
+            throw BoxClientError.missingPingResponse
+        }
+        return message
+    }
+
+    /// Fetches the records returned by a synchronisation stream.
+    /// - Parameter options: Runtime options configured with `clientAction: .sync`.
+    /// - Returns: Records returned by the remote server.
+    public static func sync(with options: BoxRuntimeOptions) async throws -> [SyncRecord] {
+        guard case .sync = options.clientAction else {
+            throw BoxClientError.invalidAction
+        }
+        let outcome = try await runInternal(with: options)
+        return outcome.syncRecords
+    }
+
+    private struct RunOutcome {
+        var pingMessage: String?
+        var syncRecords: [SyncRecord]
+
+        init(pingMessage: String? = nil, syncRecords: [SyncRecord] = []) {
+            self.pingMessage = pingMessage
+            self.syncRecords = syncRecords
+        }
+    }
+
+    private static func runInternal(with options: BoxRuntimeOptions) async throws -> RunOutcome {
+        var logger = Logger(label: "box.client")
+        logger.logLevel = options.logLevel
 
         switch options.clientAction {
         case .locate:
@@ -59,9 +121,11 @@ public enum BoxClient {
                         remoteAddress: remoteAddress,
                         timeout: locateAttemptTimeout,
                         logger: logger,
-                        attemptMetadata: target.metadata
+                        attemptMetadata: target.metadata,
+                        pingResult: nil,
+                        syncRecords: nil
                     )
-                    return
+                    return RunOutcome()
                 } catch {
                     lastError = error
                     logger.info("Locate attempt failed", metadata: target.failureMetadata(error: error))
@@ -70,6 +134,36 @@ public enum BoxClient {
 
             throw lastError ?? BoxClientError.noTargets
 
+        case .ping:
+            let remoteAddress = try resolveSocketAddress(address: options.address, port: options.port)
+            let pingBox = NIOLockedValueBox<String?>(nil)
+            try await runSingle(
+                with: options,
+                remoteAddress: remoteAddress,
+                timeout: nil,
+                logger: logger,
+                attemptMetadata: ["target": "single"],
+                pingResult: pingBox,
+                syncRecords: nil
+            )
+            let message = pingBox.withLockedValue { $0 }
+            return RunOutcome(pingMessage: message)
+
+        case .sync:
+            let remoteAddress = try resolveSocketAddress(address: options.address, port: options.port)
+            let recordsBox = NIOLockedValueBox<[SyncRecord]>([])
+            try await runSingle(
+                with: options,
+                remoteAddress: remoteAddress,
+                timeout: nil,
+                logger: logger,
+                attemptMetadata: ["target": "single"],
+                pingResult: nil,
+                syncRecords: recordsBox
+            )
+            let records = recordsBox.withLockedValue { $0 }
+            return RunOutcome(syncRecords: records)
+
         default:
             let remoteAddress = try resolveSocketAddress(address: options.address, port: options.port)
             try await runSingle(
@@ -77,8 +171,11 @@ public enum BoxClient {
                 remoteAddress: remoteAddress,
                 timeout: nil,
                 logger: logger,
-                attemptMetadata: ["target": "single"]
+                attemptMetadata: ["target": "single"],
+                pingResult: nil,
+                syncRecords: nil
             )
+            return RunOutcome()
         }
     }
 
@@ -87,7 +184,9 @@ public enum BoxClient {
         remoteAddress: SocketAddress,
         timeout: TimeAmount?,
         logger: Logger,
-        attemptMetadata: Logger.Metadata
+        attemptMetadata: Logger.Metadata,
+        pingResult: NIOLockedValueBox<String?>?,
+        syncRecords: NIOLockedValueBox<[SyncRecord]>?
     ) async throws {
         let mergedMetadata = metadata(for: remoteAddress, base: attemptMetadata)
         logger.info("client starting", metadata: mergedMetadata)
@@ -105,7 +204,9 @@ public enum BoxClient {
                     eventLoop: channel.eventLoop,
                     nodeId: options.nodeId,
                     userId: options.userId,
-                    timeout: timeout
+                    timeout: timeout,
+                    pingResult: pingResult,
+                    syncRecords: syncRecords
                 )
                 completionHolder.withLockedValue { storage in
                     storage = handler.completionFuture
@@ -141,6 +242,7 @@ public enum BoxClient {
 
             logger.info("client stopped", metadata: mergedMetadata)
             try await eventLoopGroup.shutdownGracefully()
+            return
         } catch {
             var failureMetadata = mergedMetadata
             failureMetadata["error"] = "\(error)"
@@ -281,6 +383,8 @@ final class BoxClientHandler: ChannelInboundHandler {
         case waitingForGetResponse
         /// Waiting for the locate response (PUT with record or STATUS error).
         case waitingForLocateResponse
+        /// Waiting for the remote root to stream synchronisation data.
+        case waitingForSyncPayloads
         /// Operation completed.
         case completed
     }
@@ -301,6 +405,10 @@ final class BoxClientHandler: ChannelInboundHandler {
     private var timeoutTask: Scheduled<Void>?
     /// Weak reference to the last active channel context (used for timeouts).
     private weak var activeContext: ChannelHandlerContext?
+    /// Optional holder capturing the STATUS payload for ping requests.
+    private let pingResult: NIOLockedValueBox<String?>?
+    /// Optional holder capturing sync records streamed by the server.
+    private let syncRecords: NIOLockedValueBox<[BoxClient.SyncRecord]>?
     /// Convenience accessor exposing the future resolved when the client finishes.
     var completionFuture: EventLoopFuture<Void> {
         completionPromise.futureResult
@@ -329,7 +437,9 @@ final class BoxClientHandler: ChannelInboundHandler {
         eventLoop: EventLoop,
         nodeId: UUID,
         userId: UUID,
-        timeout: TimeAmount?
+        timeout: TimeAmount?,
+        pingResult: NIOLockedValueBox<String?>?,
+        syncRecords: NIOLockedValueBox<[BoxClient.SyncRecord]>?
     ) {
         self.remoteAddress = remoteAddress
         self.action = action
@@ -339,6 +449,8 @@ final class BoxClientHandler: ChannelInboundHandler {
         self.nodeId = nodeId
         self.userId = userId
         self.timeout = timeout
+        self.pingResult = pingResult
+        self.syncRecords = syncRecords
     }
 
     /// Sends the initial HELLO when the channel becomes active.
@@ -405,6 +517,8 @@ final class BoxClientHandler: ChannelInboundHandler {
             try handleGetResponse(frame: frame, context: context)
         case .waitingForLocateResponse:
             try handleLocateResponse(frame: frame, context: context)
+        case .waitingForSyncPayloads:
+            try handleSyncStream(frame: frame, context: context)
         case .completed:
             break
         }
@@ -445,6 +559,9 @@ final class BoxClientHandler: ChannelInboundHandler {
         switch action {
         case .handshake:
             succeedAndClose(context: context)
+        case .ping:
+            pingResult?.withLockedValue { $0 = statusPayload.message }
+            succeedAndClose(context: context)
         case let .put(queuePath, contentType, data):
             let putPayload = BoxCodec.PutPayload(queuePath: queuePath, contentType: contentType, data: data)
             let buffer = BoxCodec.encodePutPayload(putPayload, allocator: allocator)
@@ -461,6 +578,14 @@ final class BoxClientHandler: ChannelInboundHandler {
                 context: context
             )
             stage = .waitingForGetResponse
+        case let .sync(queuePath):
+            let searchPayload = BoxCodec.SearchPayload(queuePath: queuePath)
+            let buffer = BoxCodec.encodeSearchPayload(searchPayload, allocator: allocator)
+            send(
+                frame: BoxCodec.Frame(command: .search, requestId: nextRequestId(), nodeId: nodeId, userId: userId, payload: buffer),
+                context: context
+            )
+            stage = .waitingForSyncPayloads
         case let .locate(node):
             let locatePayload = BoxCodec.LocatePayload(nodeUUID: node)
             let buffer = BoxCodec.encodeLocatePayload(locatePayload, allocator: allocator)
@@ -481,7 +606,11 @@ final class BoxClientHandler: ChannelInboundHandler {
         var payload = frame.payload
         let statusPayload = try BoxCodec.decodeStatusPayload(from: &payload)
         logger.info("PUT acknowledgement", metadata: ["status": "\(statusPayload.status)", "message": "\(statusPayload.message)"])
-        succeedAndClose(context: context)
+        if statusPayload.status == .ok {
+            succeedAndClose(context: context)
+        } else {
+            failAndClose(error: BoxClientError.remoteRejected(status: statusPayload.status, message: statusPayload.message), context: context)
+        }
     }
 
     /// Processes the response to a GET command (either PUT payload or STATUS error).
@@ -508,6 +637,10 @@ final class BoxClientHandler: ChannelInboundHandler {
                     "message": "\(statusPayload.message)"
                 ]
             )
+            if statusPayload.status != .ok {
+                failAndClose(error: BoxClientError.remoteRejected(status: statusPayload.status, message: statusPayload.message), context: context)
+                return
+            }
         default:
             logger.warning("Unexpected command while awaiting GET response", metadata: ["command": "\(frame.command)"])
             return
@@ -559,6 +692,53 @@ final class BoxClientHandler: ChannelInboundHandler {
             failAndClose(error: error, context: context)
         default:
             logger.warning("Unexpected command while awaiting LOCATE response", metadata: ["command": "\(frame.command)"])
+        }
+    }
+
+    /// Processes the frames composing a sync stream (PUT objects followed by STATUS).
+    private func handleSyncStream(frame: BoxCodec.Frame, context: ChannelHandlerContext) throws {
+        switch frame.command {
+        case .put:
+            var payload = frame.payload
+            let putPayload = try BoxCodec.decodePutPayload(from: &payload)
+            syncRecords?.withLockedValue { storage in
+                storage.append(
+                    BoxClient.SyncRecord(
+                        queuePath: putPayload.queuePath,
+                        contentType: putPayload.contentType,
+                        data: putPayload.data
+                    )
+                )
+            }
+            logger.debug(
+                "SYNC record received",
+                metadata: [
+                    "queue": "\(putPayload.queuePath)",
+                    "contentType": "\(putPayload.contentType)",
+                    "bytes": "\(putPayload.data.count)"
+                ]
+            )
+        case .status:
+            var payload = frame.payload
+            let statusPayload = try BoxCodec.decodeStatusPayload(from: &payload)
+            guard statusPayload.status == .ok else {
+                logger.error(
+                    "SYNC rejected",
+                    metadata: [
+                        "status": "\(statusPayload.status)",
+                        "message": "\(statusPayload.message)"
+                    ]
+                )
+                failAndClose(
+                    error: BoxClientError.remoteRejected(status: statusPayload.status, message: statusPayload.message),
+                    context: context
+                )
+                return
+            }
+            logger.info("SYNC completed", metadata: ["message": "\(statusPayload.message)"])
+            succeedAndClose(context: context)
+        default:
+            logger.warning("Unexpected command during SYNC stream", metadata: ["command": "\(frame.command)"])
         }
     }
 

@@ -21,7 +21,7 @@ public struct BoxCommandParser: AsyncParsableCommand {
         CommandConfiguration(
             commandName: "box",
             abstract: "Box messaging toolkit (Swift rewrite).",
-            subcommands: [Admin.self, InitConfig.self, Register.self]
+            subcommands: [Admin.self, InitConfig.self, Register.self, PingRoots.self]
         )
     }
 
@@ -49,11 +49,11 @@ public struct BoxCommandParser: AsyncParsableCommand {
         public init() {}
 
         public mutating func run() async throws {
-            let configurationURL = try resolveConfigurationURL(path: path)
+            let configurationURL = try BoxCommandParser.resolveConfigurationURL(path: path)
             let configurationResult = try BoxConfiguration.load(from: configurationURL)
             let configuration = configurationResult.configuration
 
-            let rootServers = try resolveRootServers(configuration: configuration, overrides: rootOverrides)
+            let rootServers = try BoxCommandParser.resolveRootServers(configuration: configuration, overrides: rootOverrides)
             guard !rootServers.isEmpty else {
                 throw ValidationError("No root servers configured. Use --root or add entries to Box.plist.")
             }
@@ -105,37 +105,6 @@ public struct BoxCommandParser: AsyncParsableCommand {
         }
 
         // MARK: - Helpers
-
-        private func resolveConfigurationURL(path: String?) throws -> URL {
-            if let path, !path.isEmpty {
-                return URL(fileURLWithPath: NSString(string: path).expandingTildeInPath)
-            }
-            guard let defaultURL = BoxPaths.configurationURL(explicitPath: nil) else {
-                throw ValidationError("Unable to determine configuration path. Specify one with --path.")
-            }
-            return defaultURL
-        }
-
-        private func resolveRootServers(configuration: BoxConfiguration, overrides: [String]) throws -> [BoxRuntimeOptions.RootServer] {
-            if overrides.isEmpty {
-                return configuration.common.rootServers
-            }
-            return try overrides.map { try parseRootEndpoint($0) }
-        }
-
-        private func parseRootEndpoint(_ string: String) throws -> BoxRuntimeOptions.RootServer {
-            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else {
-                throw ValidationError("Root endpoint cannot be empty.")
-            }
-            let components = trimmed.split(separator: ":", omittingEmptySubsequences: false)
-            if components.count == 1 {
-                return BoxRuntimeOptions.RootServer(address: String(components[0]), port: BoxRuntimeOptions.defaultPort)
-            } else if components.count == 2, let port = UInt16(components[1]) {
-                return BoxRuntimeOptions.RootServer(address: String(components[0]), port: port)
-            }
-            throw ValidationError("Invalid root endpoint format: \(string). Expected host[:port].")
-        }
 
         private func resolveAdvertisedPort(configuration: BoxConfiguration, override: UInt16?) -> UInt16 {
             if let override {
@@ -234,7 +203,22 @@ public struct BoxCommandParser: AsyncParsableCommand {
                 clientAction: .put(queuePath: payload.queue, contentType: payload.contentType, data: payload.bytes),
                 portMappingOrigin: .default
             )
-            try await BoxClient.run(with: options)
+            do {
+                try await BoxClient.run(with: options)
+            } catch let clientError as BoxClientError {
+                throw ValidationError(describeRegisterFailure(for: payload, root: root, error: clientError))
+            }
+        }
+
+        private func describeRegisterFailure(for payload: RegisterPayload, root: BoxRuntimeOptions.RootServer, error: BoxClientError) -> String {
+            let target = "\(root.address):\(root.port)"
+            switch error {
+            case let .remoteRejected(status, message):
+                let statusLabel = String(describing: status)
+                return "Remote \(target) rejected registration payload for \(payload.identifier.uuidString) (\(statusLabel): \(message))"
+            default:
+                return "Registration client error against \(target): \(error.localizedDescription)"
+            }
         }
 
         private func loadExistingUserNodes(configuration: BoxConfiguration) throws -> Set<UUID> {
@@ -348,7 +332,7 @@ public struct BoxCommandParser: AsyncParsableCommand {
     /// Parses CLI arguments, configures logging, and dispatches to either the server or the client.
     public mutating func run() async throws {
         if version {
-            let output = BoxBuildInfo.description + "\n"
+            let output = BoxVersionInfo.description + "\n"
             if let data = output.data(using: .utf8) {
                 FileHandle.standardOutput.write(data)
             }
@@ -501,7 +485,11 @@ public struct BoxCommandParser: AsyncParsableCommand {
         case .server:
             try await BoxServer.run(with: runtimeOptions)
         case .client:
-            try await BoxClient.run(with: runtimeOptions)
+            do {
+                try await BoxClient.run(with: runtimeOptions)
+            } catch let clientError as BoxClientError {
+                throw ValidationError(describeClientFailure(error: clientError, options: runtimeOptions))
+            }
         }
     }
 
@@ -551,6 +539,34 @@ public struct BoxCommandParser: AsyncParsableCommand {
         return .handshake
     }
 
+    private func describeClientFailure(error: BoxClientError, options: BoxRuntimeOptions) -> String {
+        let target = "\(options.address):\(options.port)"
+        switch error {
+        case let .remoteRejected(status, message):
+            let statusLabel = String(describing: status)
+            return "Remote \(target) rejected \(clientActionSummary(options.clientAction)) (\(statusLabel): \(message))"
+        default:
+            return "Client error during \(clientActionSummary(options.clientAction)) against \(target): \(error.localizedDescription)"
+        }
+    }
+
+    private func clientActionSummary(_ action: BoxClientAction) -> String {
+        switch action {
+        case .handshake:
+            return "handshake"
+        case let .put(queuePath, _, _):
+            return "put to \(queuePath)"
+        case let .get(queuePath):
+            return "get from \(queuePath)"
+        case let .locate(node):
+            return "locate \(node.uuidString)"
+        case .ping:
+            return "ping"
+        case let .sync(queuePath):
+            return "sync from \(queuePath)"
+        }
+    }
+
     /// Resolves the logging target based on CLI arguments.
     /// - Returns: Parsed target when provided.
     private func resolveLogTarget() throws -> BoxLogTarget? {
@@ -563,6 +579,108 @@ public struct BoxCommandParser: AsyncParsableCommand {
         return parsed
     }
 }
+
+    /// `box ping-roots` — send a ping to configured root servers and display their version banners.
+    public struct PingRoots: AsyncParsableCommand {
+        public static var configuration: CommandConfiguration {
+            CommandConfiguration(
+                commandName: "ping-roots",
+                abstract: "Ping configured root servers and display their build information."
+            )
+        }
+
+        @Option(name: .shortAndLong, help: "Configuration PLIST path (defaults to ~/.box/Box.plist).")
+        public var path: String?
+
+        @Option(name: .customLong("root"), parsing: .unconditionalSingleValue, help: "Root server override (host[:port]). Can be repeated.")
+        public var rootOverrides: [String] = []
+
+        public init() {}
+
+        public mutating func run() async throws {
+            let configurationURL = try BoxCommandParser.resolveConfigurationURL(path: path)
+            let configurationResult = try BoxConfiguration.load(from: configurationURL)
+            let configuration = configurationResult.configuration
+
+            let rootServers = try BoxCommandParser.resolveRootServers(configuration: configuration, overrides: rootOverrides)
+            guard !rootServers.isEmpty else {
+                throw ValidationError("No root servers configured. Use --root or add entries to Box.plist.")
+            }
+
+            BoxLogging.update(level: .error)
+
+            var failures: [(String, Error)] = []
+
+            for root in rootServers {
+                let options = BoxRuntimeOptions(
+                    mode: .client,
+                    address: root.address,
+                    port: root.port,
+                    portOrigin: .configuration,
+                    addressOrigin: .configuration,
+                    configurationPath: configurationResult.url.path,
+                    adminChannelEnabled: false,
+                    logLevel: .error,
+                    logTarget: .stderr,
+                    logLevelOrigin: .default,
+                    logTargetOrigin: .default,
+                    nodeId: configuration.common.nodeUUID,
+                    userId: configuration.common.userUUID,
+                    portMappingRequested: false,
+                    clientAction: .ping,
+                    portMappingOrigin: .default,
+                    rootServers: []
+                )
+
+                do {
+                    let message = try await BoxClient.ping(with: options)
+                    let line = "Ping \(root.address):\(root.port) -> \(message)\n"
+                    FileHandle.standardOutput.write(line.data(using: .utf8) ?? Data())
+                } catch {
+                    failures.append(("\(root.address):\(root.port)", error))
+                }
+            }
+
+            if !failures.isEmpty {
+                let lines = failures.map { entry in "Failed to ping \(entry.0): \(entry.1)" }
+                throw ValidationError(lines.joined(separator: "\n"))
+            }
+        }
+    }
+
+extension BoxCommandParser {
+    static func resolveConfigurationURL(path: String?) throws -> URL {
+        if let path, !path.isEmpty {
+            return URL(fileURLWithPath: NSString(string: path).expandingTildeInPath)
+        }
+        guard let defaultURL = BoxPaths.configurationURL(explicitPath: nil) else {
+            throw ValidationError("Unable to determine configuration path. Specify one with --path.")
+        }
+        return defaultURL
+    }
+
+    static func resolveRootServers(configuration: BoxConfiguration, overrides: [String]) throws -> [BoxRuntimeOptions.RootServer] {
+        if overrides.isEmpty {
+            return configuration.common.rootServers
+        }
+        return try overrides.map { try parseRootEndpoint($0) }
+    }
+
+    static func parseRootEndpoint(_ string: String) throws -> BoxRuntimeOptions.RootServer {
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw ValidationError("Root endpoint cannot be empty.")
+        }
+        let components = trimmed.split(separator: ":", omittingEmptySubsequences: false)
+        if components.count == 1 {
+            return BoxRuntimeOptions.RootServer(address: String(components[0]), port: BoxRuntimeOptions.defaultPort)
+        } else if components.count == 2, let port = UInt16(components[1]) {
+            return BoxRuntimeOptions.RootServer(address: String(components[0]), port: port)
+        }
+        throw ValidationError("Invalid root endpoint format: \(string). Expected host[:port].")
+    }
+}
+
 
 // MARK: - Admin Subcommands
 
@@ -815,7 +933,7 @@ extension BoxCommandParser {
             CommandConfiguration(
                 commandName: "admin",
                 abstract: "Interact with the local admin channel.",
-                subcommands: [Status.self, Ping.self, LogTarget.self, ReloadConfig.self, Stats.self, NatProbe.self, Locate.self, LocationSummary.self]
+                subcommands: [Status.self, Ping.self, LogTarget.self, ReloadConfig.self, Stats.self, NatProbe.self, Locate.self, LocationSummary.self, SyncRoots.self]
             )
         }
 
@@ -994,6 +1112,19 @@ extension BoxCommandParser {
                 if failIfEmpty && totalNodes == 0 {
                     throw ExitCode(3)
                 }
+            }
+        }
+
+        /// `box admin sync-roots` — publish all local Location Service records to configured roots.
+        public struct SyncRoots: AsyncParsableCommand {
+            @Option(name: .shortAndLong, help: "Admin socket path (defaults to ~/.box/run/boxd.socket).")
+            public var socket: String?
+
+            public init() {}
+
+            public mutating func run() throws {
+                let response = try Admin.sendCommand("sync-roots", socketOverride: socket)
+                Admin.writeResponse(response)
             }
         }
 

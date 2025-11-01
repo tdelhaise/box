@@ -19,6 +19,10 @@ public enum BoxClientAction: Sendable {
     case get(queuePath: String)
     /// Resolve a Location Service record for the supplied node identifier.
     case locate(node: UUID)
+    /// Perform a handshake and capture the server STATUS response.
+    case ping
+    /// Request a Location Service snapshot for synchronisation purposes.
+    case sync(queuePath: String)
 }
 
 /// Aggregates runtime options shared between the client and the server entry points.

@@ -21,7 +21,9 @@ final class BoxAdminIntegrationTests: XCTestCase {
         let pingResponse = try transport.send(command: "ping")
         let pingJSON = try decodeJSON(pingResponse)
         XCTAssertEqual(pingJSON["status"] as? String, "ok")
-        XCTAssertEqual(pingJSON["message"] as? String, "pong")
+        let pingMessage = try XCTUnwrap(pingJSON["message"] as? String)
+        XCTAssertTrue(pingMessage.hasPrefix("pong"))
+        XCTAssertTrue(pingMessage.contains(BoxVersionInfo.version), "Expected ping message to embed version, got: \(pingMessage)")
 
         let updateResponse = try transport.send(command: "log-target stdout")
         let updateJSON = try decodeJSON(updateResponse)
@@ -164,6 +166,55 @@ final class BoxAdminIntegrationTests: XCTestCase {
         XCTAssertEqual(missingJSON["message"] as? String, "node-not-found")
     }
 
+    func testAdminSyncRootsPullsRemoteRecords() async throws {
+        let portA = try allocateEphemeralUDPPort()
+        let portB = try allocateEphemeralUDPPort()
+
+        let contextA = try await startServer(forcedPort: portA)
+        defer { contextA.tearDown() }
+        try await contextA.waitForAdminSocket()
+
+        let contextB = try await startServer(forcedPort: portB)
+        defer { contextB.tearDown() }
+        try await contextB.waitForAdminSocket()
+        try await contextA.waitForQueueInfrastructure(queueName: "whoswho")
+        try await contextB.waitForQueueInfrastructure(queueName: "whoswho")
+
+        let identifiersA = try configureRootServers(for: contextA, localPort: portA, peerPort: portB)
+        let identifiersB = try configureRootServers(for: contextB, localPort: portB, peerPort: portA)
+
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let initialNodesA = try await fetchNodeRecords(from: contextA)
+        let initialNodesB = try await fetchNodeRecords(from: contextB)
+        XCTAssertEqual(initialNodesA.count, 1)
+        XCTAssertEqual(initialNodesB.count, 1)
+
+        let transportA = BoxAdminTransportFactory.makeTransport(socketPath: contextA.socketPath)
+        let syncResponse = try transportA.send(command: "sync-roots")
+        let syncJSON = try decodeJSON(syncResponse)
+        XCTAssertEqual(syncJSON["status"] as? String, "ok", "sync-roots response: \(syncJSON)")
+        let importedNodes = (syncJSON["importedNodes"] as? NSNumber)?.intValue ?? 0
+        XCTAssertGreaterThanOrEqual(importedNodes, 1, "sync-roots response: \(syncJSON)")
+        let importedUsers = (syncJSON["importedUsers"] as? NSNumber)?.intValue ?? 0
+        XCTAssertGreaterThanOrEqual(importedUsers, 1, "sync-roots response: \(syncJSON)")
+        if let imports = coerceArrayOfDictionaries(syncJSON["imports"]) {
+            XCTAssertTrue(imports.contains { ($0["target"] as? String) == "127.0.0.1:\(portB)" }, "sync-roots response: \(syncJSON)")
+        } else {
+            XCTFail("sync-roots response missing imports payload: \(syncJSON)")
+        }
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let nodesAfterA = try await fetchNodeRecords(from: contextA)
+        XCTAssertTrue(nodesAfterA.contains(where: { $0.nodeUUID == identifiersB.node }))
+        XCTAssertGreaterThanOrEqual(nodesAfterA.count, 2)
+
+        let nodesAfterB = try await fetchNodeRecords(from: contextB)
+        XCTAssertTrue(nodesAfterB.contains(where: { $0.nodeUUID == identifiersA.node }))
+        XCTAssertGreaterThanOrEqual(nodesAfterB.count, 2)
+    }
+
     func testAdminNatProbeSkipsDuringTests() async throws {
         let context = try await startServer()
         defer { context.tearDown() }
@@ -180,6 +231,37 @@ final class BoxAdminIntegrationTests: XCTestCase {
 }
 
 // MARK: - Helpers
+
+private func configureRootServers(for context: ServerContext, localPort: UInt16, peerPort: UInt16) throws -> (node: UUID, user: UUID) {
+    let configurationResult = try BoxConfiguration.load(from: context.configurationURL)
+    var configuration = configurationResult.configuration
+    configuration.common.rootServers = [
+        BoxRuntimeOptions.RootServer(address: "127.0.0.1", port: localPort),
+        BoxRuntimeOptions.RootServer(address: "127.0.0.1", port: peerPort)
+    ]
+    configuration.server.port = localPort
+    try configuration.save(to: configurationResult.url)
+
+    let transport = BoxAdminTransportFactory.makeTransport(socketPath: context.socketPath)
+    _ = try transport.send(command: "reload-config {\"path\":\"\(configurationResult.url.path)\"}")
+
+    return (configuration.common.nodeUUID, configuration.common.userUUID)
+}
+
+private func fetchNodeRecords(from context: ServerContext) async throws -> [LocationServiceNodeRecord] {
+    let queuesRoot = context.homeDirectory.appendingPathComponent(".box/queues", isDirectory: true)
+    let store = try await BoxServerStore(root: queuesRoot, logger: Logger(label: "box.tests.sync.store"))
+    let references = try await store.list(queue: "/whoswho")
+    let decoder = JSONDecoder()
+    var records: [LocationServiceNodeRecord] = []
+    for reference in references {
+        let object = try await store.read(reference: reference)
+        if let record = try? decoder.decode(LocationServiceNodeRecord.self, from: Data(object.data)) {
+            records.append(record)
+        }
+    }
+    return records
+}
 
 private func decodeJSON(_ response: String) throws -> [String: Any] {
     let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)

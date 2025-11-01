@@ -9,6 +9,7 @@ enum BoxAdminParsedCommand {
     case locate(UUID)
     case natProbe(String?)
     case locationSummary
+    case syncRoots
     case invalid(String)
     case unknown(String)
 }

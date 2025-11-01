@@ -1,3 +1,4 @@
+import BoxClient
 import BoxCore
 import Foundation
 #if canImport(FoundationNetworking)
@@ -212,6 +213,9 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             },
             locationSummaryProvider: { [weak self] in
                 await self?.renderLocationSummary() ?? "{\"status\":\"error\",\"message\":\"shutting-down\"}"
+            },
+            syncRoots: { [weak self] in
+                await self?.handleSyncRoots() ?? "{\"status\":\"error\",\"message\":\"shutting-down\"}"
             }
         )
         logger.info("admin channel bound", metadata: ["path": .string(socketPath)])
@@ -364,6 +368,212 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             "reports": reports.map { $0.toDictionary() }
         ]
         return adminResponse(payload)
+    }
+
+    private func handleSyncRoots() async -> String {
+        guard let coordinator = locationCoordinator else {
+            return adminResponse(["status": "error", "message": "location-service-unavailable"])
+        }
+
+        let snapshot = state.withLockedValue { state -> (config: BoxConfiguration?, nodeId: UUID, userId: UUID, configurationPath: String?, manualAddress: String?, manualPort: UInt16?, port: UInt16) in
+            (state.configuration, state.nodeIdentifier, state.userIdentifier, state.configurationPath, state.manualExternalAddress, state.manualExternalPort, state.port)
+        }
+
+        guard let configuration = snapshot.config else {
+            return adminResponse(["status": "error", "message": "configuration-unavailable"])
+        }
+
+        let roots = Array(Set(configuration.common.rootServers))
+        guard !roots.isEmpty else {
+            return adminResponse(["status": "ok", "synced": [], "nodes": 0, "users": 0])
+        }
+
+        let nodes = await coordinator.snapshot()
+        let users = await coordinator.userRecords()
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+
+        var pushSuccesses: [String] = []
+        var failures: [[String: String]] = []
+        var importReports: [[String: Any]] = []
+        var importedNodesTotal = 0
+        var importedUsersTotal = 0
+
+        for root in roots where !isSelf(root: root, manualAddress: snapshot.manualAddress, manualPort: snapshot.manualPort, serverPort: snapshot.port) {
+            let targetDescription = "\(root.address):\(root.port)"
+            do {
+                try await replicate(
+                    nodes: nodes,
+                    users: users,
+                    to: root,
+                    encoder: encoder,
+                    configurationPath: snapshot.configurationPath,
+                    nodeId: snapshot.nodeId,
+                    userId: snapshot.userId
+                )
+                pushSuccesses.append(targetDescription)
+            } catch {
+                failures.append(["target": targetDescription, "stage": "push", "error": "\(error)"])
+                continue
+            }
+
+            do {
+                let importResult = try await importFromRoot(
+                    root,
+                    coordinator: coordinator,
+                    configurationPath: snapshot.configurationPath,
+                    nodeId: snapshot.nodeId,
+                    userId: snapshot.userId
+                )
+                importedNodesTotal += importResult.nodes
+                importedUsersTotal += importResult.users
+                if importResult.total > 0 {
+                    importReports.append([
+                        "target": targetDescription,
+                        "records": importResult.total,
+                        "nodes": importResult.nodes,
+                        "users": importResult.users
+                    ])
+                }
+            } catch {
+                failures.append(["target": targetDescription, "stage": "pull", "error": "\(error)"])
+            }
+        }
+
+        var response: [String: Any] = [
+            "status": failures.isEmpty ? "ok" : "partial",
+            "synced": pushSuccesses,
+            "nodes": nodes.count,
+            "users": users.count,
+            "importedNodes": importedNodesTotal,
+            "importedUsers": importedUsersTotal
+        ]
+        if !failures.isEmpty {
+            response["failures"] = failures
+        }
+        if !importReports.isEmpty {
+            response["imports"] = importReports
+        }
+        return adminResponse(response)
+    }
+
+    private func replicate(nodes: [LocationServiceNodeRecord], users: [LocationServiceUserRecord], to root: BoxRuntimeOptions.RootServer, encoder: JSONEncoder, configurationPath: String?, nodeId: UUID, userId: UUID) async throws {
+        for record in nodes {
+            let data = try encoder.encode(record)
+            try await sendSyncPayload(data: data, to: root, configurationPath: configurationPath, nodeId: nodeId, userId: userId)
+        }
+        for record in users {
+            let data = try encoder.encode(record)
+            try await sendSyncPayload(data: data, to: root, configurationPath: configurationPath, nodeId: nodeId, userId: userId)
+        }
+    }
+
+    private func sendSyncPayload(data: Data, to root: BoxRuntimeOptions.RootServer, configurationPath: String?, nodeId: UUID, userId: UUID) async throws {
+        let payloadBytes = [UInt8](data)
+        let options = BoxRuntimeOptions(
+            mode: .client,
+            address: root.address,
+            port: root.port,
+            portOrigin: .configuration,
+            addressOrigin: .configuration,
+            configurationPath: configurationPath,
+            adminChannelEnabled: false,
+            logLevel: .error,
+            logTarget: .stderr,
+            logLevelOrigin: .default,
+            logTargetOrigin: .default,
+            nodeId: nodeId,
+            userId: userId,
+            portMappingRequested: false,
+            clientAction: .put(queuePath: "whoswho", contentType: "application/json; charset=utf-8", data: payloadBytes),
+            portMappingOrigin: .default,
+            rootServers: []
+        )
+        try await BoxClient.run(with: options)
+    }
+
+    private struct SyncImportResult {
+        var nodes: Int
+        var users: Int
+        var total: Int
+    }
+
+    private func importFromRoot(
+        _ root: BoxRuntimeOptions.RootServer,
+        coordinator: LocationServiceCoordinator,
+        configurationPath: String?,
+        nodeId: UUID,
+        userId: UUID
+    ) async throws -> SyncImportResult {
+        let options = BoxRuntimeOptions(
+            mode: .client,
+            address: root.address,
+            port: root.port,
+            portOrigin: .configuration,
+            addressOrigin: .configuration,
+            configurationPath: configurationPath,
+            adminChannelEnabled: false,
+            logLevel: .error,
+            logTarget: .stderr,
+            logLevelOrigin: .default,
+            logTargetOrigin: .default,
+            nodeId: nodeId,
+            userId: userId,
+            portMappingRequested: false,
+            clientAction: .sync(queuePath: "whoswho"),
+            portMappingOrigin: .default,
+            rootServers: []
+        )
+
+        let records = try await BoxClient.sync(with: options)
+        let decoder = JSONDecoder()
+        var importedNodes = 0
+        var importedUsers = 0
+
+        for record in records {
+            guard record.queuePath.caseInsensitiveCompare("whoswho") == .orderedSame else {
+                continue
+            }
+            let data = Data(record.data)
+            if let nodeRecord = try? decoder.decode(LocationServiceNodeRecord.self, from: data) {
+                await coordinator.publish(record: nodeRecord)
+                importedNodes += 1
+                continue
+            }
+            if let userRecord = try? decoder.decode(LocationServiceUserRecord.self, from: data) {
+                await coordinator.importUserRecord(userRecord)
+                importedUsers += 1
+            }
+        }
+
+        logger.debug(
+            "sync imported records from root",
+            metadata: [
+                "target": "\(root.address):\(root.port)",
+                "records": "\(records.count)",
+                "nodes": "\(importedNodes)",
+                "users": "\(importedUsers)"
+            ]
+        )
+
+        return SyncImportResult(nodes: importedNodes, users: importedUsers, total: records.count)
+    }
+
+    private func isSelf(root: BoxRuntimeOptions.RootServer, manualAddress: String?, manualPort: UInt16?, serverPort: UInt16) -> Bool {
+        if root.port == serverPort {
+            let aliases: Set<String> = [options.address, "127.0.0.1", "::1", "::"]
+            if aliases.contains(root.address) {
+                return true
+            }
+        }
+        if let manualAddress, !manualAddress.isEmpty {
+            let matchPort = manualPort ?? serverPort
+            if root.port == matchPort && root.address == manualAddress {
+                return true
+            }
+        }
+        return false
     }
 
     private func statusDictionary(from snapshot: BoxServerRuntimeState, metrics: QueueMetrics) -> [String: Any] {
@@ -893,7 +1103,8 @@ final class BoxServerRuntimeController: @unchecked Sendable {
         statsProvider: @escaping @Sendable () async -> String,
         locateNode: @escaping @Sendable (UUID) async -> String,
         natProbe: @escaping @Sendable (String?) async -> String,
-        locationSummaryProvider: @escaping @Sendable () async -> String
+        locationSummaryProvider: @escaping @Sendable () async -> String,
+        syncRoots: @escaping @Sendable () async -> String
     ) async throws -> BoxAdminChannelHandle {
         let dispatcher = BoxAdminCommandDispatcher(
             statusProvider: statusProvider,
@@ -902,7 +1113,8 @@ final class BoxServerRuntimeController: @unchecked Sendable {
             statsProvider: statsProvider,
             locateNode: locateNode,
             natProbe: natProbe,
-            locationSummaryProvider: locationSummaryProvider
+            locationSummaryProvider: locationSummaryProvider,
+            syncRoots: syncRoots
         )
 
         #if os(Windows)

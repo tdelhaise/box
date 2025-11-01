@@ -4,6 +4,11 @@ import Logging
 
 /// Coordinates publication of Location Service records into the local queue store.
 actor LocationServiceCoordinator {
+    /// Schema identifier attached to node records stored in the queue.
+    static let nodeSchemaIdentifier = Constants.nodeSchema
+    /// Schema identifier attached to user records stored in the queue.
+    static let userSchemaIdentifier = Constants.userSchema
+
     private enum Constants {
         static let queueName = "/whoswho"
         static let contentType = "application/json; charset=utf-8"
@@ -126,6 +131,48 @@ actor LocationServiceCoordinator {
         }
     }
 
+    /// Imports a user record provided by a remote root server.
+    /// - Parameter record: Snapshot describing the association between a user and nodes.
+    func importUserRecord(_ record: LocationServiceUserRecord) async {
+        do {
+            let data = try encoder.encode(record)
+            let payloadBytes = [UInt8](data)
+            let storedObject = BoxStoredObject(
+                id: record.userUUID,
+                contentType: Constants.contentType,
+                data: payloadBytes,
+                createdAt: Date(),
+                nodeId: record.nodeUUIDs.first ?? record.userUUID,
+                userId: record.userUUID,
+                userMetadata: ["schema": Constants.userSchema]
+            )
+            do {
+                try await store.remove(queue: Constants.queueName, id: record.userUUID)
+            } catch {
+                if case BoxStoreError.objectNotFound = error {
+                    // First import for this user.
+                } else if case BoxStoreError.queueNotFound = error {
+                    logger.warning("location service queue missing during user import", metadata: ["error": .string("\(error)")])
+                    try await store.ensureQueue(Constants.queueName)
+                } else {
+                    logger.warning("failed to clear existing user record during import", metadata: ["error": .string("\(error)")])
+                }
+            }
+            _ = try await store.put(storedObject, into: Constants.queueName)
+            logger.debug(
+                "location service user record imported",
+                metadata: [
+                    "user": .string(record.userUUID.uuidString),
+                    "nodes": .array(record.nodeUUIDs.map { .string($0.uuidString) })
+                ]
+            )
+        } catch {
+            logger.error(
+                "failed to import location service user record",
+                metadata: ["user": .string(record.userUUID.uuidString), "error": .string("\(error)")])
+        }
+    }
+
     /// Returns the list of Location Service records currently persisted.
     /// - Returns: Array of node records discovered in the queue.
     func snapshot() async -> [LocationServiceNodeRecord] {
@@ -146,6 +193,32 @@ actor LocationServiceCoordinator {
             return records.sorted { $0.nodeUUID.uuidString < $1.nodeUUID.uuidString }
         } catch {
             logger.error("failed to enumerate location service records", metadata: ["error": .string("\(error)")])
+            return []
+        }
+    }
+
+    /// Returns all user records currently persisted in the Location Service queue.
+    func userRecords() async -> [LocationServiceUserRecord] {
+        do {
+            let references = try await store.list(queue: Constants.queueName)
+            var records: [LocationServiceUserRecord] = []
+            records.reserveCapacity(references.count)
+            for reference in references {
+                do {
+                    let object = try await store.read(reference: reference)
+                    if let record = decodeUser(object: object) {
+                        records.append(record)
+                    }
+                } catch {
+                    logger.warning(
+                        "failed to decode user location record",
+                        metadata: ["file": .string(reference.url.lastPathComponent), "error": .string("\(error)")]
+                    )
+                }
+            }
+            return records.sorted { $0.userUUID.uuidString < $1.userUUID.uuidString }
+        } catch {
+            logger.error("failed to enumerate location service user records", metadata: ["error": .string("\(error)")])
             return []
         }
     }
@@ -187,6 +260,22 @@ actor LocationServiceCoordinator {
             logger.warning(
                 "unable to decode location record payload",
                 metadata: ["node": .string(object.nodeId.uuidString), "error": .string("\(error)")]
+            )
+            return nil
+        }
+    }
+
+    private func decodeUser(object: BoxStoredObject) -> LocationServiceUserRecord? {
+        guard object.contentType.lowercased().hasPrefix("application/json") else {
+            return nil
+        }
+        guard let schema = object.userMetadata?["schema"], schema == Constants.userSchema else { return nil }
+        do {
+            return try decoder.decode(LocationServiceUserRecord.self, from: Data(object.data))
+        } catch {
+            logger.warning(
+                "unable to decode location user payload",
+                metadata: ["user": .string(object.userId.uuidString), "error": .string("\(error)")]
             )
             return nil
         }

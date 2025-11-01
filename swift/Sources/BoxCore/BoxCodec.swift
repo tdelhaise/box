@@ -19,6 +19,8 @@ public enum BoxCodecError: Error {
     case unsupportedVersionCount
 }
 
+extension BoxCodec.Status: @unchecked Sendable {}
+
 /// Codec responsible for serialising and deserialising Box protocol datagrams.
 public enum BoxCodec {
     /// Magic byte identifying Box frames.
@@ -160,6 +162,18 @@ public enum BoxCodec {
         public var queuePath: String
 
         /// Creates a new GET payload representation.
+        /// - Parameter queuePath: Queue path requested by the client.
+        public init(queuePath: String) {
+            self.queuePath = queuePath
+        }
+    }
+
+    /// Payload of a SEARCH frame (queue listing).
+    public struct SearchPayload {
+        /// Queue path that should be enumerated.
+        public var queuePath: String
+
+        /// Creates a new SEARCH payload.
         /// - Parameter queuePath: Queue path requested by the client.
         public init(queuePath: String) {
             self.queuePath = queuePath
@@ -417,6 +431,27 @@ public enum BoxCodec {
             throw BoxCodecError.invalidUTF8
         }
         return GetPayload(queuePath: queuePath)
+    }
+
+    /// Encodes a SEARCH payload (queue path).
+    /// - Parameters:
+    ///   - payload: Typed SEARCH payload.
+    ///   - allocator: Byte buffer allocator from the channel.
+    /// - Returns: Encoded SEARCH payload buffer.
+    public static func encodeSearchPayload(
+        _ payload: SearchPayload,
+        allocator: ByteBufferAllocator
+    ) -> ByteBuffer {
+        encodeGetPayload(GetPayload(queuePath: payload.queuePath), allocator: allocator)
+    }
+
+    /// Decodes a SEARCH payload from the supplied buffer slice.
+    /// - Parameter payload: Payload slice referencing the SEARCH buffer.
+    /// - Returns: Typed SEARCH payload.
+    /// - Throws: `BoxCodecError` when the payload is malformed.
+    public static func decodeSearchPayload(from payload: inout ByteBuffer) throws -> SearchPayload {
+        let getPayload = try decodeGetPayload(from: &payload)
+        return SearchPayload(queuePath: getPayload.queuePath)
     }
 
     /// Encodes a Locate payload (target node UUID).

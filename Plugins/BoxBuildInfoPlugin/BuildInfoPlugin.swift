@@ -3,7 +3,7 @@ import PackagePlugin
 @main
 struct BoxBuildInfoPlugin: BuildToolPlugin {
     func createBuildCommands(context: PluginContext, target: Target) throws -> [Command] {
-        guard target.name == "BoxCommandParser" else {
+        guard target.name == "BoxBuildInfoSupport" else {
             return []
         }
 
@@ -30,6 +30,9 @@ import XcodeProjectPlugin
 
 extension BoxBuildInfoPlugin: XcodeBuildToolPlugin {
     func createBuildCommands(context: XcodePluginContext, target: XcodeTarget) throws -> [Command] {
+        guard target.displayName == "BoxBuildInfoSupport" else {
+            return []
+        }
         let tool = try context.tool(named: "BoxBuildInfoGenerator")
         let output = context.pluginWorkDirectoryURL.appending(path: "GeneratedBuildInfo.swift")
 

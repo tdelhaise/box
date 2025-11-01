@@ -1,4 +1,5 @@
 import XCTest
+@testable import BoxCore
 @testable import BoxServer
 
 final class BoxAdminDispatcherTests: XCTestCase {
@@ -23,7 +24,11 @@ final class BoxAdminDispatcherTests: XCTestCase {
             },
             locateNode: { _ in "" },
             natProbe: { _ in "" },
-            locationSummaryProvider: { "" }
+            locationSummaryProvider: { "" },
+            syncRoots: {
+                XCTFail("sync-roots should not be called")
+                return ""
+            }
         )
 
         let response = await dispatcher.process("status")
@@ -31,10 +36,15 @@ final class BoxAdminDispatcherTests: XCTestCase {
         await fulfillment(of: [expectation], timeout: 0.1)
     }
 
-    func testPingReturnsPong() async {
+    func testPingReturnsPong() async throws {
         let dispatcher = fixtureDispatcher()
         let response = await dispatcher.process("ping")
-        assertJSON(response, equals: ["status": "ok", "message": "pong"])
+        let data = response.trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8)
+        let json = try XCTUnwrap(data.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] })
+        XCTAssertEqual(json["status"] as? String, "ok")
+        let message = try XCTUnwrap(json["message"] as? String)
+        XCTAssertTrue(message.hasPrefix("pong"))
+        XCTAssertTrue(message.contains(BoxVersionInfo.version), "Expected message to contain version, got: \(message)")
     }
 
     func testLogTargetAcceptsPlainArgument() async throws {
@@ -51,7 +61,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             statsProvider: { "" },
             locateNode: { _ in "" },
             natProbe: { _ in "" },
-            locationSummaryProvider: { "" }
+            locationSummaryProvider: { "" },
+            syncRoots: { "" }
         )
 
         let response = await dispatcher.process("log-target stdout")
@@ -73,7 +84,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             statsProvider: { "" },
             locateNode: { _ in "" },
             natProbe: { _ in "" },
-            locationSummaryProvider: { "" }
+            locationSummaryProvider: { "" },
+            syncRoots: { "" }
         )
 
         let response = await dispatcher.process("log-target {\"target\":\"stderr\"}")
@@ -95,7 +107,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             statsProvider: { "" },
             locateNode: { _ in "" },
             natProbe: { _ in "" },
-            locationSummaryProvider: { "" }
+            locationSummaryProvider: { "" },
+            syncRoots: { "" }
         )
 
         let response = await dispatcher.process("reload-config {\"path\":\"~/config.plist\"}")
@@ -134,7 +147,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             },
             locateNode: { _ in "" },
             natProbe: { _ in "" },
-            locationSummaryProvider: { "" }
+            locationSummaryProvider: { "" },
+            syncRoots: { "" }
         )
 
         let response = await dispatcher.process("stats")
@@ -155,7 +169,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
                 XCTAssertEqual(gateway, "192.0.2.1")
                 return "{\"status\":\"ok\"}"
             },
-            locationSummaryProvider: { "" }
+            locationSummaryProvider: { "" },
+            syncRoots: { "" }
         )
 
         let response = await dispatcher.process("nat-probe 192.0.2.1")
@@ -175,7 +190,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             locationSummaryProvider: {
                 expectation.fulfill()
                 return "{\"status\":\"ok\"}"
-            }
+            },
+            syncRoots: { "" }
         )
 
         let response = await dispatcher.process("location-summary")
@@ -191,7 +207,8 @@ final class BoxAdminDispatcherTests: XCTestCase {
             statsProvider: { "stats" },
             locateNode: { _ in "locate" },
             natProbe: { _ in "probe" },
-            locationSummaryProvider: { "summary" }
+            locationSummaryProvider: { "summary" },
+            syncRoots: { "sync" }
         )
     }
 }

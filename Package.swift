@@ -33,7 +33,12 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Logging", package: "swift-log")
             ],
-            path: "swift/Sources/BoxCommandParser",
+            path: "swift/Sources/BoxCommandParser"
+        ),
+        .target(
+            name: "BoxBuildInfoSupport",
+            dependencies: [],
+            path: "swift/Sources/BoxBuildInfoSupport",
             plugins: ["BoxBuildInfoPlugin"]
         ),
         .target(
@@ -59,6 +64,7 @@ let package = Package(
         .target(
             name: "BoxCore",
             dependencies: [
+                "BoxBuildInfoSupport",
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 "Puppy",

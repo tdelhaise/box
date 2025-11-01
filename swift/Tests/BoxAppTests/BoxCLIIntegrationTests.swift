@@ -25,7 +25,44 @@ final class BoxCLIIntegrationTests: XCTestCase {
 
             let json = try decodeJSON(stdout)
             XCTAssertEqual(json["status"] as? String, "ok")
-            XCTAssertEqual(json["message"] as? String, "pong")
+            let message = try XCTUnwrap(json["message"] as? String)
+            XCTAssertTrue(message.hasPrefix("pong"))
+            XCTAssertTrue(message.contains(BoxVersionInfo.version), "Expected ping message to include version, got: \(message)")
+        }
+    }
+
+    func testPingRootsDisplaysVersion() async throws {
+        try await runWithinTimeout {
+            let port = try allocateEphemeralUDPPort()
+            let context = try await startServer(forcedPort: port)
+            defer { context.tearDown() }
+
+            try await context.waitForQueueInfrastructure()
+
+            let fileManager = FileManager.default
+            let tempHome = fileManager.temporaryDirectory.appendingPathComponent("box-ping-roots-\(UUID().uuidString)", isDirectory: true)
+            try fileManager.createDirectory(at: tempHome, withIntermediateDirectories: true)
+            defer { try? fileManager.removeItem(at: tempHome) }
+
+            let environment = ["HOME": tempHome.path]
+
+            _ = try await Self.runBoxCLIAsync(args: ["init-config", "--json"], environment: environment)
+
+            var configurationResult = try BoxConfiguration.load(from: tempHome.appendingPathComponent(".box/Box.plist"))
+            configurationResult.configuration.common.rootServers = [
+                BoxRuntimeOptions.RootServer(address: "127.0.0.1", port: port)
+            ]
+            try configurationResult.configuration.save(to: configurationResult.url)
+
+            let (stdout, stderr, status) = try await Self.runBoxCLIAsync(
+                args: ["ping-roots", "--path", configurationResult.url.path],
+                environment: environment
+            )
+
+            XCTAssertEqual(status, 0)
+            XCTAssertTrue(stderr.isEmpty)
+            XCTAssertTrue(stdout.contains("127.0.0.1:\(port)"), "expected stdout to contain endpoint, got: \(stdout)")
+            XCTAssertTrue(stdout.contains(BoxVersionInfo.version), "expected stdout to contain version \(BoxVersionInfo.version), got: \(stdout)")
         }
     }
 
@@ -605,6 +642,40 @@ final class BoxCLIIntegrationTests: XCTestCase {
 
             let localUserURL = tempHome.appendingPathComponent(".box/queues/whoswho/\(userID.uuidString.uppercased()).json")
             XCTAssertTrue(fileManager.fileExists(atPath: localUserURL.path))
+        }
+    }
+
+    func testClientPutUnauthorizedReportsRemoteMessage() async throws {
+        try await runWithinTimeout {
+            let port = try allocateEphemeralUDPPort()
+            let context = try await startServer(forcedPort: port)
+            defer { context.tearDown() }
+
+            try await context.waitForQueueInfrastructure()
+
+            let fileManager = FileManager.default
+            let clientHome = fileManager.temporaryDirectory
+                .appendingPathComponent("box-cli-unauth-\(UUID().uuidString)", isDirectory: true)
+            try fileManager.createDirectory(at: clientHome, withIntermediateDirectories: true)
+            defer { try? fileManager.removeItem(at: clientHome) }
+
+            let environment = ["HOME": clientHome.path]
+
+            _ = try await Self.runBoxCLIAsync(args: ["init-config", "--json"], environment: environment)
+
+            let (_, stderr, status) = try await Self.runBoxCLIAsync(
+                args: [
+                    "--address", "127.0.0.1",
+                    "--port", "\(port)",
+                    "--put", "/INBOX:text/plain",
+                    "--data", "hello"
+                ],
+                environment: environment
+            )
+
+            XCTAssertNotEqual(status, 0)
+            XCTAssertTrue(stderr.contains("Remote 127.0.0.1:\(port) rejected put to /INBOX"), "Expected friendly rejection message, got: \(stderr)")
+            XCTAssertTrue(stderr.contains("unknown-client"), "Expected server reason in stderr, got: \(stderr)")
         }
     }
 
