@@ -115,7 +115,8 @@ public enum BoxClient {
 
         let channel: Channel
         do {
-            channel = try await bootstrap.bind(host: "0.0.0.0", port: 0).get()
+            let bindHost = determineBindHost(remoteAddress: remoteAddress)
+            channel = try await bootstrap.bind(host: bindHost, port: 0).get()
         } catch {
             logger.error("failed to bind client UDP socket", metadata: ["error": "\(error)"])
             throw error
@@ -156,6 +157,13 @@ public enum BoxClient {
         } catch {
             throw BoxClientError.invalidAddress(address, port)
         }
+    }
+
+    static func determineBindHost(remoteAddress: SocketAddress) -> String {
+        if let ip = remoteAddress.ipAddress, ip.contains(":") {
+            return "::"
+        }
+        return "0.0.0.0"
     }
 
     private static func metadata(for remoteAddress: SocketAddress, base: Logger.Metadata) -> Logger.Metadata {
