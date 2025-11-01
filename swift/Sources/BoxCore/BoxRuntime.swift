@@ -24,7 +24,7 @@ public enum BoxClientAction: Sendable {
 /// Aggregates runtime options shared between the client and the server entry points.
 public struct BoxRuntimeOptions: Sendable {
     /// Describes a remote root server endpoint that can handle locate requests.
-    public struct RootServer: Sendable, Equatable {
+    public struct RootServer: Sendable, Equatable, Hashable {
         public var address: String
         public var port: UInt16
 

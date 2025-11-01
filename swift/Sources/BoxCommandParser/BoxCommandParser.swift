@@ -374,8 +374,20 @@ extension BoxCommandParser {
                 let newNodeUUID = UUID()
                 configuration.common.nodeUUID = newNodeUUID
                 nodeIdentityRotated = true
+                let merged = Array(Set(configuration.common.rootServers).union(Self.defaultRootServers))
+                configuration.common.rootServers = merged
                 try configuration.save(to: loadResult.url)
                 loadResult.configuration = configuration
+            }
+
+            if !rotateIdentities && !loadResult.wasCreated {
+                var mergeSet = Set(configuration.common.rootServers)
+                mergeSet.formUnion(Self.defaultRootServers)
+                if mergeSet != Set(configuration.common.rootServers) {
+                    configuration.common.rootServers = Array(mergeSet)
+                    try configuration.save(to: loadResult.url)
+                    loadResult.configuration = configuration
+                }
             }
 
             try await Self.initialiseIdentities(
@@ -454,6 +466,13 @@ extension BoxCommandParser {
             let attributes: [FileAttributeKey: Any]? = nil
 #endif
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: attributes)
+        }
+
+        private static var defaultRootServers: Set<BoxRuntimeOptions.RootServer> {
+            [
+                BoxRuntimeOptions.RootServer(address: "2001:41d0:305:2100::b712", port: BoxRuntimeOptions.defaultPort),
+                BoxRuntimeOptions.RootServer(address: "2001:41d0:305:2100::b711", port: BoxRuntimeOptions.defaultPort)
+            ]
         }
 
         private static func resolveUserUUID(provided: String?, wasCreated: Bool, current: UUID) throws -> UUID? {
