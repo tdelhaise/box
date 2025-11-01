@@ -45,6 +45,7 @@ let package = Package(
             name: "BoxServer",
             dependencies: [
                 "BoxCore",
+                "BoxClient",
                 .product(name: "NIO", package: "swift-nio"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "NIOConcurrencyHelpers", package: "swift-nio")
