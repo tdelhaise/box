@@ -202,17 +202,22 @@ final class BoxCLIIntegrationTests: XCTestCase {
             try FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
             let clientLogURL = logsDirectory.appendingPathComponent("cli-put-get.log", isDirectory: false)
             var configurationResult = try BoxConfiguration.load(from: context.configurationURL)
+            configurationResult.configuration.client.address = "127.0.0.1"
+            configurationResult.configuration.client.port = chosenPort
             configurationResult.configuration.client.logTarget = "file:\(clientLogURL.path)"
             try configurationResult.configuration.save(to: configurationResult.url)
             let configuration = configurationResult.configuration
 
             let payloadString = "CLI integration payload"
+            let targetNodeUUID = configuration.common.nodeUUID.uuidString
+
             let (putStdout, putStderr, putStatus) = try await Self.runBoxCLIAsync(
                 args: [
-                    "--address", "127.0.0.1",
-                    "--port", "\(chosenPort)",
-                    "--put", "/INBOX:text/plain",
-                    "--data", payloadString
+                    "put",
+                    "at", targetNodeUUID,
+                    "queue", "INBOX",
+                    payloadString,
+                    "as", "text/plain"
                 ],
                 configurationPath: context.configurationURL.path
             )
@@ -232,9 +237,9 @@ final class BoxCLIIntegrationTests: XCTestCase {
 
             let (getStdout, getStderr, getStatus) = try await Self.runBoxCLIAsync(
                 args: [
-                    "--address", "127.0.0.1",
-                    "--port", "\(chosenPort)",
-                    "--get", "/INBOX"
+                    "get",
+                    "from", targetNodeUUID,
+                    "queue", "INBOX"
                 ],
                 configurationPath: context.configurationURL.path
             )
@@ -261,16 +266,21 @@ final class BoxCLIIntegrationTests: XCTestCase {
             try FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
             let clientLogURL = logsDirectory.appendingPathComponent("cli-permanent.log", isDirectory: false)
             var configurationResult = try BoxConfiguration.load(from: context.configurationURL)
+            configurationResult.configuration.client.address = "127.0.0.1"
+            configurationResult.configuration.client.port = chosenPort
             configurationResult.configuration.client.logTarget = "file:\(clientLogURL.path)"
             try configurationResult.configuration.save(to: configurationResult.url)
+            let configuration = configurationResult.configuration
+            let targetNodeUUID = configuration.common.nodeUUID.uuidString
 
             let payloadString = "Persistent CLI payload"
             let (putStdout, putStderr, putStatus) = try await Self.runBoxCLIAsync(
                 args: [
-                    "--address", "127.0.0.1",
-                    "--port", "\(chosenPort)",
-                    "--put", "/INBOX:text/plain",
-                    "--data", payloadString
+                    "put",
+                    "at", targetNodeUUID,
+                    "queue", "INBOX",
+                    payloadString,
+                    "as", "text/plain"
                 ],
                 configurationPath: context.configurationURL.path
             )
@@ -290,9 +300,9 @@ final class BoxCLIIntegrationTests: XCTestCase {
             for attempt in 1...2 {
                 let (getStdout, getStderr, getStatus) = try await Self.runBoxCLIAsync(
                     args: [
-                        "--address", "127.0.0.1",
-                        "--port", "\(chosenPort)",
-                        "--get", "/INBOX"
+                        "get",
+                        "from", targetNodeUUID,
+                        "queue", "INBOX"
                     ],
                     configurationPath: context.configurationURL.path
                 )
@@ -549,9 +559,8 @@ final class BoxCLIIntegrationTests: XCTestCase {
 
             let (locateStdout, locateStderr, locateStatus) = try await Self.runBoxCLIAsync(
                 args: [
-                    "--address", contactIP,
-                    "--port", "\(contactPort)",
-                    "--locate", serverNodeUUID
+                    "locate",
+                    serverNodeUUID
                 ],
                 configurationPath: context.configurationURL.path
             )
@@ -663,18 +672,28 @@ final class BoxCLIIntegrationTests: XCTestCase {
 
             _ = try await Self.runBoxCLIAsync(args: ["init-config", "--json"], environment: environment)
 
+            let serverConfiguration = try BoxConfiguration.load(from: context.configurationURL).configuration
+            let targetNodeUUID = serverConfiguration.common.nodeUUID.uuidString
+
+            let clientConfigURL = clientHome.appendingPathComponent(".box/Box.plist")
+            var clientConfiguration = try BoxConfiguration.load(from: clientConfigURL)
+            clientConfiguration.configuration.client.address = "127.0.0.1"
+            clientConfiguration.configuration.client.port = port
+            try clientConfiguration.configuration.save(to: clientConfiguration.url)
+
             let (_, stderr, status) = try await Self.runBoxCLIAsync(
                 args: [
-                    "--address", "127.0.0.1",
-                    "--port", "\(port)",
-                    "--put", "/INBOX:text/plain",
-                    "--data", "hello"
+                    "put",
+                    "at", targetNodeUUID,
+                    "queue", "INBOX",
+                    "hello",
+                    "as", "text/plain"
                 ],
                 environment: environment
             )
 
             XCTAssertNotEqual(status, 0)
-            XCTAssertTrue(stderr.contains("Remote 127.0.0.1:\(port) rejected put to /INBOX"), "Expected friendly rejection message, got: \(stderr)")
+            XCTAssertTrue(stderr.contains("Failed to deliver message"), "Expected friendly rejection message, got: \(stderr)")
             XCTAssertTrue(stderr.contains("unknown-client"), "Expected server reason in stderr, got: \(stderr)")
         }
     }

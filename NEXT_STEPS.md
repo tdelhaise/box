@@ -9,7 +9,7 @@ Next Steps
 - ✅ Port mapping optionnel (UPnP → PCP MAP/PEER → NAT-PMP) + reachability probe.
 - ✅ Tests Swift (`swift test --parallel`) couvrant CLI et flux UDP (timeouts 30 s).
 - ✅ Commande `box init-config` pour créer/réparer `Box.plist` et préparer `~/.box/{queues,logs,run}`.
-- ✅ CLI `box --put/--get` (queues éphémères & permanentes) couvert par `BoxCLIIntegrationTests`.
+- ✅ CLI `box put`/`box get` (queues éphémères & permanentes) couvert par `BoxCLIIntegrationTests`.
 - 🚧 Noise/libsodium non activé (transport clair uniquement).
 
 ### Priorités courtes (S3+)
@@ -22,7 +22,6 @@ Next Steps
 ### Moyenne échéance
 3. **CLI intégration E2E supplémentaire**
    - ✅ Cycle PUT/GET (queues permanentes et éphémères) validé via `BoxCLIIntegrationTests`.
-   - Ajouter un test `nat-probe` « succès » dès qu’un routeur compatible UPnP/PCP est disponible.
    - Préparer une commande d’export `whoswho` (`box admin export-presence`) pour les clients mobiles.
 4. **Admission control**
    - Implémenter la vérification que (user_uuid, node_uuid) est connu avant de répondre aux requêtes non-admin.
@@ -32,6 +31,8 @@ Next Steps
    - Produire une CLI `box admin export-presence` pour préparer cette consommation.
 
 ### Long terme
+6. **Validation nat-probe matérielle**
+   - Capturer un scénario « succès » (UPnP/PCP) dès que du matériel compatible est disponible, puis ajouter le test CLI correspondant.
 7. **Noise/libsodium**
    - Implémenter NK/IK `HELLO` + handshake complet, tests de relecture.
    - Synchroniser SPECS.md avec le framing chiffré.

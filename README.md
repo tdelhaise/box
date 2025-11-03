@@ -24,6 +24,15 @@ swift test --parallel
 
 L’admin s’appuie sur `~/.box/run/boxd.socket` (Unix) ou `\\.\pipe\boxd-admin` (Windows, à venir). L’exécutable refuse de tourner en root/admin et crée automatiquement `~/.box/{logs,queues,run}` avec permissions restreintes.
 
+### Commandes client (syntaxe naturelle)
+- `box put [from [<bind_ipv6>] [port <local_port>]] at <target> [queue <name>] "<payload>" [as <mime>]` publie un message.
+  - `<target>` accepte un UUID nœud / utilisateur ou une URL `box://<user_uuid>@<node_uuid|*>[:port]/<queue>`.
+  - Quand `<target>` est un **user UUID** ou `box://…@*`, le client contacte tous les nœuds connus via le Location Service.
+  - En l’absence d’enregistrement `whoswho`, le client retombe sur `client.address`/`client.port` définis dans `Box.plist`.
+  - `queue` est optionnelle (`INBOX` par défaut) et `text/plain` est choisi lorsqu’aucune valeur `as <mime>` n’est fournie.
+- `box get from <target> [queue <name>]` récupère un message (queue `INBOX` par défaut, sans destruction lorsqu’elle est marquée permanente).
+- `box locate <uuid>` résout un UUID nœud ou utilisateur en se basant sur les entrées du Location Service (client → serveur distant).
+
 ### Configuration (`~/.box/Box.plist`)
 - Section `common` : `node_uuid`, `user_uuid` (générés au premier lancement et persistés).
 - Section `server` : `port`, `address`, `log_level`, `log_target` (par défaut `file:~/.box/logs/boxd.log`), `port_mapping`, `external_address`, `external_port`, `permanent_queues`.
@@ -55,7 +64,7 @@ L’admin s’appuie sur `~/.box/run/boxd.socket` (Unix) ou `\\.\pipe\boxd-admin
 - Pas de dépendance STUN/ICE ; si la passerelle ne supporte pas ces protocoles, configurer un forwarding manuel et renseigner `external_address/external_port`.
 
 ### Tests end-to-end
-- `BoxCLIIntegrationTests` couvre `box admin status|ping|locate|nat-probe|location-summary` et les flux client `box --locate`, `box --put`, `box --get` (queues éphémères et permanentes). Chaque test se termine en < 30 s par design (`XCTExpectFailure` si timeout).
+- `BoxCLIIntegrationTests` couvre `box admin status|ping|locate|nat-probe|location-summary` et les flux client `box locate`, `box put`, `box get` (queues éphémères et permanentes). Chaque test se termine en < 30 s par design (`XCTExpectFailure` si timeout).
 - `BoxClientServerIntegrationTests` vérifie PUT/GET/LOCATE via UDP, y compris le comportement « permanent queue ».
 - Pour lancer manuellement une session de test : `swift test --filter BoxCLIIntegrationTests.testNatProbeDisabled`.
 

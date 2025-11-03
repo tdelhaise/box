@@ -13,6 +13,343 @@ import CRT
 import Darwin
 #endif
 
+/// Represents the optional client-side bind override parsed from natural CLI syntax.
+fileprivate struct BindingSpecification {
+    /// Optional local address the client should bind to before sending packets.
+    var address: String?
+    /// Optional UDP port the client should bind to when creating the socket.
+    var port: UInt16?
+}
+
+/// Stream-based helper that consumes natural-language tokens emitted by swift-argument-parser.
+fileprivate struct NaturalLanguageTokenStream {
+    private let tokens: [String]
+    private var index: Int = 0
+
+    /// Creates a new stream backed by the provided command-line tokens.
+    /// - Parameter tokens: Array of tokens captured by swift-argument-parser.
+    init(tokens: [String]) {
+        self.tokens = tokens
+    }
+
+    /// Indicates whether unread tokens remain in the stream.
+    var hasRemaining: Bool {
+        index < tokens.count
+    }
+
+    /// Human-readable description of the remaining tokens (used when reporting errors).
+    var remainingDescription: String {
+        guard index < tokens.count else { return "<none>" }
+        return tokens[index...].joined(separator: " ")
+    }
+
+    /// Consumes the next token when it matches the supplied keyword (case-insensitive).
+    /// - Parameter keyword: Keyword that should be matched.
+    /// - Returns: `true` when the token was consumed, `false` otherwise.
+    mutating func consumeKeyword(_ keyword: String) -> Bool {
+        guard let candidate = peekToken() else { return false }
+        if candidate.caseInsensitiveCompare(keyword) == .orderedSame {
+            index += 1
+            return true
+        }
+        return false
+    }
+
+    /// Ensures the next token matches the supplied keyword.
+    /// - Parameter keyword: Expected keyword.
+    mutating func expectKeyword(_ keyword: String) throws {
+        if !consumeKeyword(keyword) {
+            if let next = peekToken() {
+                throw ValidationError("Expected keyword '\(keyword)' before '\(next)'.")
+            } else {
+                throw ValidationError("Expected keyword '\(keyword)' but reached end of command.")
+            }
+        }
+    }
+
+    /// Returns the next token, throwing when none remain.
+    /// - Parameter errorMessage: Error reported when the stream is exhausted.
+    mutating func nextValue(_ errorMessage: String) throws -> String {
+        guard index < tokens.count else {
+            throw ValidationError(errorMessage)
+        }
+        let value = tokens[index]
+        index += 1
+        return value
+    }
+
+    /// Parses an optional binding specifier (`from [addr] port 1234`) at the current position.
+    /// - Returns: Parsed binding specification (empty when absent).
+    mutating func parseBindingSpecifier() throws -> BindingSpecification {
+        guard consumeKeyword("from") else {
+            return BindingSpecification(address: nil, port: nil)
+        }
+
+        var address: String?
+        if let next = peekToken(), !next.lowercased().elementsEqual("port") {
+            address = stripIPv6Brackets(try nextValue("Expected address after 'from'."))
+        }
+
+        var port: UInt16?
+        if consumeKeyword("port") {
+            let token = try nextValue("Expected port number after 'port'.")
+            guard let parsed = UInt16(token) else {
+                throw ValidationError("'\(token)' is not a valid UDP port.")
+            }
+            port = parsed
+        }
+
+        return BindingSpecification(address: address, port: port)
+    }
+
+    /// Returns the next token without consuming it.
+    private func peekToken() -> String? {
+        guard index < tokens.count else { return nil }
+        return tokens[index]
+    }
+
+    /// Strips IPv6 brackets from the supplied token when present.
+    private func stripIPv6Brackets(_ token: String) -> String {
+        if token.hasPrefix("["), token.hasSuffix("]"), token.count >= 2 {
+            let start = token.index(after: token.startIndex)
+            let end = token.index(before: token.endIndex)
+            return String(token[start..<end])
+        }
+        return token
+    }
+}
+
+/// Describes the target supplied to natural-language subcommands (PUT/GET/LOCATE).
+fileprivate struct NaturalTarget {
+    /// Differentiates the supported syntaxes.
+    enum Kind {
+        case uuid(UUID)
+        case boxURL(BoxURL)
+    }
+
+    /// Captures the parsed `box://` representation.
+    struct BoxURL {
+        /// Identifies how the node segment should be interpreted.
+        enum NodeSpecifier {
+            case specific(UUID)
+            case wildcard
+        }
+
+        /// UUID of the user portion (`box://<user>@...`).
+        var userUUID: UUID
+        /// Node selector extracted from the URL.
+        var nodeSpecifier: NodeSpecifier
+        /// Optional UDP port override supplied via `:<port>`.
+        var port: UInt16?
+        /// Optional queue component derived from `/queue`.
+        var queue: String?
+    }
+
+    /// Underlying representation of the target.
+    var kind: Kind
+    /// Optional queue hint discovered while parsing the expression.
+    var queueComponent: String?
+    /// Optional port override embedded in the expression.
+    var portOverride: UInt16?
+
+    /// Creates a new target description from the raw CLI token.
+    /// - Parameter token: Raw token captured by swift-argument-parser.
+    init(token: String) throws {
+        if token.lowercased().hasPrefix("box://") {
+            let parsed = try NaturalTarget.parseBoxURL(token)
+            self.kind = .boxURL(parsed)
+            self.queueComponent = parsed.queue
+            self.portOverride = parsed.port
+        } else if let uuid = UUID(uuidString: token) {
+            self.kind = .uuid(uuid)
+            self.queueComponent = nil
+            self.portOverride = nil
+        } else {
+            throw ValidationError("'\(token)' is not a valid UUID or box:// target.")
+        }
+    }
+
+    /// Human-readable description used when reporting errors.
+    var debugDescription: String {
+        switch kind {
+        case .uuid(let uuid):
+            return uuid.uuidString
+        case .boxURL(let url):
+            let nodePart: String
+            switch url.nodeSpecifier {
+            case .specific(let nodeUUID):
+                nodePart = nodeUUID.uuidString
+            case .wildcard:
+                nodePart = "*"
+            }
+            var builder = "box://\(url.userUUID.uuidString)@\(nodePart)"
+            if let port = url.port {
+                builder += ":\(port)"
+            }
+            if let queue = url.queue, !queue.isEmpty {
+                builder += "/\(queue)"
+            }
+            return builder
+        }
+    }
+
+    /// Parses a `box://` styled token.
+    /// - Parameter token: Raw CLI token beginning with `box://`.
+    /// - Returns: Parsed URL structure.
+    private static func parseBoxURL(_ token: String) throws -> BoxURL {
+        let prefix = "box://"
+        let remainder = String(token.dropFirst(prefix.count))
+        guard let atIndex = remainder.firstIndex(of: "@") else {
+            throw ValidationError("box:// targets must include a '@' separating user and node identifiers.")
+        }
+
+        let userPart = String(remainder[..<atIndex])
+        guard let userUUID = UUID(uuidString: userPart) else {
+            throw ValidationError("'\(userPart)' is not a valid user UUID in box:// target.")
+        }
+
+        var nodeAndRest = String(remainder[remainder.index(after: atIndex)...])
+        var queueComponent: String?
+        if let slashIndex = nodeAndRest.firstIndex(of: "/") {
+            let queueSubstring = nodeAndRest[nodeAndRest.index(after: slashIndex)...]
+            queueComponent = queueSubstring.isEmpty ? nil : String(queueSubstring)
+            nodeAndRest = String(nodeAndRest[..<slashIndex])
+        }
+
+        var port: UInt16?
+        if let colonIndex = nodeAndRest.lastIndex(of: ":") {
+            let portSubstring = nodeAndRest[nodeAndRest.index(after: colonIndex)...]
+            guard !portSubstring.isEmpty, let parsed = UInt16(portSubstring) else {
+                throw ValidationError("'\(portSubstring)' is not a valid port in box:// target.")
+            }
+            port = parsed
+            nodeAndRest = String(nodeAndRest[..<colonIndex])
+        }
+
+        let nodeSpecifier: BoxURL.NodeSpecifier
+        if nodeAndRest == "*" {
+            nodeSpecifier = .wildcard
+        } else if let nodeUUID = UUID(uuidString: nodeAndRest) {
+            nodeSpecifier = .specific(nodeUUID)
+        } else {
+            throw ValidationError("'\(nodeAndRest)' is not a valid node UUID in box:// target.")
+        }
+
+        let normalizedQueue = queueComponent?.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return BoxURL(userUUID: userUUID, nodeSpecifier: nodeSpecifier, port: port, queue: normalizedQueue)
+    }
+}
+
+/// Lightweight cache that exposes Location Service records stored on disk.
+fileprivate final class LocationCache {
+    private let directory: URL?
+    private let decoder = JSONDecoder()
+    private let fileManager = FileManager.default
+    private var nodeRecords: [UUID: LocationServiceNodeRecord] = [:]
+    private var userRecords: [UUID: LocationServiceUserRecord] = [:]
+
+    /// Creates a new cache rooted at the default queue directory.
+    init() throws {
+        if let root = BoxPaths.queuesDirectory() {
+            directory = root.appendingPathComponent("whoswho", isDirectory: true)
+        } else {
+            directory = nil
+        }
+    }
+
+    /// Returns the node record stored for the supplied identifier.
+    /// - Parameter uuid: Node UUID to load.
+    func nodeRecord(for uuid: UUID) throws -> LocationServiceNodeRecord? {
+        if let cached = nodeRecords[uuid] {
+            return cached
+        }
+        guard let url = fileURL(for: uuid), fileManager.fileExists(atPath: url.path) else {
+            return nil
+        }
+        do {
+            let data = try Data(contentsOf: url)
+            let record = try decoder.decode(LocationServiceNodeRecord.self, from: data)
+            nodeRecords[uuid] = record
+            return record
+        } catch let decoding as DecodingError {
+            switch decoding {
+            case .typeMismatch, .keyNotFound, .valueNotFound, .dataCorrupted:
+                return nil
+            @unknown default:
+                return nil
+            }
+        } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError {
+            return nil
+        } catch {
+            throw ValidationError("Unable to load node record \(uuid.uuidString): \(error.localizedDescription)")
+        }
+    }
+
+    /// Returns the user record stored for the supplied identifier.
+    /// - Parameter uuid: User UUID to load.
+    func userRecord(for uuid: UUID) throws -> LocationServiceUserRecord? {
+        if let cached = userRecords[uuid] {
+            return cached
+        }
+        guard let url = fileURL(for: uuid), fileManager.fileExists(atPath: url.path) else {
+            return nil
+        }
+        do {
+            let data = try Data(contentsOf: url)
+            let record = try decoder.decode(LocationServiceUserRecord.self, from: data)
+            userRecords[uuid] = record
+            return record
+        } catch let decoding as DecodingError {
+            switch decoding {
+            case .typeMismatch, .keyNotFound, .valueNotFound, .dataCorrupted:
+                return nil
+            @unknown default:
+                return nil
+            }
+        } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError {
+            return nil
+        } catch {
+            throw ValidationError("Unable to load user record \(uuid.uuidString): \(error.localizedDescription)")
+        }
+    }
+
+    /// Computes the file path associated with the supplied identifier.
+    private func fileURL(for uuid: UUID) -> URL? {
+        directory?.appendingPathComponent(uuid.uuidString.uppercased()).appendingPathExtension("json")
+    }
+}
+
+/// Represents a remote endpoint resolved from the Location Service.
+fileprivate struct Endpoint: Hashable {
+    /// Node UUID associated with the destination.
+    var nodeUUID: UUID
+    /// Reachable address (IPv4 or IPv6) exposed by the node.
+    var address: String
+    /// UDP port advertised for the node.
+    var port: UInt16
+}
+
+/// Candidate socket address inspected while selecting the preferred endpoint.
+fileprivate struct AddressCandidate {
+    /// Identifies how the candidate was obtained.
+    enum Origin: Int {
+        case record = 0
+        case portMapping = 1
+        case fallback = 2
+    }
+
+    /// Address string (IPv4 or IPv6).
+    var ip: String
+    /// UDP port attached to the candidate.
+    var port: UInt16
+    /// Optional scope reported by the Location Service.
+    var scope: LocationServiceNodeRecord.Address.Scope?
+    /// Optional source reported by the Location Service.
+    var source: LocationServiceNodeRecord.Address.Source?
+    /// Candidate origin (record, port-mapping or fallback).
+    var origin: Origin
+}
+
 /// Swift Argument Parser entry point that validates CLI options before delegating to the runtime.
 @main
 public struct BoxCommandParser: AsyncParsableCommand {
@@ -21,7 +358,7 @@ public struct BoxCommandParser: AsyncParsableCommand {
         CommandConfiguration(
             commandName: "box",
             abstract: "Box messaging toolkit (Swift rewrite).",
-            subcommands: [Admin.self, InitConfig.self, Register.self, PingRoots.self]
+            subcommands: [Admin.self, InitConfig.self, Register.self, PingRoots.self, Put.self, Get.self, Locate.self]
         )
     }
 
@@ -298,22 +635,6 @@ public struct BoxCommandParser: AsyncParsableCommand {
     @Option(name: .long, help: "Log target (stderr|stdout|file:<path>).")
     public var logTarget: String?
 
-    /// Optional PUT action described as `<queue>[:content-type]`.
-    @Option(name: .customLong("put"), help: "PUT queue path (format: /queue[:content-type]).")
-    public var putDescriptor: String?
-
-    /// Optional GET queue path.
-    @Option(name: .customLong("get"), help: "GET queue path.")
-    public var getQueue: String?
-
-    /// Optional Locate target node UUID.
-    @Option(name: .customLong("locate"), help: "Locate a node UUID via the remote Location Service.")
-    public var locateNode: String?
-
-    /// Optional inline payload used for PUT.
-    @Option(name: .customLong("data"), help: "Inline data used with --put (UTF-8).")
-    public var dataString: String?
-
     /// Opt-in flag enabling automatic port mapping (PCP/NAT-PMP/UPnP) for server mode.
     @Flag(name: .customLong("enable-port-mapping"), inversion: .prefixedNo, help: "Attempt automatic port mapping via PCP/NAT-PMP/UPnP (server mode).")
     public var enablePortMapping: Bool = false
@@ -347,9 +668,6 @@ public struct BoxCommandParser: AsyncParsableCommand {
             throw ValidationError("--external-port requires --external-address.")
         }
 
-        if resolvedMode == .server, locateNode != nil {
-            throw ValidationError("--locate is only available in client mode.")
-        }
         if resolvedMode == .client {
             if externalAddressOverride != nil {
                 throw ValidationError("--external-address is only available in server mode.")
@@ -472,7 +790,7 @@ public struct BoxCommandParser: AsyncParsableCommand {
             nodeId: effectiveNodeId,
             userId: effectiveUserId,
             portMappingRequested: portMappingRequested,
-            clientAction: try resolveClientAction(for: resolvedMode),
+            clientAction: resolveClientAction(for: resolvedMode),
             portMappingOrigin: portMappingOrigin,
             externalAddressOverride: manualExternalAddress,
             externalPortOverride: manualExternalPort,
@@ -496,46 +814,7 @@ public struct BoxCommandParser: AsyncParsableCommand {
     /// Converts CLI flags into a concrete client action.
     /// - Parameter mode: Current runtime mode.
     /// - Returns: Client action, defaults to `.handshake`.
-    /// - Throws: `ValidationError` when conflicting options are supplied.
-    private func resolveClientAction(for mode: BoxRuntimeMode) throws -> BoxClientAction {
-        guard mode == .client else {
-            return .handshake
-        }
-
-        if locateNode != nil && (putDescriptor != nil || getQueue != nil) {
-            throw ValidationError("Cannot combine --locate with --put or --get.")
-        }
-
-        if let descriptor = putDescriptor {
-            guard getQueue == nil else {
-                throw ValidationError("Cannot combine --put and --get in the same invocation.")
-            }
-            guard let dataString else {
-                throw ValidationError("--put requires --data <payload>.")
-            }
-            let components = descriptor.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
-            let queuePath = String(components[0])
-            guard queuePath.hasPrefix("/") else {
-                throw ValidationError("--put queue path must start with '/'.")
-            }
-            let contentType = components.count == 2 ? String(components[1]) : "application/octet-stream"
-            return .put(queuePath: queuePath, contentType: contentType, data: Array(dataString.utf8))
-        }
-
-        if let queuePath = getQueue {
-            guard queuePath.hasPrefix("/") else {
-                throw ValidationError("--get queue path must start with '/'.")
-            }
-            return .get(queuePath: queuePath)
-        }
-
-        if let locateNode {
-            guard let uuid = UUID(uuidString: locateNode) else {
-                throw ValidationError("--locate expects a valid UUID.")
-            }
-            return .locate(node: uuid)
-        }
-
+    private func resolveClientAction(for mode: BoxRuntimeMode) -> BoxClientAction {
         return .handshake
     }
 
@@ -648,6 +927,351 @@ public struct BoxCommandParser: AsyncParsableCommand {
         }
     }
 
+    /// `box put` — publish a message using natural-language syntax.
+    public struct Put: AsyncParsableCommand {
+        public static var configuration: CommandConfiguration {
+            CommandConfiguration(
+                commandName: "put",
+                abstract: "Publish a message to a remote Box queue using natural-language syntax."
+            )
+        }
+
+        @Option(name: .customLong("config"), help: "Configuration PLIST path (defaults to ~/.box/Box.plist).")
+        public var configurationPath: String?
+
+        @Option(name: .long, help: "Log level (trace, debug, info, warn, error).")
+        public var logLevel: String?
+
+        @Option(name: .long, help: "Log target (stderr|stdout|file:<path>).")
+        public var logTarget: String?
+
+        @Argument(parsing: .captureForPassthrough, help: "Natural command expression (e.g. 'from [::1] port 12000 at <uuid> queue INBOX \"Hello\" as text/plain').")
+        public var expression: [String] = []
+
+        public init() {}
+
+        public mutating func run() async throws {
+            guard !expression.isEmpty else {
+                throw ValidationError("Missing arguments. Example: box put at <UUID> \"Hello, World\"")
+            }
+
+            var stream = NaturalLanguageTokenStream(tokens: expression)
+            let binding = try stream.parseBindingSpecifier()
+            try stream.expectKeyword("at")
+            let targetToken = try stream.nextValue("Expected target after 'at'.")
+            let target = try NaturalTarget(token: targetToken)
+
+            var queueOverride: String?
+            if stream.consumeKeyword("queue") {
+                queueOverride = try stream.nextValue("Expected queue name after 'queue'.")
+            }
+
+            let message = try stream.nextValue("Expected message payload (remember to quote it).")
+
+            var contentType = "text/plain"
+            if stream.consumeKeyword("as") {
+                contentType = try stream.nextValue("Expected MIME type after 'as'.")
+            }
+
+            if stream.hasRemaining {
+                throw ValidationError("Unexpected arguments: \(stream.remainingDescription)")
+            }
+
+            let configurationURL = try BoxCommandParser.resolveConfigurationURL(path: configurationPath)
+            let configurationResult = try BoxConfiguration.load(from: configurationURL)
+            let configuration = configurationResult.configuration
+
+            let (effectiveLogLevel, logLevelOrigin, effectiveLogTarget, logTargetOrigin) = try BoxCommandParser.resolveClientLogging(
+                logLevelOption: logLevel,
+                logTargetOption: logTarget,
+                configuration: configuration
+            )
+
+            BoxLogging.bootstrap(level: effectiveLogLevel, target: effectiveLogTarget)
+
+            let queueName = try BoxCommandParser.resolveQueueName(preferred: queueOverride, embedded: target.queueComponent)
+            let queuePath = "/" + queueName
+            let cache = try LocationCache()
+            let endpoints = try BoxCommandParser.resolveEndpoints(
+                for: target,
+                cache: cache,
+                portOverride: target.portOverride,
+                fallbackHost: configuration.client.address,
+                fallbackPort: configuration.client.address == nil ? nil : (configuration.client.port ?? BoxRuntimeOptions.defaultPort)
+            )
+
+            guard !endpoints.isEmpty else {
+                throw ValidationError("No reachable endpoints found for \(target.debugDescription).")
+            }
+
+            let messageBytes = [UInt8](message.utf8)
+            let permanentQueues = try BoxCommandParser.permanentQueueSet(for: configuration)
+
+            var failures: [(Endpoint, Error)] = []
+            for endpoint in endpoints {
+                let options = BoxRuntimeOptions(
+                    mode: .client,
+                    address: endpoint.address,
+                    port: endpoint.port,
+                    portOrigin: .cliFlag,
+                    addressOrigin: .cliFlag,
+                    configurationPath: configurationResult.url.path,
+                    adminChannelEnabled: false,
+                    logLevel: effectiveLogLevel,
+                    logTarget: effectiveLogTarget,
+                    logLevelOrigin: logLevelOrigin,
+                    logTargetOrigin: logTargetOrigin,
+                    nodeId: configuration.common.nodeUUID,
+                    userId: configuration.common.userUUID,
+                    portMappingRequested: false,
+                    clientAction: .put(queuePath: queuePath, contentType: contentType, data: messageBytes),
+                    portMappingOrigin: .default,
+                    externalAddressOverride: nil,
+                    externalPortOverride: nil,
+                    externalAddressOrigin: .default,
+                    permanentQueues: permanentQueues,
+                    rootServers: configuration.common.rootServers,
+                    bindAddress: binding.address,
+                    bindPort: binding.port
+                )
+
+                do {
+                    try await BoxClient.run(with: options)
+                } catch {
+                    failures.append((endpoint, error))
+                }
+            }
+
+            if !failures.isEmpty {
+                let lines = failures.map { failure -> String in
+                    let endpoint = failure.0
+                    return "- \(endpoint.nodeUUID.uuidString) @ \(BoxCommandParser.formatEndpointAddress(endpoint.address)):\(endpoint.port): \(failure.1.localizedDescription)"
+                }.joined(separator: "\n")
+                throw ValidationError("Failed to deliver message:\n\(lines)")
+            }
+        }
+    }
+
+    /// `box get` — retrieve a message from a remote queue.
+    public struct Get: AsyncParsableCommand {
+        public static var configuration: CommandConfiguration {
+            CommandConfiguration(
+                commandName: "get",
+                abstract: "Retrieve a message from a remote Box queue."
+            )
+        }
+
+        @Option(name: .customLong("config"), help: "Configuration PLIST path (defaults to ~/.box/Box.plist).")
+        public var configurationPath: String?
+
+        @Option(name: .long, help: "Log level (trace, debug, info, warn, error).")
+        public var logLevel: String?
+
+        @Option(name: .long, help: "Log target (stderr|stdout|file:<path>).")
+        public var logTarget: String?
+
+        @Argument(parsing: .captureForPassthrough, help: "Natural command expression (e.g. 'from <uuid> queue INBOX').")
+        public var expression: [String] = []
+
+        public init() {}
+
+        public mutating func run() async throws {
+            guard !expression.isEmpty else {
+                throw ValidationError("Missing arguments. Example: box get from <UUID>")
+            }
+
+            var stream = NaturalLanguageTokenStream(tokens: expression)
+            guard stream.consumeKeyword("from") || stream.consumeKeyword("at") else {
+                throw ValidationError("Expected 'from' or 'at' before the target.")
+            }
+            let targetToken = try stream.nextValue("Expected target after keyword.")
+            let target = try NaturalTarget(token: targetToken)
+
+            var queueOverride: String?
+            if stream.consumeKeyword("queue") {
+                queueOverride = try stream.nextValue("Expected queue name after 'queue'.")
+            }
+
+            if stream.hasRemaining {
+                throw ValidationError("Unexpected arguments: \(stream.remainingDescription)")
+            }
+
+            let configurationURL = try BoxCommandParser.resolveConfigurationURL(path: configurationPath)
+            let configurationResult = try BoxConfiguration.load(from: configurationURL)
+            let configuration = configurationResult.configuration
+
+            let (effectiveLogLevel, logLevelOrigin, effectiveLogTarget, logTargetOrigin) = try BoxCommandParser.resolveClientLogging(
+                logLevelOption: logLevel,
+                logTargetOption: logTarget,
+                configuration: configuration
+            )
+
+            BoxLogging.bootstrap(level: effectiveLogLevel, target: effectiveLogTarget)
+
+            let queueName = try BoxCommandParser.resolveQueueName(preferred: queueOverride, embedded: target.queueComponent)
+            let queuePath = "/" + queueName
+            let cache = try LocationCache()
+            let endpoints = try BoxCommandParser.resolveEndpoints(
+                for: target,
+                cache: cache,
+                portOverride: target.portOverride,
+                fallbackHost: configuration.client.address,
+                fallbackPort: configuration.client.address == nil ? nil : (configuration.client.port ?? BoxRuntimeOptions.defaultPort)
+            )
+
+            guard !endpoints.isEmpty else {
+                throw ValidationError("No reachable endpoints found for \(target.debugDescription).")
+            }
+
+            let permanentQueues = try BoxCommandParser.permanentQueueSet(for: configuration)
+            var failures: [(Endpoint, Error)] = []
+
+            for endpoint in endpoints {
+                let options = BoxRuntimeOptions(
+                    mode: .client,
+                    address: endpoint.address,
+                    port: endpoint.port,
+                    portOrigin: .cliFlag,
+                    addressOrigin: .cliFlag,
+                    configurationPath: configurationResult.url.path,
+                    adminChannelEnabled: false,
+                    logLevel: effectiveLogLevel,
+                    logTarget: effectiveLogTarget,
+                    logLevelOrigin: logLevelOrigin,
+                    logTargetOrigin: logTargetOrigin,
+                    nodeId: configuration.common.nodeUUID,
+                    userId: configuration.common.userUUID,
+                    portMappingRequested: false,
+                    clientAction: .get(queuePath: queuePath),
+                    portMappingOrigin: .default,
+                    externalAddressOverride: nil,
+                    externalPortOverride: nil,
+                    externalAddressOrigin: .default,
+                    permanentQueues: permanentQueues,
+                    rootServers: configuration.common.rootServers
+                )
+
+                do {
+                    try await BoxClient.run(with: options)
+                    return
+                } catch {
+                    failures.append((endpoint, error))
+                }
+            }
+
+            let lines = failures.map { failure -> String in
+                let endpoint = failure.0
+                return "- \(endpoint.nodeUUID.uuidString) @ \(BoxCommandParser.formatEndpointAddress(endpoint.address)):\(endpoint.port): \(failure.1.localizedDescription)"
+            }.joined(separator: "\n")
+            throw ValidationError("Failed to retrieve message:\n\(lines)")
+        }
+    }
+
+    /// `box locate` — resolve a node UUID via the remote Location Service.
+    public struct Locate: AsyncParsableCommand {
+        public static var configuration: CommandConfiguration {
+            CommandConfiguration(
+                commandName: "locate",
+                abstract: "Resolve a node UUID via the remote Location Service."
+            )
+        }
+
+        @Argument(help: "Node UUID to locate.")
+        public var identifier: String
+
+        @Option(name: .customLong("config"), help: "Configuration PLIST path (defaults to ~/.box/Box.plist).")
+        public var configurationPath: String?
+
+        @Option(name: [.short, .long], help: "Override target UDP port.")
+        public var port: UInt16?
+
+        @Option(name: [.short, .long], help: "Override target address.")
+        public var address: String?
+
+        @Option(name: .long, help: "Log level (trace, debug, info, warn, error).")
+        public var logLevel: String?
+
+        @Option(name: .long, help: "Log target (stderr|stdout|file:<path>).")
+        public var logTarget: String?
+
+        public init() {}
+
+        public mutating func run() async throws {
+            guard let uuid = UUID(uuidString: identifier) else {
+                throw ValidationError("'\(identifier)' is not a valid UUID.")
+            }
+
+            let configurationURL = try BoxCommandParser.resolveConfigurationURL(path: configurationPath)
+            let configurationResult = try BoxConfiguration.load(from: configurationURL)
+            let configuration = configurationResult.configuration
+
+            let (effectiveLogLevel, logLevelOrigin, effectiveLogTarget, logTargetOrigin) = try BoxCommandParser.resolveClientLogging(
+                logLevelOption: logLevel,
+                logTargetOption: logTarget,
+                configuration: configuration
+            )
+
+            BoxLogging.bootstrap(level: effectiveLogLevel, target: effectiveLogTarget)
+
+            let resolvedAddress: String
+            let addressOrigin: BoxRuntimeOptions.AddressOrigin
+            if let address {
+                resolvedAddress = address
+                addressOrigin = .cliFlag
+            } else if let configuredAddress = configuration.client.address {
+                resolvedAddress = configuredAddress
+                addressOrigin = .configuration
+            } else {
+                resolvedAddress = BoxRuntimeOptions.defaultClientAddress
+                addressOrigin = .default
+            }
+
+            let resolvedPort: UInt16
+            let portOrigin: BoxRuntimeOptions.PortOrigin
+            if let port {
+                resolvedPort = port
+                portOrigin = .cliFlag
+            } else if let configuredPort = configuration.client.port {
+                resolvedPort = configuredPort
+                portOrigin = .configuration
+            } else {
+                resolvedPort = BoxRuntimeOptions.defaultPort
+                portOrigin = .default
+            }
+
+            let permanentQueues = try BoxCommandParser.permanentQueueSet(for: configuration)
+
+            let options = BoxRuntimeOptions(
+                mode: .client,
+                address: resolvedAddress,
+                port: resolvedPort,
+                portOrigin: portOrigin,
+                addressOrigin: addressOrigin,
+                configurationPath: configurationResult.url.path,
+                adminChannelEnabled: false,
+                logLevel: effectiveLogLevel,
+                logTarget: effectiveLogTarget,
+                logLevelOrigin: logLevelOrigin,
+                logTargetOrigin: logTargetOrigin,
+                nodeId: configuration.common.nodeUUID,
+                userId: configuration.common.userUUID,
+                portMappingRequested: false,
+                clientAction: .locate(node: uuid),
+                portMappingOrigin: .default,
+                externalAddressOverride: nil,
+                externalPortOverride: nil,
+                externalAddressOrigin: .default,
+                permanentQueues: permanentQueues,
+                rootServers: configuration.common.rootServers
+            )
+
+            do {
+                try await BoxClient.run(with: options)
+            } catch let clientError as BoxClientError {
+                throw ValidationError("Locate failed: \(clientError.localizedDescription)")
+            }
+        }
+    }
 extension BoxCommandParser {
     static func resolveConfigurationURL(path: String?) throws -> URL {
         if let path, !path.isEmpty {
@@ -679,8 +1303,353 @@ extension BoxCommandParser {
         }
         throw ValidationError("Invalid root endpoint format: \(string). Expected host[:port].")
     }
-}
 
+    /// Resolves the effective logging configuration for client-oriented subcommands.
+    /// - Parameters:
+    ///   - logLevelOption: CLI override for the log level.
+    ///   - logTargetOption: CLI override for the log target.
+    ///   - configuration: Resolved Box configuration.
+    /// - Returns: Tuple containing the selected level/target and their origins.
+    static func resolveClientLogging(
+        logLevelOption: String?,
+        logTargetOption: String?,
+        configuration: BoxConfiguration
+    ) throws -> (Logger.Level, BoxRuntimeOptions.LogLevelOrigin, BoxLogTarget, BoxRuntimeOptions.LogTargetOrigin) {
+        let cliLevel = Logger.Level(logLevelString: logLevelOption)
+        let (level, levelOrigin): (Logger.Level, BoxRuntimeOptions.LogLevelOrigin) = {
+            if logLevelOption != nil {
+                return (cliLevel, .cliFlag)
+            }
+            if let configurationLevel = configuration.client.logLevel {
+                return (configurationLevel, .configuration)
+            }
+            return (.info, .default)
+        }()
+
+        if let rawTarget = logTargetOption, BoxLogTarget.parse(rawTarget) == nil {
+            throw ValidationError("Invalid log target. Expected stderr|stdout|file:<path>.")
+        }
+        let (target, targetOrigin): (BoxLogTarget, BoxRuntimeOptions.LogTargetOrigin) = {
+            if let rawTarget = logTargetOption, let parsed = BoxLogTarget.parse(rawTarget) {
+                return (parsed, .cliFlag)
+            }
+            if let configTarget = configuration.client.logTarget,
+               let parsed = BoxLogTarget.parse(configTarget) {
+                return (parsed, .configuration)
+            }
+            return (BoxRuntimeOptions.defaultLogTarget(for: .client), .default)
+        }()
+
+        return (level, levelOrigin, target, targetOrigin)
+    }
+
+    /// Resolves the queue name based on explicit and embedded hints.
+    /// - Parameters:
+    ///   - preferred: Queue specified via the `queue` keyword.
+    ///   - embedded: Queue discovered within a `box://` URL.
+    /// - Returns: Normalised queue name.
+    static func resolveQueueName(preferred: String?, embedded: String?) throws -> String {
+        if let preferred, !preferred.isEmpty {
+            return try BoxServerStore.normalizeQueueName(preferred)
+        }
+        if let embedded, !embedded.isEmpty {
+            return try BoxServerStore.normalizeQueueName(embedded)
+        }
+        return "INBOX"
+    }
+
+    /// Returns the configured set of permanent queues.
+    /// - Parameter configuration: Global configuration loaded from disk.
+    /// - Returns: Normalised set of permanent queue names.
+    static func permanentQueueSet(for configuration: BoxConfiguration) throws -> Set<String> {
+        guard let values = configuration.server.permanentQueues, !values.isEmpty else {
+            return []
+        }
+        var result = Set<String>()
+        for queue in values {
+            let normalized = try BoxServerStore.normalizeQueueName(queue)
+            result.insert(normalized)
+        }
+        return result
+    }
+
+    /// Resolves the list of endpoints targeted by the supplied natural-language expression.
+    /// - Parameters:
+    ///   - target: Parsed natural target.
+    ///   - cache: Location Service cache used to fetch node/user records.
+    ///   - portOverride: Optional port override supplied by the CLI.
+    ///   - fallbackHost: Fallback address sourced from the configuration.
+    ///   - fallbackPort: Fallback port sourced from the configuration.
+    /// - Returns: Sorted list of endpoints ready for client delivery.
+    fileprivate static func resolveEndpoints(
+        for target: NaturalTarget,
+        cache: LocationCache,
+        portOverride: UInt16?,
+        fallbackHost: String?,
+        fallbackPort: UInt16?
+    ) throws -> [Endpoint] {
+        switch target.kind {
+        case .uuid(let identifier):
+            if let record = try cache.nodeRecord(for: identifier) {
+                try ensureNodeOnline(record)
+                let endpoint = try makeEndpoint(
+                    for: record,
+                    portOverride: portOverride,
+                    fallbackHost: fallbackHost,
+                    fallbackPort: fallbackPort
+                )
+                return [endpoint]
+            }
+            if let userRecord = try cache.userRecord(for: identifier) {
+                return try resolveUserEndpoints(
+                    userRecord: userRecord,
+                    cache: cache,
+                    portOverride: portOverride,
+                    fallbackHost: fallbackHost,
+                    fallbackPort: fallbackPort
+                )
+            }
+            if let fallbackHost {
+                let resolvedPort = portOverride ?? fallbackPort ?? BoxRuntimeOptions.defaultPort
+                return [Endpoint(nodeUUID: identifier, address: fallbackHost, port: resolvedPort)]
+            }
+            throw ValidationError("No Location Service entry found for \(identifier.uuidString).")
+
+        case .boxURL(let spec):
+            switch spec.nodeSpecifier {
+            case .specific(let nodeUUID):
+                guard let record = try cache.nodeRecord(for: nodeUUID) else {
+                    if let fallbackHost {
+                        let resolvedPort = portOverride
+                            ?? spec.port
+                            ?? fallbackPort
+                            ?? BoxRuntimeOptions.defaultPort
+                        return [Endpoint(nodeUUID: nodeUUID, address: fallbackHost, port: resolvedPort)]
+                    }
+                    throw ValidationError("No Location Service record found for node \(nodeUUID.uuidString).")
+                }
+                guard record.userUUID == spec.userUUID else {
+                    throw ValidationError("Node \(nodeUUID.uuidString) does not belong to user \(spec.userUUID.uuidString).")
+                }
+                try ensureNodeOnline(record)
+                let endpoint = try makeEndpoint(
+                    for: record,
+                    portOverride: portOverride ?? spec.port,
+                    fallbackHost: fallbackHost,
+                    fallbackPort: fallbackPort
+                )
+                return [endpoint]
+
+            case .wildcard:
+                guard let userRecord = try cache.userRecord(for: spec.userUUID) else {
+                    throw ValidationError("No Location Service record found for user \(spec.userUUID.uuidString).")
+                }
+                return try resolveUserEndpoints(
+                    userRecord: userRecord,
+                    cache: cache,
+                    portOverride: portOverride ?? spec.port,
+                    fallbackHost: fallbackHost,
+                    fallbackPort: fallbackPort
+                )
+            }
+        }
+    }
+
+    /// Formats IP addresses in a display-friendly form (wraps IPv6 in brackets).
+    /// - Parameter address: Address string to display.
+    /// - Returns: Address suitable for CLI display.
+    static func formatEndpointAddress(_ address: String) -> String {
+        if address.contains(":"), !address.hasPrefix("["), !address.hasSuffix("]") {
+            return "[\(address)]"
+        }
+        return address
+    }
+
+    /// Ensures the node record denotes an online node before attempting delivery.
+    /// - Parameter record: Location Service node record.
+    private static func ensureNodeOnline(_ record: LocationServiceNodeRecord) throws {
+        if record.online == false {
+            throw ValidationError("Node \(record.nodeUUID.uuidString) is currently offline.")
+        }
+    }
+
+    /// Resolves endpoints for every online node owned by the supplied user record.
+    private static func resolveUserEndpoints(
+        userRecord: LocationServiceUserRecord,
+        cache: LocationCache,
+        portOverride: UInt16?,
+        fallbackHost: String?,
+        fallbackPort: UInt16?
+    ) throws -> [Endpoint] {
+        var endpoints: [Endpoint] = []
+        endpoints.reserveCapacity(userRecord.nodeUUIDs.count)
+
+        for nodeUUID in userRecord.nodeUUIDs {
+            guard let record = try cache.nodeRecord(for: nodeUUID) else {
+                continue
+            }
+            guard record.userUUID == userRecord.userUUID else {
+                continue
+            }
+            guard record.online else {
+                continue
+            }
+            let endpoint = try makeEndpoint(
+                for: record,
+                portOverride: portOverride,
+                fallbackHost: fallbackHost,
+                fallbackPort: fallbackPort
+            )
+            endpoints.append(endpoint)
+        }
+
+        guard !endpoints.isEmpty else {
+            throw ValidationError("No online nodes available for user \(userRecord.userUUID.uuidString).")
+        }
+
+        return endpoints.sorted { lhs, rhs in
+            lhs.nodeUUID.uuidString < rhs.nodeUUID.uuidString
+        }
+    }
+
+    /// Selects the optimal address advertised by a node.
+    private static func makeEndpoint(
+        for record: LocationServiceNodeRecord,
+        portOverride: UInt16?,
+        fallbackHost: String?,
+        fallbackPort: UInt16?
+    ) throws -> Endpoint {
+        var candidates: [AddressCandidate] = []
+        candidates.reserveCapacity(record.addresses.count + 2)
+
+        for address in record.addresses {
+            let port = portOverride ?? address.port
+            let candidate = AddressCandidate(
+                ip: address.ip,
+                port: port,
+                scope: address.scope,
+                source: address.source,
+                origin: .record
+            )
+            candidates.append(candidate)
+        }
+
+        if let externalIPv4 = record.connectivity.portMapping.externalIPv4 {
+            let inferredPort = portOverride
+                ?? record.connectivity.portMapping.externalPort
+                ?? record.addresses.first?.port
+                ?? fallbackPort
+                ?? BoxRuntimeOptions.defaultPort
+            candidates.append(
+                AddressCandidate(
+                    ip: externalIPv4,
+                    port: inferredPort,
+                    scope: .global,
+                    source: nil,
+                    origin: .portMapping
+                )
+            )
+        }
+
+        if candidates.isEmpty, let fallbackHost {
+            let inferredPort = portOverride
+                ?? fallbackPort
+                ?? record.addresses.first?.port
+                ?? BoxRuntimeOptions.defaultPort
+            candidates.append(
+                AddressCandidate(
+                    ip: fallbackHost,
+                    port: inferredPort,
+                    scope: nil,
+                    source: nil,
+                    origin: .fallback
+                )
+            )
+        }
+
+        guard let selected = selectPreferredAddress(from: candidates) else {
+            throw ValidationError("Node \(record.nodeUUID.uuidString) does not advertise any reachable address.")
+        }
+
+        return Endpoint(nodeUUID: record.nodeUUID, address: selected.ip, port: selected.port)
+    }
+
+    /// Picks the best candidate from the provided list.
+    private static func selectPreferredAddress(from candidates: [AddressCandidate]) -> AddressCandidate? {
+        guard !candidates.isEmpty else { return nil }
+        return candidates.sorted { lhs, rhs in
+            let lhsScope = scopeRank(for: lhs)
+            let rhsScope = scopeRank(for: rhs)
+            if lhsScope != rhsScope {
+                return lhsScope < rhsScope
+            }
+
+            let lhsFamily = ipFamilyRank(for: lhs.ip)
+            let rhsFamily = ipFamilyRank(for: rhs.ip)
+            if lhsFamily != rhsFamily {
+                return lhsFamily < rhsFamily
+            }
+
+            let lhsSource = sourceRank(for: lhs)
+            let rhsSource = sourceRank(for: rhs)
+            if lhsSource != rhsSource {
+                return lhsSource < rhsSource
+            }
+
+            if lhs.origin.rawValue != rhs.origin.rawValue {
+                return lhs.origin.rawValue < rhs.origin.rawValue
+            }
+
+            if lhs.ip != rhs.ip {
+                return lhs.ip < rhs.ip
+            }
+            return lhs.port < rhs.port
+        }.first
+    }
+
+    /// Returns a ranking for the supplied candidate scope.
+    private static func scopeRank(for candidate: AddressCandidate) -> Int {
+        switch candidate.origin {
+        case .fallback:
+            return 3
+        case .portMapping:
+            return 0
+        case .record:
+            switch candidate.scope {
+            case .some(.global):
+                return 0
+            case .some(.lan):
+                return 1
+            case .some(.loopback):
+                return 2
+            case .none:
+                return 3
+            }
+        }
+    }
+
+    /// Returns a ranking used to prefer IPv6 addresses over IPv4.
+    private static func ipFamilyRank(for address: String) -> Int {
+        address.contains(":") ? 0 : 1
+    }
+
+    /// Returns a ranking for the Location Service source metadata.
+    private static func sourceRank(for candidate: AddressCandidate) -> Int {
+        if candidate.origin == .portMapping {
+            return 0
+        }
+        switch candidate.source {
+        case .some(.probe):
+            return 0
+        case .some(.manual):
+            return 1
+        case .some(.config):
+            return 2
+        case .none:
+            return 3
+        }
+    }
+}
 
 // MARK: - Admin Subcommands
 

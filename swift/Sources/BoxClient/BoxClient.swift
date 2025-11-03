@@ -188,8 +188,15 @@ public enum BoxClient {
         pingResult: NIOLockedValueBox<String?>?,
         syncRecords: NIOLockedValueBox<[SyncRecord]>?
     ) async throws {
-        let mergedMetadata = metadata(for: remoteAddress, base: attemptMetadata)
-        logger.info("client starting", metadata: mergedMetadata)
+        var mergedMetadata = metadata(for: remoteAddress, base: attemptMetadata)
+        if let bindAddress = options.bindAddress {
+            mergedMetadata["bindAddress"] = "\(bindAddress)"
+        }
+        if let bindPort = options.bindPort {
+            mergedMetadata["bindPort"] = "\(bindPort)"
+        }
+        let startMetadata = mergedMetadata
+        logger.info("client starting", metadata: startMetadata)
 
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let completionHolder = NIOLockedValueBox<EventLoopFuture<Void>?>(nil)
@@ -216,8 +223,9 @@ public enum BoxClient {
 
         let channel: Channel
         do {
-            let bindHost = determineBindHost(remoteAddress: remoteAddress)
-            channel = try await bootstrap.bind(host: bindHost, port: 0).get()
+            let bindHost = options.bindAddress ?? determineBindHost(remoteAddress: remoteAddress)
+            let bindPort = Int(options.bindPort ?? 0)
+            channel = try await bootstrap.bind(host: bindHost, port: bindPort).get()
         } catch {
             logger.error("failed to bind client UDP socket", metadata: ["error": "\(error)"])
             throw error
@@ -236,15 +244,15 @@ public enum BoxClient {
             try await withTaskCancellationHandler {
                 try await operationFuture.get()
             } onCancel: {
-                logger.info("client cancellation requested", metadata: mergedMetadata)
+                logger.info("client cancellation requested", metadata: startMetadata)
                 channelBox.value.close(promise: nil)
             }
 
-            logger.info("client stopped", metadata: mergedMetadata)
+            logger.info("client stopped", metadata: startMetadata)
             try await eventLoopGroup.shutdownGracefully()
             return
         } catch {
-            var failureMetadata = mergedMetadata
+            var failureMetadata = startMetadata
             failureMetadata["error"] = "\(error)"
             logger.error("client failed", metadata: failureMetadata)
             channelBox.value.close(promise: nil)

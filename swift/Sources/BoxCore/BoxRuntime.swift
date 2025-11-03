@@ -136,8 +136,6 @@ public struct BoxRuntimeOptions: Sendable {
     public var portMappingRequested: Bool
     /// Indicates how the port mapping preference was obtained.
     public var portMappingOrigin: PortMappingOrigin
-    /// List of configured root servers used by the client when fanning out locate requests.
-    public var rootServers: [RootServer]
     /// Manual external IP (if provided by the operator).
     public var externalAddressOverride: String?
     /// Manual external port (defaults to the runtime port when absent).
@@ -146,6 +144,12 @@ public struct BoxRuntimeOptions: Sendable {
     public var externalAddressOrigin: ExternalAddressOrigin
     /// Set of queues that should retain messages after GET operations.
     public var permanentQueues: Set<String>
+    /// List of configured root servers used by the client when fanning out locate requests.
+    public var rootServers: [RootServer]
+    /// Optional local address used when binding the client UDP socket.
+    public var bindAddress: String?
+    /// Optional local UDP port used when binding the client UDP socket.
+    public var bindPort: UInt16?
 
     /// Creates a new bundle of runtime options.
     /// - Parameters:
@@ -183,7 +187,9 @@ public struct BoxRuntimeOptions: Sendable {
         externalPortOverride: UInt16? = nil,
         externalAddressOrigin: ExternalAddressOrigin = .default,
         permanentQueues: Set<String> = [],
-        rootServers: [RootServer] = []
+        rootServers: [RootServer] = [],
+        bindAddress: String? = nil,
+        bindPort: UInt16? = nil
     ) {
         self.mode = mode
         self.address = address
@@ -206,6 +212,8 @@ public struct BoxRuntimeOptions: Sendable {
         self.externalAddressOrigin = externalAddressOrigin
         self.permanentQueues = permanentQueues
         self.rootServers = rootServers
+        self.bindAddress = bindAddress
+        self.bindPort = bindPort
     }
 }
 
