@@ -31,7 +31,7 @@ Next Steps
    - Produire une CLI `box admin export-presence` pour préparer cette consommation.
 
 ### Long terme
-6. **Validation nat-probe matérielle**
+6. **Validation nat-probe matérielle** *(reporté post‑0.4.0)*
    - Capturer un scénario « succès » (UPnP/PCP) dès que du matériel compatible est disponible, puis ajouter le test CLI correspondant.
 7. **Noise/libsodium**
    - Implémenter NK/IK `HELLO` + handshake complet, tests de relecture.
