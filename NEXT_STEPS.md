@@ -29,6 +29,10 @@ Next Steps
 5. **Mobile / clients légers**
    - Définir un format exportable du `whoswho` pour consommation Android/iOS.
    - Produire une CLI `box admin export-presence` pour préparer cette consommation.
+   - Préparer le SDK mobile :
+     - **iOS (0.4.x)** : module SwiftPM dédié (`BoxMobileClient`) encapsulant `BoxClient`, API PUT/GET/LOCATE simplifiée, guide d’intégration (permissions réseau, configuration PLIST).
+     - **Android (post‑0.4.x)** : ré-implémentation native Kotlin du protocole Box (pas de bridging Swift/Kotlin), API symétrique à l’iOS SDK.
+     - Export `export-presence` conservé comme outil optionnel (bootstraps offline/debug) pour un jalon futur.
 
 ### Long terme
 6. **Validation nat-probe matérielle** *(reporté post‑0.4.0)*

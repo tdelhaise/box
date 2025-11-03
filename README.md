@@ -60,7 +60,7 @@ L’admin s’appuie sur `~/.box/run/boxd.socket` (Unix) ou `\\.\pipe\boxd-admin
 - Sonde IPv6 automatique au démarrage (`hasGlobalIPv6`, `globalIPv6Addresses`, `ipv6ProbeError`).
 - Option `--enable-port-mapping` / `port_mapping = true` : séquence UPnP → PCP (`MAP` + `PEER`) → NAT-PMP, puis sonde `HELLO` sur l’endpoint externe. Télemetrie renvoyée via admin : `portMappingStatus`, `portMappingBackend`, `portMappingPeer*`, `portMappingReachability*`, etc.
 - `swift run box admin nat-probe [--gateway <ip>]` exécute la séquence côté CLI (tests en CI attendent `disabled|skipped` lorsque le mapping est désactivé).
-- `swift run box admin location-summary [--json] [--fail-on-stale] [--fail-if-empty]` inspecte `whoswho/` (affiche les nœuds actifs/stale et retourne un code ≠ 0 selon les options, utile pour la supervision des racines).
+- `swift run box admin location-summary [--json|--prometheus] [--fail-on-stale] [--fail-if-empty]` inspecte `whoswho/` (affiche les nœuds actifs/stale, export Prometheus si demandé, et retourne un code ≠ 0 selon les options — idéal pour la supervision des racines).
 - Pas de dépendance STUN/ICE ; si la passerelle ne supporte pas ces protocoles, configurer un forwarding manuel et renseigner `external_address/external_port`. La validation « succès » de `nat-probe` sera traitée sur un jalon ultérieur (post‑0.4.0) lorsque du matériel compatible sera accessible.
 
 ### Tests end-to-end

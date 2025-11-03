@@ -395,6 +395,25 @@ final class BoxCLIIntegrationTests: XCTestCase {
         }
     }
 
+    func testAdminLocationSummaryPrometheus() async throws {
+        try await runWithinTimeout {
+            let context = try await startServer()
+            defer { context.tearDown() }
+
+            try await context.waitForAdminSocket()
+
+            let (stdout, stderr, status) = try await Self.runBoxCLIAsync(
+                args: ["admin", "location-summary", "--socket", context.socketPath, "--prometheus"],
+                configurationPath: context.configurationURL.path
+            )
+
+            XCTAssertEqual(status, 0)
+            XCTAssertTrue(stderr.isEmpty)
+            XCTAssertTrue(stdout.contains("box_location_nodes_total"), "Expected Prometheus gauge output")
+            XCTAssertTrue(stdout.contains("# TYPE box_location_nodes_total gauge"))
+        }
+    }
+
     func testInitConfigCLI() async throws {
         try await runWithinTimeout {
             let fileManager = FileManager.default

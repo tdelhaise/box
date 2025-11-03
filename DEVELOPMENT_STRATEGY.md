@@ -52,6 +52,9 @@ Voir `NEXT_STEPS.md` pour la liste détaillée. Priorités actuelles :
 1. Exploiter les métriques `locationService` (alerting, supervision racines, intégration observabilité).
 2. Préparer le passage Noise/libsodium (structures de clés, tests unitaires).
 3. Approfondir la couverture CLI/integration (export LS à court terme; scénario nat-probe « succès » sera traité après la 0.4.0, une fois le matériel compatible disponible).
+4. Préparer les SDK mobiles :
+   - iOS : module SwiftPM `BoxMobileClient` (wrap `BoxClient`, API PUT/GET/LOCATE, documentation d’intégration).
+   - Android : réimplémentation native Kotlin (pas de bridging Swift/Kotlin), planifiée pour un jalon post‑0.4.0.
 
 ### Structure de documentation
 - `README.md` — aperçu, build, topologie racines, commandes essentielles.

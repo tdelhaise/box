@@ -2041,6 +2041,9 @@ extension BoxCommandParser {
             @Flag(name: .long, help: "Emit the summary as JSON instead of human-readable text.")
             public var json: Bool = false
 
+            @Flag(name: .long, help: "Emit Prometheus exposition metrics instead of human-readable text.")
+            public var prometheus: Bool = false
+
             @Flag(name: .long, help: "Exit with code 2 when stale nodes or users are detected.")
             public var failOnStale: Bool = false
 
@@ -2050,6 +2053,10 @@ extension BoxCommandParser {
             public init() {}
 
             public mutating func run() throws {
+                if json && prometheus {
+                    throw ValidationError("--json and --prometheus are mutually exclusive.")
+                }
+
                 let summary: [String: Any]
                 let primaryResponse = try Admin.sendCommand("location-summary", socketOverride: socket)
                 switch Admin.parseLocationSummaryResponse(primaryResponse) {
@@ -2062,7 +2069,10 @@ extension BoxCommandParser {
                     throw ValidationError("location-summary failed: \(message)")
                 }
 
-                if json {
+                if prometheus {
+                    let rendered = try Admin.formatPrometheusLocationSummary(summary)
+                    FileHandle.standardOutput.write(rendered.data(using: .utf8) ?? Data())
+                } else if json {
                     let data = try JSONSerialization.data(withJSONObject: summary, options: [.sortedKeys])
                     FileHandle.standardOutput.write(data)
                     FileHandle.standardOutput.write("\n".data(using: .utf8)!)
@@ -2204,6 +2214,94 @@ extension BoxCommandParser {
                 "  staleUsers: \(formatList(staleUsers))"
             ]
             return lines.joined(separator: "\n") + "\n"
+        }
+
+        private static func formatPrometheusLocationSummary(_ summary: [String: Any]) throws -> String {
+            let generatedAtString = summary["generatedAt"] as? String
+            let totalNodes = summary["totalNodes"] as? Int ?? 0
+            let activeNodes = summary["activeNodes"] as? Int ?? 0
+            let totalUsers = summary["totalUsers"] as? Int ?? 0
+            let staleNodes = (summary["staleNodes"] as? [String]) ?? []
+            let staleUsers = (summary["staleUsers"] as? [String]) ?? []
+            let threshold = summary["staleThresholdSeconds"] as? Int ?? 0
+
+            var lines: [String] = [
+                "# HELP box_location_nodes_total Total nodes registered in the embedded Location Service.",
+                "# TYPE box_location_nodes_total gauge",
+                "box_location_nodes_total \(totalNodes)",
+                "# HELP box_location_nodes_active Nodes considered active within the staleness threshold.",
+                "# TYPE box_location_nodes_active gauge",
+                "box_location_nodes_active \(activeNodes)",
+                "# HELP box_location_users_total Users currently present in the embedded Location Service.",
+                "# TYPE box_location_users_total gauge",
+                "box_location_users_total \(totalUsers)",
+                "# HELP box_location_nodes_stale_total Nodes whose last heartbeat exceeded the staleness threshold.",
+                "# TYPE box_location_nodes_stale_total gauge",
+                "box_location_nodes_stale_total \(staleNodes.count)",
+                "# HELP box_location_users_stale_total Users without any active node within the staleness threshold.",
+                "# TYPE box_location_users_stale_total gauge",
+                "box_location_users_stale_total \(staleUsers.count)",
+                "# HELP box_location_stale_threshold_seconds Staleness threshold used to classify inactive records.",
+                "# TYPE box_location_stale_threshold_seconds gauge",
+                "box_location_stale_threshold_seconds \(threshold)"
+            ]
+
+            if let generatedAtString, let timestamp = Admin.prometheusTimestamp(from: generatedAtString) {
+                lines.append("# HELP box_location_summary_generated_timestamp_seconds ISO 8601 generation time of the summary.")
+                lines.append("# TYPE box_location_summary_generated_timestamp_seconds gauge")
+                lines.append("box_location_summary_generated_timestamp_seconds \(timestamp)")
+            }
+
+            if !staleNodes.isEmpty {
+                lines.append("# HELP box_location_stale_node_indicator Indicator metric for each stale node UUID (value=1).")
+                lines.append("# TYPE box_location_stale_node_indicator gauge")
+                for uuid in staleNodes {
+                    let escaped = Admin.prometheusEscape(uuid)
+                    lines.append("box_location_stale_node_indicator{node_uuid=\"\(escaped)\"} 1")
+                }
+            }
+
+            if !staleUsers.isEmpty {
+                lines.append("# HELP box_location_stale_user_indicator Indicator metric for each stale user UUID (value=1).")
+                lines.append("# TYPE box_location_stale_user_indicator gauge")
+                for uuid in staleUsers {
+                    let escaped = Admin.prometheusEscape(uuid)
+                    lines.append("box_location_stale_user_indicator{user_uuid=\"\(escaped)\"} 1")
+                }
+            }
+
+            lines.append("")
+            return lines.joined(separator: "\n")
+        }
+
+        private static func prometheusEscape(_ value: String) -> String {
+            var escaped = ""
+            for scalar in value.unicodeScalars {
+                switch scalar {
+                case "\"":
+                    escaped.append("\\\"")
+                case "\\":
+                    escaped.append("\\\\")
+                case "\n":
+                    escaped.append("\\n")
+                default:
+                    escaped.unicodeScalars.append(scalar)
+                }
+            }
+            return escaped
+        }
+
+        private static func prometheusTimestamp(from isoString: String) -> String? {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: isoString) {
+                return String(format: "%.3f", date.timeIntervalSince1970)
+            }
+            formatter.formatOptions = [.withInternetDateTime]
+            if let date = formatter.date(from: isoString) {
+                return String(format: "%.3f", date.timeIntervalSince1970)
+            }
+            return nil
         }
 
         private static func formatList(_ values: [String]) -> String {
